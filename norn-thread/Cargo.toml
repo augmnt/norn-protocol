@@ -1,0 +1,15 @@
+[package]
+name = "norn-thread"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+norn-types = { path = "../norn-types" }
+norn-crypto = { path = "../norn-crypto" }
+borsh = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tracing = "0.1"
+
+[dev-dependencies]
+proptest = "1"

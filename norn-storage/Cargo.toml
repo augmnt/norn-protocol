@@ -1,0 +1,16 @@
+[package]
+name = "norn-storage"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+norn-types = { path = "../norn-types" }
+norn-crypto = { path = "../norn-crypto" }
+borsh = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+rusqlite = { version = "0.31", features = ["bundled"] }
+rocksdb = { version = "0.22", features = ["multi-threaded-cf"] }
+
+[dev-dependencies]
+proptest = "1"

@@ -1,0 +1,21 @@
+[package]
+name = "norn-relay"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+norn-types = { path = "../norn-types" }
+norn-crypto = { path = "../norn-crypto" }
+borsh = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+libp2p = { version = "0.54", features = ["gossipsub", "request-response", "identify", "noise", "tcp", "tokio", "macros", "yamux"] }
+futures = "0.3"
+async-trait = "0.1"
+blake3 = "1"
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }

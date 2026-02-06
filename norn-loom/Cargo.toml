@@ -1,0 +1,19 @@
+[package]
+name = "norn-loom"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+norn-types = { path = "../norn-types" }
+norn-crypto = { path = "../norn-crypto" }
+norn-storage = { path = "../norn-storage" }
+borsh = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+wasmtime = "19"
+
+[dev-dependencies]
+proptest = "1"
+wat = "1"

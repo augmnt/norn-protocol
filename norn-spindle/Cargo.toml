@@ -1,0 +1,18 @@
+[package]
+name = "norn-spindle"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+norn-types = { path = "../norn-types" }
+norn-crypto = { path = "../norn-crypto" }
+norn-thread = { path = "../norn-thread" }
+norn-storage = { path = "../norn-storage" }
+borsh = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+proptest = "1"

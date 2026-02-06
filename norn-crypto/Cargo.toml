@@ -1,0 +1,23 @@
+[package]
+name = "norn-crypto"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+norn-types = { path = "../norn-types" }
+borsh = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+ed25519-dalek = { version = "2", features = ["rand_core", "batch", "zeroize"] }
+zeroize = "1"
+blake3 = "1"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+chacha20poly1305 = "0.10"
+bip39 = "2"
+slip10_ed25519 = "0.1"
+rand = "0.8"
+curve25519-dalek = "4"
+sharks = "0.5"
+
+[dev-dependencies]
+proptest = "1"

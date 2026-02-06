@@ -1,0 +1,2181 @@
+# Norn Protocol Specification v2.0
+
+**Your thread. Your fate. The chain just watches.**
+
+| Field        | Value                         |
+|--------------|-------------------------------|
+| Version      | 2.0                           |
+| Status       | Living Document               |
+| Date         | 2026-02-06                    |
+| Supersedes   | v1.0                          |
+| Authors      | Norn Protocol Contributors    |
+
+---
+
+## Table of Contents
+
+1. [Introduction](#1-introduction)
+2. [Design Philosophy](#2-design-philosophy)
+3. [Architecture Overview](#3-architecture-overview)
+4. [Primitive Types](#4-primitive-types)
+5. [Thread Model](#5-thread-model)
+6. [Knot System](#6-knot-system)
+7. [Transfer Payloads](#7-transfer-payloads)
+8. [Loom Interaction Payloads](#8-loom-interaction-payloads)
+9. [Thread State](#9-thread-state)
+10. [Thread Headers](#10-thread-headers)
+11. [Commitment Updates](#11-commitment-updates)
+12. [Thread Registration](#12-thread-registration)
+13. [Weave Layer](#13-weave-layer)
+14. [Weave Blocks](#14-weave-blocks)
+15. [Consensus (HotStuff BFT)](#15-consensus-hotstuff-bft)
+16. [Fee Mechanism](#16-fee-mechanism)
+17. [Staking & Validators](#17-staking--validators)
+18. [Fraud Proofs](#18-fraud-proofs)
+19. [Loom System](#19-loom-system)
+20. [Network & Relay Layer](#20-network--relay-layer)
+21. [Spindle (Watchtower)](#21-spindle-watchtower)
+22. [Cryptography](#22-cryptography)
+23. [Storage Layer](#23-storage-layer)
+24. [Node Configuration & RPC](#24-node-configuration--rpc)
+25. [Genesis Configuration](#25-genesis-configuration)
+26. [Error Taxonomy](#26-error-taxonomy)
+27. [Wallet CLI](#27-wallet-cli)
+28. [Protocol Constants](#28-protocol-constants)
+29. [Crate Map](#29-crate-map)
+30. [Changelog (v1.0 to v2.0)](#30-changelog-v10-to-v20)
+
+---
+
+## 1. Introduction
+
+Norn is a thread-centric Layer 1 blockchain protocol. Unlike account-based or UTXO-based systems, Norn organizes state into **threads** -- autonomous, owner-controlled chains of state transitions called **knots**. Threads interact bilaterally or multilaterally through knots, producing a fabric of provable state transitions. A global ordering layer, the **Weave**, provides finality, fraud proofs, and cross-thread coordination through **looms**.
+
+Norn is implemented as a Rust workspace comprising 9 crates. This specification is the authoritative reference derived directly from the codebase.
+
+### 1.1 Scope
+
+This document specifies:
+
+- All on-chain data structures and their exact Rust representations
+- The knot lifecycle and validation rules
+- The Weave consensus layer (HotStuff BFT)
+- The Loom cross-thread coordination system
+- The network protocol and message formats
+- The JSON-RPC interface
+- The wallet CLI and encrypted keystore format
+- Protocol constants and error codes
+
+### 1.2 Conventions
+
+- All struct definitions are shown as Rust code reflecting the actual `norn-types` crate.
+- Serialization uses `borsh` (Binary Object Representation Serializer for Hashing) for wire format and storage.
+- JSON serialization uses `serde` for RPC and keystore files.
+- Features marked `[PLANNED]` exist as type definitions but lack full runtime implementation.
+- Features marked `[FUTURE]` do not yet exist in the codebase.
+
+---
+
+## 2. Design Philosophy
+
+### 2.1 Core Principles
+
+1. **Thread sovereignty.** Each thread is owned and controlled by a single keypair. No external actor can mutate a thread's state without the owner's cryptographic consent.
+
+2. **Bilateral agreement.** State transitions (knots) require signatures from all participating threads. The protocol enforces this at the knot level, not at a global transaction level.
+
+3. **Off-chain execution, on-chain verification.** Threads execute locally. The Weave only stores commitment hashes and can verify fraud proofs, but never re-executes thread logic.
+
+4. **Optimistic finality.** Commitments are assumed valid unless proven fraudulent within a challenge window (24 hours). This keeps Weave throughput high.
+
+5. **Composability through looms.** Cross-thread coordination (DEXs, bridges, multi-party protocols) happens in looms -- sandboxed Wasm runtimes anchored to the Weave.
+
+### 2.2 Non-Goals
+
+- Norn does not provide a global VM (no EVM, no Move).
+- Norn does not enforce global state ordering across unrelated threads.
+- Norn does not support unilateral transfers (the recipient must co-sign).
+
+---
+
+## 3. Architecture Overview
+
+```
++-------------------------------------------------------------------+
+|                         norn-node                                  |
+|  (Full node binary: config, RPC server, wallet CLI, metrics)      |
++--------+----------+-----------+----------+-----------+------------+
+         |          |           |          |           |
+    norn-weave  norn-relay  norn-loom  norn-spindle  norn-thread
+    (Consensus, (P2P via   (Wasm      (Watchtower,  (Thread mgmt,
+     blocks,    libp2p,     runtime,   monitoring,   knot building,
+     fraud,     gossipsub)  gas,       rate limit)   validation,
+     fees,                  dispute,                  chain verify)
+     staking,               lifecycle)
+     mempool)
+         |          |           |          |           |
+    +----+----------+-----------+----------+-----------+----+
+    |                    norn-storage                        |
+    |  (KvStore trait + memory/SQLite/RocksDB backends)      |
+    +------------------------+------------------------------+
+                             |
+    +------------------------+------------------------------+
+    |                    norn-crypto                          |
+    |  (Ed25519, BLAKE3, Merkle, encryption, HD wallet, seed)|
+    +------------------------+------------------------------+
+                             |
+    +------------------------+------------------------------+
+    |                    norn-types                           |
+    |  (All shared types, constants, error enum)             |
+    +-------------------------------------------------------+
+```
+
+### 3.1 Crate Dependency Flow
+
+```
+norn-types         (leaf -- no internal dependencies)
+    ^
+norn-crypto        (depends on norn-types)
+    ^
+norn-storage       (depends on norn-types)
+    ^
+norn-thread        (depends on norn-types, norn-crypto)
+norn-relay         (depends on norn-types, norn-crypto)
+norn-weave         (depends on norn-types, norn-crypto, norn-storage)
+norn-loom          (depends on norn-types, norn-crypto)
+norn-spindle       (depends on norn-types, norn-crypto)
+norn-node          (depends on all above)
+```
+
+---
+
+## 4. Primitive Types
+
+All primitive types are defined in `norn-types/src/primitives.rs`.
+
+```rust
+/// 32-byte BLAKE3 hash.
+pub type Hash = [u8; 32];
+
+/// 32-byte Ed25519 public key.
+pub type PublicKey = [u8; 32];
+
+/// 64-byte Ed25519 signature.
+pub type Signature = [u8; 64];
+
+/// 20-byte address derived from BLAKE3(pubkey)[0..20].
+pub type Address = [u8; 20];
+
+/// Token identifier -- 32-byte hash of the token definition.
+pub type TokenId = [u8; 32];
+
+/// Unique identifier for a thread -- same as the creator's address.
+pub type ThreadId = Address;
+
+/// Unique identifier for a knot -- BLAKE3 hash of all fields except signatures.
+pub type KnotId = Hash;
+
+/// Unique identifier for a loom.
+pub type LoomId = [u8; 32];
+
+/// Version number for knots within a thread (monotonically increasing).
+pub type Version = u64;
+
+/// Amount of tokens (native uses 12 decimals).
+pub type Amount = u128;
+
+/// Unix timestamp in seconds.
+pub type Timestamp = u64;
+
+/// The native token ID (all zeros).
+pub const NATIVE_TOKEN_ID: TokenId = [0u8; 32];
+```
+
+### 4.1 Key Design Decisions
+
+| Type | Size | Rationale |
+|------|------|-----------|
+| `Amount = u128` | 16 bytes | `u64::MAX` = ~1.8 x 10^19. Max supply = 10^9 NORN x 10^12 decimals = 10^21 nits, which exceeds `u64::MAX`. Therefore `u128` is required. |
+| `Address = [u8; 20]` | 20 bytes | Derived as `BLAKE3(pubkey)[0..20]`. 160 bits provides birthday-attack resistance of ~2^80. |
+| `ThreadId = Address` | 20 bytes | A thread is identified by its creator's address. One address, one thread. |
+| `Timestamp = u64` | 8 bytes | Unix seconds (not milliseconds). Sufficient until year ~584 billion. |
+| `NATIVE_TOKEN_ID = [0u8; 32]` | 32 bytes | All-zero sentinel. Not a BLAKE3 hash -- just a convention. |
+
+### 4.2 SignedAmount
+
+For internal accounting where both debits and credits must be represented:
+
+```rust
+pub struct SignedAmount {
+    /// True if the amount is negative.
+    pub negative: bool,
+    /// Absolute value of the amount.
+    pub value: Amount,
+}
+```
+
+---
+
+## 5. Thread Model
+
+A **thread** is the fundamental unit of identity and state in Norn. Each thread:
+
+- Is created by generating an Ed25519 keypair.
+- Has a `ThreadId` equal to the creator's `Address` (BLAKE3(pubkey)[0..20]).
+- Maintains its own chain of state transitions (knots).
+- Commits periodic state hashes to the Weave.
+- Can participate in looms for cross-thread coordination.
+
+### 5.1 Thread Lifecycle
+
+1. **Key generation.** Generate an Ed25519 keypair. Derive the address.
+2. **Registration.** Submit a `Registration` to the Weave, announcing the thread's existence and initial state hash.
+3. **Operation.** Create knots bilaterally with other threads. Each knot modifies the `ThreadState`.
+4. **Commitment.** Periodically submit a `CommitmentUpdate` to the Weave with the current state hash.
+5. **Finality.** After `COMMITMENT_FINALITY_DEPTH` blocks (10) without a fraud proof, the commitment is final.
+
+### 5.2 Thread Ownership
+
+Threads are **non-transferable**. The thread ID is permanently bound to the creator's address. This is enforced structurally: `ThreadId = Address = BLAKE3(pubkey)[0..20]`.
+
+---
+
+## 6. Knot System
+
+A **knot** is the fundamental unit of state transition. Knots record bilateral or multilateral agreements between thread participants.
+
+### 6.1 KnotType
+
+```rust
+pub enum KnotType {
+    /// Simple two-party token transfer.
+    Transfer,
+    /// Multi-party transfer (up to MAX_MULTI_TRANSFERS).
+    MultiTransfer,
+    /// Interaction with a loom (deposit, withdraw, state update).
+    LoomInteraction,
+}
+```
+
+### 6.2 ParticipantState
+
+A snapshot of a participant's thread state at a point in time:
+
+```rust
+pub struct ParticipantState {
+    /// The participant's thread ID.
+    pub thread_id: ThreadId,
+    /// The participant's public key.
+    pub pubkey: PublicKey,
+    /// Version number of the thread at this point.
+    pub version: Version,
+    /// Hash of the thread state at this point.
+    pub state_hash: Hash,
+}
+```
+
+### 6.3 Knot
+
+```rust
+pub struct Knot {
+    /// Unique identifier: BLAKE3(all fields except signatures).
+    pub id: KnotId,
+    /// The type of this knot.
+    pub knot_type: KnotType,
+    /// Timestamp when the knot was created.
+    pub timestamp: Timestamp,
+    /// Optional expiry timestamp.
+    pub expiry: Option<Timestamp>,
+    /// Each participant's state BEFORE the knot.
+    pub before_states: Vec<ParticipantState>,
+    /// Each participant's state AFTER the knot.
+    pub after_states: Vec<ParticipantState>,
+    /// The operation payload.
+    pub payload: KnotPayload,
+    /// Signatures from all participants (one per participant, in order).
+    pub signatures: Vec<Signature>,
+}
+```
+
+### 6.4 KnotPayload
+
+```rust
+pub enum KnotPayload {
+    Transfer(TransferPayload),
+    MultiTransfer(MultiTransferPayload),
+    LoomInteraction(LoomInteractionPayload),
+}
+```
+
+### 6.5 Knot Validation Rules
+
+A knot is valid if and only if all of the following hold:
+
+1. **ID integrity.** `id == BLAKE3(borsh(all fields except id and signatures))`.
+2. **Signature count.** `signatures.len() == before_states.len()`.
+3. **Signature validity.** Each `signatures[i]` is a valid Ed25519 signature by `before_states[i].pubkey` over the knot ID.
+4. **Version continuity.** For each participant `i`: `after_states[i].version == before_states[i].version + 1`.
+5. **State hash consistency.** Each `before_states[i].state_hash` matches the actual current state hash of the participant's thread.
+6. **Timestamp validity.** `timestamp <= now + MAX_TIMESTAMP_DRIFT` (300 seconds). If there is a previous knot, `timestamp >= previous.timestamp`.
+7. **Expiry.** If `expiry` is `Some(t)`, then `t > now`.
+8. **Payload consistency.** The payload must be internally consistent (correct amounts, valid addresses, etc.).
+9. **Balance sufficiency.** For transfer payloads, the sender must have sufficient balance for the token and amount.
+10. **Memo size.** If a memo is present, `memo.len() <= MAX_MEMO_SIZE` (256 bytes).
+
+### 6.6 Knot Signing Protocol
+
+1. **Initiator** constructs the knot with `before_states` from both participants, computes the proposed `after_states`, fills the `payload`, computes the `id`, signs, and sends to the counterparty.
+2. **Counterparty** validates the knot (checks all rules), co-signs, and returns the fully signed knot.
+3. Both parties apply the knot to their local `ThreadState`.
+
+---
+
+## 7. Transfer Payloads
+
+### 7.1 TransferPayload
+
+```rust
+pub struct TransferPayload {
+    /// Token being transferred.
+    pub token_id: TokenId,
+    /// Amount being transferred.
+    pub amount: Amount,
+    /// Sender's address (thread ID).
+    pub from: Address,
+    /// Recipient's address (thread ID).
+    pub to: Address,
+    /// Optional memo (max MAX_MEMO_SIZE bytes).
+    pub memo: Option<Vec<u8>>,
+}
+```
+
+Note: `from` and `to` are `Address` (20 bytes), not `PublicKey`. This matches the thread-centric model where addresses identify threads.
+
+### 7.2 MultiTransferPayload
+
+```rust
+pub struct MultiTransferPayload {
+    /// List of individual transfers.
+    pub transfers: Vec<TransferPayload>,
+}
+```
+
+Constraints:
+- `transfers.len() <= MAX_MULTI_TRANSFERS` (64).
+- Each individual `TransferPayload` must satisfy the same rules as a standalone transfer.
+- All transfers in a multi-transfer are atomic -- either all succeed or none do.
+
+---
+
+## 8. Loom Interaction Payloads
+
+### 8.1 LoomInteractionType
+
+```rust
+pub enum LoomInteractionType {
+    /// Deposit tokens into a loom.
+    Deposit,
+    /// Withdraw tokens from a loom.
+    Withdraw,
+    /// Update loom state.
+    StateUpdate,
+}
+```
+
+### 8.2 LoomInteractionPayload
+
+```rust
+pub struct LoomInteractionPayload {
+    /// The loom being interacted with.
+    pub loom_id: LoomId,
+    /// Type of interaction.
+    pub interaction_type: LoomInteractionType,
+    /// Token involved (for deposits/withdrawals).
+    pub token_id: Option<TokenId>,
+    /// Amount involved (for deposits/withdrawals).
+    pub amount: Option<Amount>,
+    /// Opaque loom-specific data.
+    pub data: Vec<u8>,
+}
+```
+
+For `Deposit` and `Withdraw` interactions, `token_id` and `amount` must be `Some`. For `StateUpdate`, they are typically `None` and the `data` field carries the loom-specific payload.
+
+---
+
+## 9. Thread State
+
+### 9.1 ThreadState
+
+The full mutable state of a thread. This is stored locally, not on-chain. Only its BLAKE3 hash is committed to the Weave.
+
+```rust
+pub struct ThreadState {
+    /// Balances per token. Key: TokenId, Value: Amount.
+    pub balances: BTreeMap<TokenId, Amount>,
+    /// Assets held (e.g., NFTs or other non-fungible items).
+    pub assets: BTreeMap<TokenId, Vec<u8>>,
+    /// Loom memberships. Key: LoomId, Value: loom-specific data.
+    pub looms: BTreeMap<LoomId, Vec<u8>>,
+    /// Replay-protection nonce, incremented with each knot.
+    pub nonce: u64,
+}
+```
+
+### 9.2 State Operations
+
+```rust
+impl ThreadState {
+    /// Get the balance for a specific token.
+    pub fn balance(&self, token_id: &TokenId) -> Amount;
+
+    /// Check if the thread has at least the specified balance.
+    pub fn has_balance(&self, token_id: &TokenId, amount: Amount) -> bool;
+
+    /// Credit tokens to this thread. Returns error on overflow.
+    pub fn credit(&mut self, token_id: TokenId, amount: Amount)
+        -> Result<(), NornError>;
+
+    /// Debit tokens from this thread. Returns false if insufficient balance.
+    pub fn debit(&mut self, token_id: &TokenId, amount: Amount) -> bool;
+}
+```
+
+Key behaviors:
+- `credit()` returns `Result<(), NornError>` to prevent `Amount` overflow (checked addition).
+- `debit()` returns `false` on insufficient balance. Zero-balance entries are removed from the map.
+- An empty `ThreadState` is the default initial state (`ThreadState::new()`).
+
+---
+
+## 10. Thread Headers
+
+### 10.1 ThreadHeader
+
+The fixed-size header committed to the Weave for each thread. Contains the essential state needed to verify knot chains.
+
+```rust
+pub struct ThreadHeader {
+    /// The thread's unique ID (same as the creator's address).
+    pub thread_id: ThreadId,
+    /// The creator's public key.
+    pub owner: PublicKey,
+    /// Current version counter (incremented per knot involving this thread).
+    pub version: Version,
+    /// Hash of the current thread state (balances, assets, looms).
+    pub state_hash: Hash,
+    /// Hash of the last knot applied to this thread (zeros if none).
+    pub last_knot_hash: Hash,
+    /// Hash of the previous committed header (zeros for genesis).
+    pub prev_header_hash: Hash,
+    /// Timestamp of this commitment.
+    pub timestamp: Timestamp,
+    /// Signature by the thread owner over this header.
+    pub signature: Signature,
+}
+```
+
+Size: `THREAD_HEADER_SIZE` = 208 bytes (fixed).
+
+The header forms a chain: each header references the previous via `prev_header_hash`, creating an auditable history of commitments.
+
+---
+
+## 11. Commitment Updates
+
+### 11.1 CommitmentUpdate
+
+A commitment update is the primary message a thread submits to the Weave. It attests to the thread's current state after processing some number of knots.
+
+```rust
+pub struct CommitmentUpdate {
+    /// The thread submitting the commitment.
+    pub thread_id: ThreadId,
+    /// The thread owner's public key.
+    pub owner: PublicKey,
+    /// New version number after this commitment.
+    pub version: Version,
+    /// Hash of the new thread state.
+    pub state_hash: Hash,
+    /// Hash of the previous commitment (zeros for genesis).
+    pub prev_commitment_hash: Hash,
+    /// Number of knots since the last commitment.
+    pub knot_count: u64,
+    /// Timestamp of this commitment.
+    pub timestamp: Timestamp,
+    /// Signature by the thread owner.
+    pub signature: Signature,
+}
+```
+
+### 11.2 Commitment Validation Rules
+
+1. **Signature validity.** The signature must be valid for the `owner` public key over the commitment data.
+2. **Thread existence.** The `thread_id` must be registered on the Weave.
+3. **Version monotonicity.** `version > previous_commitment.version`.
+4. **Chain linkage.** `prev_commitment_hash` must match the hash of the previous commitment for this thread (or zeros for the first commitment).
+5. **Freshness.** `timestamp` must be within `MAX_COMMITMENT_AGE` (86,400 seconds / 24 hours) of the current Weave time.
+6. **Knot limit.** Threads must commit before exceeding `MAX_UNCOMMITTED_KNOTS` (1,000 knots).
+
+---
+
+## 12. Thread Registration
+
+### 12.1 Registration
+
+```rust
+pub struct Registration {
+    /// The thread being registered.
+    pub thread_id: ThreadId,
+    /// The thread owner's public key.
+    pub owner: PublicKey,
+    /// Initial state hash.
+    pub initial_state_hash: Hash,
+    /// Timestamp of registration.
+    pub timestamp: Timestamp,
+    /// Signature by the thread owner.
+    pub signature: Signature,
+}
+```
+
+### 12.2 Registration Rules
+
+1. **Uniqueness.** A `thread_id` can only be registered once.
+2. **Address binding.** `thread_id` must equal `BLAKE3(owner)[0..20]`.
+3. **Signature validity.** The signature must be valid for the `owner` public key.
+
+---
+
+## 13. Weave Layer
+
+The Weave is the global ordering and finality layer. It does **not** execute thread logic. It stores:
+
+- Commitment hashes from threads
+- Thread registrations
+- Loom anchors
+- Fraud proof submissions
+
+### 13.1 WeaveState
+
+```rust
+pub struct WeaveState {
+    /// Current block height.
+    pub height: u64,
+    /// Hash of the latest block.
+    pub latest_hash: Hash,
+    /// Merkle root of all registered threads.
+    pub threads_root: Hash,
+    /// Total number of registered threads.
+    pub thread_count: u64,
+    /// Current fee state.
+    pub fee_state: FeeState,
+}
+```
+
+### 13.2 FeeState
+
+```rust
+pub struct FeeState {
+    /// Base fee per commitment in base units.
+    pub base_fee: Amount,
+    /// Fee multiplier (scaled by 1000 -- 1000 = 1.0x).
+    pub fee_multiplier: u64,
+    /// Total fees collected in the current epoch.
+    pub epoch_fees: Amount,
+}
+```
+
+---
+
+## 14. Weave Blocks
+
+### 14.1 WeaveBlock
+
+```rust
+pub struct WeaveBlock {
+    /// Block height.
+    pub height: u64,
+    /// Hash of this block.
+    pub hash: Hash,
+    /// Hash of the previous block.
+    pub prev_hash: Hash,
+    /// Merkle root of all commitment updates in this block.
+    pub commitments_root: Hash,
+    /// Merkle root of all registrations in this block.
+    pub registrations_root: Hash,
+    /// Merkle root of all loom anchors in this block.
+    pub anchors_root: Hash,
+    /// Commitment updates included in this block.
+    pub commitments: Vec<CommitmentUpdate>,
+    /// Thread registrations included in this block.
+    pub registrations: Vec<Registration>,
+    /// Loom anchors included in this block.
+    pub anchors: Vec<LoomAnchor>,
+    /// Fraud proof submissions included in this block.
+    pub fraud_proofs: Vec<FraudProofSubmission>,
+    /// Merkle root of all fraud proofs in this block.
+    pub fraud_proofs_root: Hash,
+    /// Block timestamp.
+    pub timestamp: Timestamp,
+    /// Block proposer's public key.
+    pub proposer: PublicKey,
+    /// Validator signatures.
+    pub validator_signatures: Vec<ValidatorSignature>,
+}
+```
+
+### 14.2 ValidatorSignature
+
+```rust
+pub struct ValidatorSignature {
+    /// The validator's public key.
+    pub validator: PublicKey,
+    /// Signature over the block hash.
+    pub signature: Signature,
+}
+```
+
+### 14.3 LoomAnchor
+
+```rust
+pub struct LoomAnchor {
+    /// The loom being anchored.
+    pub loom_id: LoomId,
+    /// Hash of the loom's current state.
+    pub state_hash: Hash,
+    /// Block height at which this anchor was created.
+    pub block_height: u64,
+    /// Timestamp of this anchor.
+    pub timestamp: Timestamp,
+    /// Signature by the loom operator.
+    pub signature: Signature,
+}
+```
+
+### 14.4 Block Production
+
+Blocks are produced at a target interval of `BLOCK_TIME_TARGET` (3 seconds). Each block may include up to `MAX_COMMITMENTS_PER_BLOCK` (10,000) commitment updates plus any number of registrations, loom anchors, and fraud proofs.
+
+Block hash is computed as `BLAKE3(borsh(block without hash and signatures))`.
+
+Merkle roots (`commitments_root`, `registrations_root`, `anchors_root`, `fraud_proofs_root`) are computed from the respective transaction lists using the sparse Merkle tree implementation in `norn-crypto`.
+
+---
+
+## 15. Consensus (HotStuff BFT)
+
+Norn uses a 3-phase HotStuff BFT consensus protocol for Weave block finality.
+
+### 15.1 Phases
+
+```rust
+pub enum ConsensusPhase {
+    /// First phase: prepare.
+    Prepare,
+    /// Second phase: pre-commit.
+    PreCommit,
+    /// Third phase: commit.
+    Commit,
+}
+```
+
+### 15.2 Vote
+
+```rust
+pub struct Vote {
+    /// The view number this vote is for.
+    pub view: u64,
+    /// The block hash being voted on.
+    pub block_hash: Hash,
+    /// The voter's public key.
+    pub voter: PublicKey,
+    /// Signature over (view, block_hash).
+    pub signature: Signature,
+}
+```
+
+### 15.3 QuorumCertificate
+
+A quorum certificate (QC) is formed when 2f+1 validators vote for the same block at the same phase:
+
+```rust
+pub struct QuorumCertificate {
+    /// The view number.
+    pub view: u64,
+    /// The block hash.
+    pub block_hash: Hash,
+    /// The phase this QC certifies.
+    pub phase: ConsensusPhase,
+    /// The votes forming the quorum.
+    pub votes: Vec<Vote>,
+}
+```
+
+### 15.4 ConsensusMessage
+
+```rust
+pub enum ConsensusMessage {
+    /// Proposal from the leader with a block and its justification.
+    Prepare {
+        view: u64,
+        block_hash: Hash,
+        block_data: Vec<u8>,
+        justify: Option<QuorumCertificate>,
+    },
+    /// Vote for the prepare phase.
+    PrepareVote(Vote),
+    /// Pre-commit message from leader with prepare QC.
+    PreCommit {
+        view: u64,
+        prepare_qc: QuorumCertificate,
+    },
+    /// Vote for the pre-commit phase.
+    PreCommitVote(Vote),
+    /// Commit message from leader with pre-commit QC.
+    Commit {
+        view: u64,
+        precommit_qc: QuorumCertificate,
+    },
+    /// Vote for the commit phase.
+    CommitVote(Vote),
+    /// Request to change view (timeout).
+    ViewChange(TimeoutVote),
+    /// New view message from the new leader.
+    NewView {
+        view: u64,
+        proof: ViewChangeProof,
+    },
+}
+```
+
+### 15.5 View Changes
+
+When a view times out (the leader fails to produce a block), validators send `TimeoutVote` messages:
+
+```rust
+pub struct TimeoutVote {
+    /// The view that timed out.
+    pub view: u64,
+    /// The voter's public key.
+    pub voter: PublicKey,
+    /// The highest QC this voter knows about.
+    pub highest_qc_view: u64,
+    /// Signature over (view, highest_qc_view).
+    pub signature: Signature,
+}
+```
+
+A `ViewChangeProof` is assembled from 2f+1 timeout votes:
+
+```rust
+pub struct ViewChangeProof {
+    /// The view being changed from.
+    pub old_view: u64,
+    /// The new view.
+    pub new_view: u64,
+    /// Timeout votes from 2f+1 validators.
+    pub timeout_votes: Vec<TimeoutVote>,
+    /// The highest QC known by any voter.
+    pub highest_qc: Option<QuorumCertificate>,
+}
+```
+
+### 15.6 Consensus Flow
+
+1. **Prepare.** The leader proposes a block with a justifying QC from the previous round.
+2. **PrepareVote.** Validators validate the block and send `PrepareVote` to the leader.
+3. **PreCommit.** The leader forms a prepare-QC and broadcasts it.
+4. **PreCommitVote.** Validators respond with `PreCommitVote`.
+5. **Commit.** The leader forms a precommit-QC and broadcasts it.
+6. **CommitVote.** Validators respond; once a commit-QC is formed, the block is finalized.
+
+If the leader fails, validators issue `ViewChange` to rotate leadership.
+
+### 15.7 Solo Mode
+
+For development and single-validator deployments, `norn-node` supports **solo mode** (`validator.solo_mode = true`), where the node produces blocks directly without the full HotStuff protocol.
+
+---
+
+## 16. Fee Mechanism
+
+### 16.1 Fee Computation
+
+```
+fee = base_fee * fee_multiplier / 1000 * commitment_count
+```
+
+Where:
+- `base_fee` is in base units (nits, 10^-12 NORN).
+- `fee_multiplier` is scaled by 1000 (1000 = 1.0x, 2000 = 2.0x).
+
+### 16.2 Dynamic Fee Adjustment
+
+After each block, the fee multiplier is adjusted based on utilization:
+
+```
+if 2 * utilized > capacity:
+    fee_multiplier += fee_multiplier / 8    (increase 12.5%)
+elif 2 * utilized < capacity:
+    fee_multiplier -= fee_multiplier / 8    (decrease 12.5%)
+// else (exactly 50%): no change
+
+fee_multiplier = clamp(fee_multiplier, 100, 10000)
+```
+
+Where:
+- `utilized` = number of commitments in the block.
+- `capacity` = `MAX_COMMITMENTS_PER_BLOCK`.
+- All arithmetic is integer-only (`utilized: u64`, `capacity: u64`).
+- The multiplier is clamped to [100, 10000], representing [0.1x, 10.0x].
+
+### 16.3 Fee State Tracking
+
+The `FeeState` tracks `epoch_fees` (total fees collected in the current epoch) for redistribution to validators.
+
+---
+
+## 17. Staking & Validators
+
+### 17.1 Validator
+
+```rust
+pub struct Validator {
+    /// Validator's public key.
+    pub pubkey: PublicKey,
+    /// Validator's address.
+    pub address: Address,
+    /// Stake amount.
+    pub stake: Amount,
+    /// Whether the validator is currently active.
+    pub active: bool,
+}
+```
+
+### 17.2 ValidatorSet
+
+```rust
+pub struct ValidatorSet {
+    /// Active validators ordered by stake (descending).
+    pub validators: Vec<Validator>,
+    /// Total stake across all active validators.
+    pub total_stake: Amount,
+    /// Current epoch number.
+    pub epoch: u64,
+}
+```
+
+Key methods:
+
+| Method | Formula | Description |
+|--------|---------|-------------|
+| `max_faults()` | `(n - 1) / 3` | Maximum Byzantine faults tolerable |
+| `quorum_size()` | `2f + 1` | Required votes for a quorum |
+| `contains(pubkey)` | -- | Check membership |
+| `get(pubkey)` | -- | Look up a validator |
+
+### 17.3 StakeOperation
+
+```rust
+pub enum StakeOperation {
+    Stake {
+        pubkey: PublicKey,
+        amount: Amount,
+        timestamp: Timestamp,
+        signature: Signature,
+    },
+    Unstake {
+        pubkey: PublicKey,
+        amount: Amount,
+        timestamp: Timestamp,
+        signature: Signature,
+    },
+}
+```
+
+Unstaking is subject to a bonding period (configurable via genesis parameters).
+
+### 17.4 Slashing
+
+Slashing percentages are configurable via genesis configuration, not hardcoded. When a fraud proof is validated, the offending thread's associated validator stake may be slashed.
+
+---
+
+## 18. Fraud Proofs
+
+Fraud proofs are the mechanism by which invalid commitments are challenged. They are submitted to the Weave and included in blocks.
+
+### 18.1 FraudProof
+
+```rust
+pub enum FraudProof {
+    /// Two knots with the same version for the same thread.
+    DoubleKnot {
+        thread_id: ThreadId,
+        knot_a: Box<Knot>,
+        knot_b: Box<Knot>,
+    },
+
+    /// A commitment references a state that is stale or skips knots.
+    StaleCommit {
+        thread_id: ThreadId,
+        commitment: Box<ThreadHeader>,
+        missing_knots: Vec<Knot>,
+    },
+
+    /// A loom state transition that violates the loom's rules.
+    InvalidLoomTransition {
+        loom_id: LoomId,
+        knot: Box<Knot>,
+        reason: String,
+    },
+}
+```
+
+### 18.2 FraudProofSubmission
+
+Every fraud proof is wrapped in a submission envelope:
+
+```rust
+pub struct FraudProofSubmission {
+    /// The fraud proof itself.
+    pub proof: FraudProof,
+    /// Who submitted the fraud proof.
+    pub submitter: PublicKey,
+    /// Timestamp of submission.
+    pub timestamp: Timestamp,
+    /// Signature by the submitter.
+    pub signature: Signature,
+}
+```
+
+### 18.3 Fraud Proof Rules
+
+| Proof Type | Verification |
+|------------|-------------|
+| `DoubleKnot` | Both `knot_a` and `knot_b` must have valid signatures from the same thread owner, with the same version number but different knot IDs. |
+| `StaleCommit` | The `commitment` header must be on-chain. The `missing_knots` must be valid knots that should have been included in the commitment but were not. |
+| `InvalidLoomTransition` | The `knot` must contain a loom interaction that violates the loom's transition rules. The `reason` describes the violation. |
+
+### 18.4 Fraud Proof Window
+
+- `FRAUD_PROOF_WINDOW` = 86,400 seconds (24 hours) -- unified for both thread and loom fraud proofs.
+- `FRAUD_PROOF_MIN_STAKE` = 1 NORN -- minimum stake required to submit a fraud proof.
+
+---
+
+## 19. Loom System
+
+Looms provide cross-thread coordination. They are sandboxed Wasm runtimes that can enforce arbitrary multi-party protocols (DEXs, payment channels, bridges, etc.).
+
+### 19.1 LoomConfig
+
+```rust
+pub struct LoomConfig {
+    /// Unique identifier for this loom.
+    pub loom_id: LoomId,
+    /// Human-readable name.
+    pub name: String,
+    /// Maximum number of participants.
+    pub max_participants: usize,
+    /// Minimum number of participants for the loom to be active.
+    pub min_participants: usize,
+    /// Tokens accepted by this loom.
+    pub accepted_tokens: Vec<TokenId>,
+    /// Opaque loom-specific configuration data.
+    pub config_data: Vec<u8>,
+}
+```
+
+### 19.2 Participant
+
+```rust
+pub struct Participant {
+    /// Participant's public key.
+    pub pubkey: PublicKey,
+    /// Participant's address (thread ID).
+    pub address: Address,
+    /// Timestamp when the participant joined.
+    pub joined_at: Timestamp,
+    /// Whether the participant is currently active.
+    pub active: bool,
+}
+```
+
+### 19.3 Loom
+
+```rust
+pub struct Loom {
+    /// Loom configuration.
+    pub config: LoomConfig,
+    /// Loom operator's public key.
+    pub operator: PublicKey,
+    /// Current participants.
+    pub participants: Vec<Participant>,
+    /// Hash of the current loom state.
+    pub state_hash: Hash,
+    /// Current loom state version.
+    pub version: Version,
+    /// Whether the loom is currently active.
+    pub active: bool,
+    /// Timestamp of last state update.
+    pub last_updated: Timestamp,
+}
+```
+
+### 19.4 LoomRegistration
+
+```rust
+pub struct LoomRegistration {
+    /// The loom configuration.
+    pub config: LoomConfig,
+    /// The loom operator's public key.
+    pub operator: PublicKey,
+    /// Timestamp of registration.
+    pub timestamp: Timestamp,
+    /// Signature by the operator.
+    pub signature: Signature,
+}
+```
+
+### 19.5 LoomBytecode
+
+```rust
+pub struct LoomBytecode {
+    /// The loom this bytecode belongs to.
+    pub loom_id: LoomId,
+    /// Hash of the Wasm bytecode.
+    pub wasm_hash: Hash,
+    /// The Wasm bytecode itself.
+    pub bytecode: Vec<u8>,
+}
+```
+
+### 19.6 LoomStateTransition
+
+```rust
+pub struct LoomStateTransition {
+    /// The loom ID.
+    pub loom_id: LoomId,
+    /// Hash of the state before the transition.
+    pub prev_state_hash: Hash,
+    /// Hash of the state after the transition.
+    pub new_state_hash: Hash,
+    /// Inputs to the transition.
+    pub inputs: Vec<u8>,
+    /// Outputs of the transition.
+    pub outputs: Vec<u8>,
+}
+```
+
+### 19.7 LoomChallenge
+
+```rust
+pub struct LoomChallenge {
+    /// The loom ID.
+    pub loom_id: LoomId,
+    /// The disputed state transition.
+    pub transition: LoomStateTransition,
+    /// The challenger's public key.
+    pub challenger: PublicKey,
+    /// Timestamp of the challenge.
+    pub timestamp: Timestamp,
+    /// Signature by the challenger.
+    pub signature: Signature,
+}
+```
+
+### 19.8 Loom Runtime
+
+The loom runtime is implemented in `norn-loom` using `wasmtime` for Wasm execution. Key components:
+
+| Module | Purpose |
+|--------|---------|
+| `runtime.rs` | Wasmtime-based Wasm VM instance management |
+| `host.rs` | Host functions exposed to loom Wasm modules |
+| `gas.rs` | Gas metering and fuel accounting |
+| `lifecycle.rs` | Loom creation, activation, deactivation |
+| `state.rs` | Loom state management and snapshots |
+| `dispute.rs` | Dispute resolution for challenged transitions |
+| `sdk.rs` | SDK helpers for loom developers |
+
+### 19.9 Loom Constants
+
+| Constant | Value |
+|----------|-------|
+| `MAX_LOOM_PARTICIPANTS` | 1,000 |
+| `MIN_LOOM_PARTICIPANTS` | 2 |
+| `MAX_LOOM_STATE_SIZE` | 1,048,576 bytes (1 MB) |
+
+---
+
+## 20. Network & Relay Layer
+
+### 20.1 NornMessage
+
+The top-level protocol message envelope:
+
+```rust
+pub enum NornMessage {
+    /// A knot proposal between two parties.
+    KnotProposal(Box<Knot>),
+    /// A knot response (co-signed knot).
+    KnotResponse(Box<Knot>),
+    /// A commitment update for the weave.
+    Commitment(CommitmentUpdate),
+    /// A thread registration.
+    Registration(Registration),
+    /// A relay message.
+    Relay(RelayMessage),
+    /// A spindle registration.
+    SpindleReg(SpindleRegistration),
+    /// A spindle status update.
+    SpindleStatus(SpindleUpdate),
+    /// A spindle alert.
+    Alert(SpindleAlert),
+    /// A fraud proof submission.
+    FraudProof(Box<FraudProofSubmission>),
+    /// A weave block.
+    Block(Box<WeaveBlock>),
+    /// A consensus protocol message.
+    Consensus(ConsensusMessage),
+}
+```
+
+### 20.2 Wire Format
+
+Messages are framed as:
+
+```
+[4 bytes: length (big-endian u32)] [N bytes: borsh-encoded NornMessage]
+```
+
+There is no explicit type tag. Borsh enum discriminants handle variant identification during deserialization.
+
+Maximum message size: `MAX_MESSAGE_SIZE` = 2,097,152 bytes (2 MB).
+
+### 20.3 GossipSub Topics
+
+The relay layer uses libp2p GossipSub for message dissemination:
+
+| Topic | Content |
+|-------|---------|
+| `norn/blocks` | `WeaveBlock` messages |
+| `norn/commitments` | `CommitmentUpdate` messages |
+| `norn/fraud-proofs` | `FraudProofSubmission` messages |
+| `norn/general` | All other message types |
+
+### 20.4 RelayMessage
+
+```rust
+pub struct RelayMessage {
+    /// Sender's address.
+    pub from: Address,
+    /// Recipient's address.
+    pub to: Address,
+    /// The message payload.
+    pub payload: Vec<u8>,
+    /// Timestamp of the message.
+    pub timestamp: Timestamp,
+    /// Signature by the sender.
+    pub signature: Signature,
+}
+```
+
+### 20.5 Relay Architecture
+
+The relay layer (`norn-relay`) is built on libp2p, NOT a REST API. It includes:
+
+| Module | Purpose |
+|--------|---------|
+| `behaviour.rs` | libp2p behaviour composition |
+| `codec.rs` | Borsh message codec for libp2p streams |
+| `config.rs` | Relay configuration |
+| `discovery.rs` | Peer discovery (mDNS, Kademlia) |
+| `peer_manager.rs` | Connection management and scoring |
+| `protocol.rs` | Norn-specific libp2p protocol definition |
+| `relay.rs` | Top-level relay service |
+| `spindle_registry.rs` | Registry of known spindles |
+
+### 20.6 Network Constants
+
+| Constant | Value |
+|----------|-------|
+| `DEFAULT_RELAY_PORT` | 9740 |
+| `MAX_RELAY_CONNECTIONS` | 50 |
+| `MAX_MESSAGE_SIZE` | 2,097,152 bytes (2 MB) |
+
+---
+
+## 21. Spindle (Watchtower)
+
+A **spindle** is a watchtower service that monitors threads on behalf of their owners.
+
+### 21.1 SpindleRegistration
+
+```rust
+pub struct SpindleRegistration {
+    /// The spindle's public key.
+    pub pubkey: PublicKey,
+    /// The spindle's address.
+    pub address: Address,
+    /// Relay endpoint (host:port).
+    pub relay_endpoint: String,
+    /// Timestamp of registration.
+    pub timestamp: Timestamp,
+    /// Signature by the spindle.
+    pub signature: Signature,
+}
+```
+
+### 21.2 SpindleUpdate
+
+```rust
+pub struct SpindleUpdate {
+    /// The spindle's address.
+    pub address: Address,
+    /// Whether the spindle is online.
+    pub online: bool,
+    /// Latest thread version.
+    pub latest_version: Version,
+    /// Timestamp of this update.
+    pub timestamp: Timestamp,
+    /// Signature by the spindle.
+    pub signature: Signature,
+}
+```
+
+### 21.3 SpindleAlert
+
+```rust
+pub struct SpindleAlert {
+    /// The spindle raising the alert.
+    pub from: Address,
+    /// The subject of the alert.
+    pub subject: Address,
+    /// Description of the alert.
+    pub reason: String,
+    /// Timestamp of the alert.
+    pub timestamp: Timestamp,
+    /// Signature by the alerting spindle.
+    pub signature: Signature,
+}
+```
+
+### 21.4 Spindle Architecture
+
+The spindle service (`norn-spindle`) provides:
+
+| Module | Purpose |
+|--------|---------|
+| `service.rs` | Top-level spindle service (start, stop, configuration) |
+| `monitor.rs` | Thread monitoring -- watches for missed commitments, double knots |
+| `rate_limit.rs` | Rate limiting for alerts and relay usage |
+
+---
+
+## 22. Cryptography
+
+All cryptographic primitives are in `norn-crypto`.
+
+### 22.1 Hashing (BLAKE3)
+
+```rust
+/// Compute the BLAKE3 hash of the given data.
+pub fn blake3_hash(data: &[u8]) -> Hash;
+
+/// Compute a BLAKE3 hash with domain separation.
+pub fn blake3_hash_domain(context: &str, data: &[u8]) -> Hash;
+
+/// Derive key material using BLAKE3 KDF.
+pub fn blake3_kdf(context: &str, key_material: &[u8]) -> [u8; 32];
+
+/// Hash multiple pieces of data together.
+pub fn blake3_hash_multi(parts: &[&[u8]]) -> Hash;
+```
+
+Domain separation contexts used in the protocol:
+
+| Context | Usage |
+|---------|-------|
+| `"norn-ed25519-to-x25519"` | Converting Ed25519 secret to X25519 secret |
+| `"norn-encryption-key"` | Deriving AEAD key from DH shared secret |
+| `"norn-keystore-password"` | BLAKE3 KDF for v1 wallet passwords |
+
+### 22.2 Signatures (Ed25519)
+
+```rust
+/// Wrapper around an Ed25519 keypair.
+pub struct Keypair {
+    inner: ed25519_dalek::SigningKey,
+}
+
+impl Keypair {
+    pub fn generate() -> Self;
+    pub fn from_seed(seed: &[u8; 32]) -> Self;
+    pub fn public_key(&self) -> PublicKey;
+    pub fn signing_key(&self) -> &ed25519_dalek::SigningKey;
+    pub fn seed(&self) -> [u8; 32];
+    pub fn sign(&self, message: &[u8]) -> Signature;
+}
+
+/// Verify an Ed25519 signature.
+pub fn verify(message: &[u8], signature: &Signature, pubkey: &PublicKey)
+    -> Result<(), NornError>;
+
+/// Batch-verify multiple signatures.
+pub fn batch_verify(
+    messages: &[&[u8]],
+    signatures: &[Signature],
+    pubkeys: &[PublicKey],
+) -> Result<(), NornError>;
+```
+
+Batch verification uses `ed25519_dalek::verify_batch` (requires the `"batch"` feature flag). It performs fast probabilistic batch verification first, then falls back to sequential verification on failure to identify the specific invalid signature index.
+
+Key material is automatically wiped on drop via `ed25519-dalek`'s `ZeroizeOnDrop` trait (enabled by the `"zeroize"` feature).
+
+### 22.3 Address Derivation
+
+```rust
+/// Derive an address from a public key.
+/// Address = BLAKE3(pubkey)[0..20]
+pub fn pubkey_to_address(pubkey: &PublicKey) -> Address;
+```
+
+### 22.4 HD Key Derivation (SLIP-0010)
+
+```rust
+/// Derive an Ed25519 keypair using SLIP-0010 from a BIP-39 seed.
+/// Path: m/44'/{NORN_COIN_TYPE}'/0'/0'/{index}'
+pub fn derive_keypair(seed: &[u8; 64], index: u32) -> Result<Keypair, NornError>;
+
+/// Derive a keypair at the default index (0).
+pub fn derive_default_keypair(seed: &[u8; 64]) -> Result<Keypair, NornError>;
+```
+
+All path components are hardened, as required by SLIP-0010 for Ed25519. The coin type is `NORN_COIN_TYPE = 0x4E4F524E` ("NORN" in ASCII hex).
+
+### 22.5 BIP-39 Seed Generation
+
+```rust
+/// Generate a new 24-word BIP-39 mnemonic (256 bits of entropy).
+pub fn generate_mnemonic() -> Mnemonic;
+
+/// Parse a mnemonic from a string of space-separated words.
+pub fn parse_mnemonic(phrase: &str) -> Result<Mnemonic, NornError>;
+
+/// Derive a 64-byte seed from a mnemonic with an optional passphrase.
+pub fn mnemonic_to_seed(mnemonic: &Mnemonic, passphrase: &str) -> [u8; 64];
+```
+
+### 22.6 Encryption (XChaCha20-Poly1305)
+
+```rust
+pub struct EncryptedMessage {
+    /// Ephemeral X25519 public key (32 bytes).
+    pub ephemeral_pubkey: [u8; 32],
+    /// XChaCha20-Poly1305 nonce (24 bytes).
+    pub nonce: [u8; 24],
+    /// Encrypted ciphertext with authentication tag.
+    pub ciphertext: Vec<u8>,
+}
+
+/// Encrypt for a recipient identified by their Ed25519 keypair.
+pub fn encrypt_for_keypair(recipient: &Keypair, plaintext: &[u8])
+    -> Result<EncryptedMessage, NornError>;
+
+/// Encrypt for a recipient identified by their X25519 public key.
+pub fn encrypt(recipient_x25519_public: &[u8; 32], plaintext: &[u8])
+    -> Result<EncryptedMessage, NornError>;
+
+/// Decrypt using the recipient's Ed25519 keypair.
+pub fn decrypt(
+    keypair: &Keypair,
+    ephemeral_pubkey: &[u8; 32],
+    nonce: &[u8; 24],
+    ciphertext: &[u8],
+) -> Result<Vec<u8>, NornError>;
+```
+
+The encryption scheme:
+
+1. Generate an ephemeral X25519 keypair.
+2. Perform X25519 Diffie-Hellman between the ephemeral secret and the recipient's X25519 public key.
+3. Derive an encryption key via `BLAKE3_KDF("norn-encryption-key", shared_secret)`.
+4. Generate a random 24-byte nonce.
+5. Encrypt with XChaCha20-Poly1305 AEAD.
+
+The recipient's X25519 key is derived from their Ed25519 keypair via `BLAKE3_KDF("norn-ed25519-to-x25519", signing_key_bytes)`.
+
+### 22.7 Merkle Trees (Sparse Merkle Tree)
+
+```rust
+pub struct SparseMerkleTree { ... }
+
+impl SparseMerkleTree {
+    pub fn new() -> Self;
+    pub fn root(&mut self) -> Hash;
+    pub fn insert(&mut self, key: Hash, value: Vec<u8>);
+    pub fn get(&self, key: &Hash) -> Option<&[u8]>;
+    pub fn remove(&mut self, key: &Hash) -> bool;
+    pub fn prove(&mut self, key: &Hash) -> MerkleProof;
+    pub fn verify_proof(root: &Hash, proof: &MerkleProof) -> Result<(), NornError>;
+}
+
+pub struct MerkleProof {
+    pub key: Hash,
+    pub value: Vec<u8>,
+    pub siblings: Vec<Hash>,
+}
+```
+
+Tree depth: 256 (one bit per level of a 32-byte key). Supports both inclusion and non-inclusion proofs.
+
+Hash functions:
+- Leaf: `BLAKE3(0x00 || key || value_hash)`
+- Internal: `BLAKE3(0x01 || left || right)`
+- The `0x00`/`0x01` prefix prevents second-preimage attacks.
+
+### 22.8 Shamir's Secret Sharing
+
+Implemented in `norn-crypto/src/shamir.rs` using the `sharks` crate (GF(256) Shamir's Secret Sharing).
+
+```rust
+pub struct ShamirShare {
+    pub data: Vec<u8>,
+}
+
+/// Split a secret into `n` shares, requiring `k` to reconstruct.
+pub fn split_secret(secret: &[u8], threshold: u8, total: u8) -> Result<Vec<ShamirShare>, NornError>;
+
+/// Reconstruct a secret from `k` or more shares.
+pub fn reconstruct_secret(shares: &[ShamirShare]) -> Result<Vec<u8>, NornError>;
+```
+
+- **Threshold**: Must be >= 2.
+- **Total**: Must be >= threshold.
+- **Secret size**: Arbitrary (typically 32-byte seeds or 64-byte BIP-39 seeds).
+- **Use case**: Social recovery of wallet seed phrases -- split a seed among trusted parties.
+
+---
+
+## 23. Storage Layer
+
+### 23.1 KvStore Trait
+
+```rust
+pub type KvPairs = Vec<(Vec<u8>, Vec<u8>)>;
+
+pub enum BatchOp {
+    Put { key: Vec<u8>, value: Vec<u8> },
+    Delete { key: Vec<u8> },
+}
+
+pub trait KvStore: Send + Sync {
+    fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, StorageError>;
+    fn put(&self, key: &[u8], value: &[u8]) -> Result<(), StorageError>;
+    fn delete(&self, key: &[u8]) -> Result<(), StorageError>;
+    fn exists(&self, key: &[u8]) -> Result<bool, StorageError>;
+    fn prefix_scan(&self, prefix: &[u8]) -> Result<KvPairs, StorageError>;
+}
+
+pub trait BatchWriter: KvStore {
+    fn write_batch(&self, ops: Vec<BatchOp>) -> Result<(), StorageError>;
+}
+```
+
+`KvStore` is blanket-implemented for `Arc<S>` where `S: KvStore`, allowing shared ownership across components.
+
+### 23.2 Backends
+
+| Backend | Module | Description |
+|---------|--------|-------------|
+| Memory | `memory.rs` | In-memory `HashMap`-based store. Default for development. |
+| SQLite | `sqlite.rs` | Persistent SQLite-backed store via `rusqlite`. |
+| RocksDB | `rocksdb.rs` | High-performance persistent store via `rocksdb`. |
+
+The backend is selected via the `db_type` field in node configuration (`"memory"`, `"sqlite"`, or `"rocksdb"`).
+
+### 23.3 Domain Stores
+
+Higher-level store abstractions built on `KvStore`:
+
+| Store | Module | Purpose |
+|-------|--------|---------|
+| `ThreadStore` | `thread_store.rs` | Thread headers, states, and knot indexing |
+| `WeaveStore` | `weave_store.rs` | Blocks, commitments, registrations |
+| `MerkleStore` | `merkle_store.rs` | Persistent Merkle tree backing |
+
+---
+
+## 24. Node Configuration & RPC
+
+### 24.1 Node Configuration
+
+Configuration is loaded from a TOML file (`norn.toml`):
+
+```rust
+pub struct NodeConfig {
+    pub network: NetworkConfig,
+    pub storage: StorageConfig,
+    pub validator: ValidatorConfig,
+    pub rpc: RpcConfig,
+    pub logging: LoggingConfig,
+    pub genesis_path: Option<String>,
+}
+```
+
+Default values:
+
+| Setting | Default |
+|---------|---------|
+| `network.listen_addr` | `0.0.0.0:9740` |
+| `network.max_connections` | 50 |
+| `storage.data_dir` | `./norn-data` |
+| `storage.db_type` | `memory` |
+| `validator.enabled` | `false` |
+| `validator.solo_mode` | `false` |
+| `rpc.enabled` | `true` |
+| `rpc.listen_addr` | `127.0.0.1:9741` |
+| `rpc.max_connections` | 100 |
+| `rpc.api_key` | `None` (open access) |
+| `logging.level` | `info` |
+
+### 24.2 JSON-RPC API
+
+The RPC server uses `jsonrpsee` over HTTP. All methods use the `norn_` namespace.
+
+#### Implemented Methods
+
+| Method | Parameters | Returns | Auth |
+|--------|-----------|---------|------|
+| `norn_getBlock` | `height: u64` | `Option<BlockInfo>` | No |
+| `norn_getLatestBlock` | -- | `Option<BlockInfo>` | No |
+| `norn_getWeaveState` | -- | `Option<WeaveStateInfo>` | No |
+| `norn_getThread` | `thread_id: String` (hex) | `Option<ThreadInfo>` | No |
+| `norn_getThreadState` | `thread_id: String` (hex) | `Option<ThreadStateInfo>` | No |
+| `norn_getBalance` | `address: String`, `token_id: String` | `String` | No |
+| `norn_health` | -- | `HealthInfo` | No |
+| `norn_submitCommitment` | `commitment: String` (hex borsh) | `SubmitResult` | Yes |
+| `norn_submitRegistration` | `registration: String` (hex borsh) | `SubmitResult` | Yes |
+| `norn_submitKnot` | `knot: String` (hex borsh) | `SubmitResult` | Yes |
+| `norn_faucet` | `address: String` (hex) | `SubmitResult` | Yes |
+| `norn_getValidatorSet` | -- | `ValidatorSetInfo` | No |
+| `norn_getFeeEstimate` | -- | `FeeEstimateInfo` | No |
+| `norn_getCommitmentProof` | `thread_id: String` (hex) | `Option<CommitmentProofInfo>` | No |
+
+#### WebSocket Subscriptions
+
+| Subscription | Notification Name | Unsubscribe | Item Type |
+|-------------|-------------------|-------------|-----------|
+| `norn_subscribeNewBlocks` | `norn_newBlocks` | `norn_unsubscribeNewBlocks` | `BlockInfo` |
+
+#### RPC Response Types
+
+```rust
+pub struct ThreadInfo {
+    pub thread_id: String,
+    pub owner: String,
+    pub version: u64,
+    pub state_hash: String,
+}
+
+pub struct BlockInfo {
+    pub height: u64,
+    pub hash: String,
+    pub prev_hash: String,
+    pub timestamp: u64,
+    pub proposer: String,
+    pub commitment_count: usize,
+    pub registration_count: usize,
+    pub anchor_count: usize,
+    pub fraud_proof_count: usize,
+}
+
+pub struct WeaveStateInfo {
+    pub height: u64,
+    pub latest_hash: String,
+    pub threads_root: String,
+    pub thread_count: u64,
+    pub base_fee: String,
+    pub fee_multiplier: u64,
+}
+
+pub struct ThreadStateInfo {
+    pub thread_id: String,
+    pub owner: String,
+    pub version: u64,
+    pub state_hash: String,
+    pub balances: Vec<BalanceEntry>,
+}
+
+pub struct BalanceEntry {
+    pub token_id: String,
+    pub amount: String,
+    pub human_readable: String,
+}
+
+pub struct HealthInfo {
+    pub height: u64,
+    pub is_validator: bool,
+    pub thread_count: u64,
+    pub status: String,
+}
+
+pub struct SubmitResult {
+    pub success: bool,
+    pub reason: Option<String>,
+}
+
+pub struct ValidatorInfo {
+    pub pubkey: String,
+    pub address: String,
+    pub stake: String,
+    pub active: bool,
+}
+
+pub struct ValidatorSetInfo {
+    pub validators: Vec<ValidatorInfo>,
+    pub total_stake: String,
+    pub epoch: u64,
+}
+
+pub struct FeeEstimateInfo {
+    pub fee_per_commitment: String,
+    pub base_fee: String,
+    pub fee_multiplier: u64,
+}
+
+pub struct CommitmentProofInfo {
+    pub thread_id: String,
+    pub key: String,
+    pub value: String,
+    pub siblings: Vec<String>,
+}
+```
+
+All byte arrays (hashes, addresses, public keys) are hex-encoded in RPC responses.
+
+#### RPC Authentication
+
+Mutation methods (`norn_submit*`, `norn_faucet`) can be protected with an API key:
+
+```rust
+pub struct RpcAuthConfig {
+    pub api_key: Option<String>,
+}
+```
+
+When `api_key` is set, mutation requests must include the header `Authorization: Bearer <key>`. Read-only methods are always unauthenticated.
+
+#### Future RPC Methods `[FUTURE]`
+
+The following methods are planned but not yet implemented:
+
+- `norn_submitFraudProof` -- Submit a fraud proof
+- `norn_submitLoomAnchor` -- Submit a loom anchor
+- `norn_getLoom` / `norn_getLoomState` / `norn_listLooms` -- Loom queries
+- `norn_subscribeCommitments` -- WebSocket subscription for commitment updates
+
+---
+
+## 25. Genesis Configuration
+
+### 25.1 GenesisConfig
+
+```rust
+pub struct GenesisConfig {
+    /// Chain identifier.
+    pub chain_id: String,
+    /// Genesis timestamp.
+    pub timestamp: Timestamp,
+    /// Initial validators.
+    pub validators: Vec<GenesisValidator>,
+    /// Initial token allocations.
+    pub allocations: Vec<GenesisAllocation>,
+    /// Protocol parameters.
+    pub parameters: GenesisParameters,
+}
+```
+
+### 25.2 GenesisValidator
+
+```rust
+pub struct GenesisValidator {
+    /// Validator's public key.
+    pub pubkey: PublicKey,
+    /// Validator's address.
+    pub address: Address,
+    /// Initial stake amount.
+    pub stake: Amount,
+}
+```
+
+### 25.3 GenesisAllocation
+
+```rust
+pub struct GenesisAllocation {
+    /// Recipient address.
+    pub address: Address,
+    /// Token ID.
+    pub token_id: TokenId,
+    /// Amount to allocate.
+    pub amount: Amount,
+}
+```
+
+### 25.4 GenesisParameters
+
+```rust
+pub struct GenesisParameters {
+    /// Target block time in seconds.
+    pub block_time_target: u64,
+    /// Maximum commitments per block.
+    pub max_commitments_per_block: u64,
+    /// Commitment finality depth.
+    pub commitment_finality_depth: u64,
+    /// Fraud proof window in seconds.
+    pub fraud_proof_window: u64,
+    /// Minimum stake to be a validator.
+    pub min_validator_stake: Amount,
+    /// Initial base fee.
+    pub initial_base_fee: Amount,
+}
+```
+
+Slashing percentages and other governance parameters are set via genesis and can be updated through governance proposals. They are not hardcoded in the protocol.
+
+---
+
+## 26. Error Taxonomy
+
+All errors are defined in a single `NornError` enum using `thiserror`:
+
+### 26.1 Knot Validation Errors
+
+| Variant | Description |
+|---------|-------------|
+| `InvalidSignature { signer_index }` | Signature verification failed for participant at `signer_index` |
+| `KnotIdMismatch { expected, actual }` | Computed knot ID does not match declared ID |
+| `VersionMismatch { participant_index, expected, actual }` | Version continuity violated |
+| `StateHashMismatch { participant_index }` | Before-state hash does not match actual thread state |
+| `InsufficientBalance { available, required }` | Sender lacks sufficient token balance |
+| `InvalidAmount` | Amount must be positive |
+| `TimestampTooFuture { timestamp, max_allowed }` | Timestamp exceeds `now + MAX_TIMESTAMP_DRIFT` |
+| `TimestampBeforePrevious { timestamp, previous }` | Timestamp is before the previous knot |
+| `KnotExpired { expiry, current }` | Knot has passed its expiry time |
+| `PayloadInconsistent { reason }` | Payload fields are internally contradictory |
+
+### 26.2 Thread Errors
+
+| Variant | Description |
+|---------|-------------|
+| `ThreadNotFound([u8; 20])` | No thread with this ID |
+| `ThreadAlreadyExists([u8; 20])` | Thread is already registered |
+| `TooManyUncommittedKnots { count, max }` | Must commit before adding more knots |
+| `InvalidKnotChain { index }` | Knot chain has a gap at the given index |
+
+### 26.3 Crypto Errors
+
+| Variant | Description |
+|---------|-------------|
+| `InvalidKeyMaterial` | Key bytes are not a valid Ed25519 key |
+| `InvalidMnemonic` | BIP-39 mnemonic phrase is invalid |
+| `DerivationFailed { reason }` | HD key derivation failed |
+| `EncryptionFailed { reason }` | Encryption operation failed |
+| `DecryptionFailed { reason }` | Decryption operation failed |
+
+### 26.4 Merkle Tree Errors
+
+| Variant | Description |
+|---------|-------------|
+| `MerkleProofInvalid` | Proof does not verify against the root |
+| `MerkleKeyNotFound` | Key not present in the tree |
+
+### 26.5 Weave Errors
+
+| Variant | Description |
+|---------|-------------|
+| `InvalidWeaveBlock { reason }` | Block validation failed |
+| `StaleCommitment { age, max_age }` | Commitment is too old |
+
+### 26.6 Loom Errors
+
+| Variant | Description |
+|---------|-------------|
+| `LoomNotFound([u8; 32])` | No loom with this ID |
+| `LoomParticipantLimit { count, max }` | Participant count exceeds max |
+| `NotLoomParticipant` | Caller is not a participant |
+
+### 26.7 Serialization Errors
+
+| Variant | Description |
+|---------|-------------|
+| `SerializationError { reason }` | Borsh/serde serialization failed |
+| `DeserializationError { reason }` | Borsh/serde deserialization failed |
+
+### 26.8 Network Errors
+
+| Variant | Description |
+|---------|-------------|
+| `MessageTooLarge { size, max_size }` | Message exceeds `MAX_MESSAGE_SIZE` |
+| `InvalidMessageFormat { reason }` | Message structure is malformed |
+
+### 26.9 Arithmetic Errors
+
+| Variant | Description |
+|---------|-------------|
+| `BalanceOverflow` | `credit()` would overflow `u128` |
+| `VersionOverflow` | Version number would overflow `u64` |
+| `InsufficientParticipants { required, actual }` | Not enough participants for the operation |
+
+---
+
+## 27. Wallet CLI
+
+The Norn wallet is a command-line interface integrated into `norn-node`. It provides key management, transaction signing, and RPC interaction.
+
+### 27.1 Usage
+
+```
+norn-node wallet <COMMAND>
+```
+
+### 27.2 Commands
+
+| Command | Description |
+|---------|-------------|
+| `create` | Create a new wallet from a fresh 24-word BIP-39 mnemonic |
+| `import` | Import a wallet from an existing mnemonic or hex-encoded private key |
+| `list` | List all wallets on disk |
+| `use` | Switch the active wallet |
+| `delete` | Delete a wallet (with confirmation prompt unless `--force`) |
+| `address` | Show the current wallet's address and public key |
+| `balance` | Query balance via RPC (defaults to active wallet, native NORN) |
+| `status` | Show thread registration and commitment status via RPC |
+| `transfer` | Send a transfer (constructs and signs a knot, submits via RPC) |
+| `commit` | Commit pending thread state to the Weave via RPC |
+| `register` | Register a thread on the Weave via RPC |
+| `history` | Show transaction history (default: last 20 entries) |
+| `export` | Export the mnemonic phrase or private key (requires password) |
+| `config` | Get or set wallet configuration (e.g., `--rpc-url`) |
+| `block` | Get block information by height (or latest) via RPC |
+| `weave-state` | Show the current Weave state via RPC |
+| `faucet` | Request testnet tokens for an address via RPC |
+
+### 27.3 Command Details
+
+#### create
+
+```
+norn-node wallet create --name <NAME> [--passphrase <PASSPHRASE>]
+```
+
+- Generates a 24-word BIP-39 mnemonic (256 bits of entropy).
+- Prompts for an encryption password (NOT the BIP-39 passphrase).
+- Derives the keypair via SLIP-0010: `m/44'/0x4E4F524E'/0'/0'/0'`.
+- Encrypts the seed and mnemonic and saves to `~/.norn/wallets/<NAME>.json`.
+- Displays the mnemonic for backup. This is the only time it is shown in plaintext.
+
+#### import
+
+```
+norn-node wallet import --mnemonic --name <NAME> [--passphrase <PASSPHRASE>]
+norn-node wallet import --private-key <HEX> --name <NAME>
+```
+
+- `--mnemonic` prompts for the mnemonic phrase interactively.
+- `--private-key` accepts a hex-encoded 32-byte Ed25519 seed.
+- Both modes prompt for an encryption password.
+
+#### transfer
+
+```
+norn-node wallet transfer --to <ADDRESS> --amount <AMOUNT> [--token <TOKEN_ID>] [--memo <MEMO>] [--yes]
+```
+
+- `<AMOUNT>` is human-readable (e.g., `"10.5"` = 10.5 NORN = 10,500,000,000,000 nits).
+- Prompts for wallet password to unlock the signing key.
+- Constructs a `Knot` with a `TransferPayload`, signs it, and submits via `norn_submitKnot`.
+
+#### export
+
+```
+norn-node wallet export [--name <NAME>] --show-mnemonic
+norn-node wallet export [--name <NAME>] --show-private-key
+```
+
+- Requires the wallet password to decrypt.
+- `--show-mnemonic` and `--show-private-key` are mutually exclusive.
+- Private-key-only wallets (`has_mnemonic: false`) cannot export a mnemonic.
+
+### 27.4 Keystore Format
+
+Wallet files are stored as JSON at `~/.norn/wallets/<name>.json`.
+
+#### WalletFile
+
+```rust
+pub struct WalletFile {
+    pub version: u32,             // 1 = BLAKE3 KDF, 2 = Argon2id KDF
+    pub name: String,
+    pub created_at: u64,          // Unix timestamp
+    pub address: String,          // "0x" + hex(address)
+    pub public_key: String,       // hex(pubkey)
+    pub derivation_index: u32,    // SLIP-0010 index (default 0)
+    pub has_mnemonic: bool,
+    pub encrypted_seed: EncryptedBlob,
+    pub encrypted_mnemonic: Option<EncryptedBlob>,
+}
+```
+
+#### EncryptedBlob
+
+```rust
+pub struct EncryptedBlob {
+    pub ephemeral_pubkey: String,  // hex-encoded, 32 bytes
+    pub nonce: String,             // hex-encoded, 24 bytes
+    pub ciphertext: String,        // hex-encoded, variable length
+}
+```
+
+### 27.5 Key Derivation Functions
+
+| Wallet Version | KDF | Process |
+|----------------|-----|---------|
+| v2 (current) | Argon2id | `Argon2id(password, salt="norn-keystore-v2") -> 32-byte seed -> Ed25519 keypair -> X25519 -> encrypt` |
+| v1 (legacy) | BLAKE3 | `BLAKE3_KDF("norn-keystore-password", password) -> 32-byte seed -> Ed25519 keypair -> X25519 -> encrypt` |
+
+Decryption automatically selects the correct KDF based on the `version` field:
+
+```rust
+fn password_to_keypair_for_version(password: &str, version: u32) -> Keypair {
+    if version >= 2 {
+        password_to_keypair_argon2(password)
+    } else {
+        password_to_keypair_blake3(password)
+    }
+}
+```
+
+### 27.6 Encryption Flow
+
+1. Derive a password-based Ed25519 keypair using the version-appropriate KDF.
+2. Derive the X25519 public key from the password keypair.
+3. Generate an ephemeral X25519 keypair.
+4. Perform X25519 Diffie-Hellman between the ephemeral secret and the password X25519 public key.
+5. Derive an AES key via `BLAKE3_KDF("norn-encryption-key", shared_secret)`.
+6. Encrypt the seed (64 bytes) and mnemonic (variable) with XChaCha20-Poly1305.
+7. Store the ephemeral public key, nonce, and ciphertext in `EncryptedBlob`.
+
+### 27.7 File System Security
+
+- Wallet directory (`~/.norn/wallets/`) is created with mode `0o700` (owner only) on Unix.
+- Individual wallet files are written with mode `0o600` (owner read/write only) on Unix.
+- The `config.json` file in the same directory stores the active wallet name and RPC URL.
+
+### 27.8 Wallet Configuration
+
+```
+norn-node wallet config [--rpc-url <URL>] [--json]
+```
+
+Configuration is stored in `~/.norn/wallets/config.json`:
+
+```json
+{
+  "active_wallet": "my-wallet",
+  "rpc_url": "http://127.0.0.1:9741"
+}
+```
+
+---
+
+## 28. Protocol Constants
+
+All constants are defined in `norn-types/src/constants.rs`.
+
+### 28.1 Token Parameters
+
+| Constant | Type | Value | Description |
+|----------|------|-------|-------------|
+| `NORN_DECIMALS` | `u32` | `12` | Decimal places for the native token |
+| `ONE_NORN` | `Amount` | `1_000_000_000_000` (10^12) | One NORN in base units (nits) |
+| `MAX_SUPPLY` | `Amount` | `1_000_000_000 * ONE_NORN` (10^21) | Maximum supply in nits |
+
+### 28.2 Knot Parameters
+
+| Constant | Type | Value | Description |
+|----------|------|-------|-------------|
+| `MAX_MEMO_SIZE` | `usize` | `256` | Maximum memo field size in bytes |
+| `MAX_MULTI_TRANSFERS` | `usize` | `64` | Maximum transfers in a multi-transfer knot |
+| `MAX_TIMESTAMP_DRIFT` | `u64` | `300` | Maximum future timestamp drift (seconds) |
+| `DEFAULT_KNOT_EXPIRY` | `u64` | `3600` | Default knot expiry (1 hour, seconds) |
+
+### 28.3 Weave Parameters
+
+| Constant | Type | Value | Description |
+|----------|------|-------|-------------|
+| `BLOCK_TIME_TARGET` | `Duration` | `3 seconds` | Target block interval |
+| `MAX_COMMITMENTS_PER_BLOCK` | `usize` | `10_000` | Maximum commitments per block |
+| `COMMITMENT_FINALITY_DEPTH` | `u64` | `10` | Blocks until commitment is final |
+| `MAX_COMMITMENT_AGE` | `u64` | `86_400` | Maximum commitment age (24 hours) |
+
+### 28.4 Loom Parameters
+
+| Constant | Type | Value | Description |
+|----------|------|-------|-------------|
+| `MAX_LOOM_PARTICIPANTS` | `usize` | `1_000` | Maximum loom participants |
+| `MIN_LOOM_PARTICIPANTS` | `usize` | `2` | Minimum loom participants |
+| `MAX_LOOM_STATE_SIZE` | `usize` | `1_048_576` | Maximum loom state (1 MB) |
+
+### 28.5 Network Parameters
+
+| Constant | Type | Value | Description |
+|----------|------|-------|-------------|
+| `MAX_MESSAGE_SIZE` | `usize` | `2_097_152` | Maximum message size (2 MB) |
+| `DEFAULT_RELAY_PORT` | `u16` | `9740` | Default P2P relay port |
+| `MAX_RELAY_CONNECTIONS` | `usize` | `50` | Maximum relay connections |
+
+### 28.6 Thread Parameters
+
+| Constant | Type | Value | Description |
+|----------|------|-------|-------------|
+| `MAX_UNCOMMITTED_KNOTS` | `usize` | `1_000` | Max knots before commitment required |
+| `THREAD_HEADER_SIZE` | `usize` | `208` | Fixed thread header size (bytes) |
+
+### 28.7 Fraud Proof Parameters
+
+| Constant | Type | Value | Description |
+|----------|------|-------|-------------|
+| `FRAUD_PROOF_WINDOW` | `u64` | `86_400` | Challenge window (24 hours) |
+| `FRAUD_PROOF_MIN_STAKE` | `Amount` | `ONE_NORN` | Minimum stake to submit proof (1 NORN) |
+
+### 28.8 Derivation Path
+
+| Constant | Type | Value | Description |
+|----------|------|-------|-------------|
+| `NORN_COIN_TYPE` | `u32` | `0x4E4F524E` | SLIP-44 coin type ("NORN" in ASCII hex) |
+
+### 28.9 Epoch Parameters
+
+| Constant | Type | Value | Description |
+|----------|------|-------|-------------|
+| `BLOCKS_PER_EPOCH` | `u64` | `1_000` | Number of blocks per epoch for validator rotation and fee redistribution |
+
+---
+
+## 29. Crate Map
+
+### 29.1 Implemented Crates
+
+| Crate | Path | Description |
+|-------|------|-------------|
+| `norn-types` | `norn-types/` | All shared type definitions, constants, error enum. No logic. |
+| `norn-crypto` | `norn-crypto/` | Cryptographic primitives: Ed25519 (sign/verify/batch), BLAKE3 (hash/KDF), Merkle trees, encryption (XChaCha20-Poly1305), HD wallet (SLIP-0010), BIP-39 seed generation |
+| `norn-thread` | `norn-thread/` | Thread management: knot building, knot validation, chain verification, version tracking |
+| `norn-storage` | `norn-storage/` | Storage abstraction: `KvStore` trait with memory, SQLite, and RocksDB backends. Domain stores for threads, blocks, and Merkle data |
+| `norn-relay` | `norn-relay/` | P2P networking via libp2p: GossipSub, peer discovery (mDNS/Kademlia), message codec, spindle registry |
+| `norn-weave` | `norn-weave/` | Consensus engine: HotStuff BFT, block production, commitment/registration processing, fraud proof validation, dynamic fees, staking, mempool, leader election |
+| `norn-loom` | `norn-loom/` | Wasm runtime via wasmtime: loom lifecycle, gas metering, host functions, state management, dispute resolution, SDK |
+| `norn-spindle` | `norn-spindle/` | Watchtower service: thread monitoring, spindle registration, rate limiting, alert dispatch |
+| `norn-node` | `norn-node/` | Full node binary: TOML configuration, JSON-RPC server (jsonrpsee), wallet CLI (clap), metrics, genesis loading, node orchestration |
+
+### 29.2 Future Crates `[FUTURE]`
+
+| Crate | Description |
+|-------|-------------|
+| `norn-cli` | Standalone CLI tool (currently integrated in norn-node) |
+| `norn-sdk-rust` | Rust SDK for building applications on Norn |
+| `norn-sdk-ts` | TypeScript/JavaScript SDK |
+| `norn-mobile` | Mobile wallet SDK (iOS/Android) |
+| `norn-web` | Web-based explorer and wallet |
+
+---
+
+## 30. Changelog (v1.0 to v2.0)
+
+This section documents all material changes from the v1.0 specification to v2.0. The codebase is the source of truth; v1.0 contained several inaccuracies and placeholders.
+
+### 30.1 Type System Corrections
+
+| Item | v1.0 (incorrect) | v2.0 (correct) | Reason |
+|------|-------------------|-----------------|--------|
+| `Amount` | `u64` | `u128` | Max supply (10^21 nits) exceeds `u64::MAX` (~1.8 x 10^19) |
+| `ThreadState.looms` | `loom_participations` | `looms: BTreeMap<LoomId, Vec<u8>>` | Renamed field |
+| `ThreadState.metadata` | Present | Removed | Field does not exist in codebase |
+| `ThreadHeader.prev_header_hash` | `previous_hash` | `prev_header_hash` | Renamed field |
+| `ThreadHeader.thread_id` | Missing | Present | Field exists in code |
+| `Knot.before_states/after_states` | `before`/`after` | `before_states`/`after_states` | Renamed fields |
+| `Knot.expiry` | `expires` | `expiry: Option<Timestamp>` | Renamed field |
+| `Knot.participants` | Explicit field | Derived from `before_states` | No separate participants field |
+| `TransferPayload.from/to` | `PublicKey` | `Address` | Addresses are 20-byte, not 32-byte |
+| `ParticipantState.thread_id` | Missing | Present | Field exists in code |
+| `TokenId` | `TokenID` | `TokenId` | Rust naming convention |
+| `LoomId` | `LoomID` | `LoomId` | Rust naming convention |
+| `NATIVE_TOKEN_ID` | BLAKE3 hash | `[0u8; 32]` | All-zero sentinel, not a hash |
+| `Timestamp` | Milliseconds | Seconds | Unix seconds, not milliseconds |
+
+### 30.2 Structural Changes
+
+| Structure | v1.0 | v2.0 |
+|-----------|------|------|
+| `CommitmentUpdate` | Nested struct | Flat struct with `thread_id, owner, version, state_hash, prev_commitment_hash, knot_count, timestamp, signature` |
+| `Registration` | Nested struct | Flat struct with `thread_id, owner, initial_state_hash, timestamp, signature` |
+| `WeaveState` | Had `commitment_tree, validator_set, loom_registry, epoch, total_supply` | Has `height, latest_hash, threads_root, thread_count, fee_state` |
+| `Validator` | Had performance metrics | Simplified to `pubkey, address, stake, active` |
+| `FraudProof::StaleCommit` | Single `newer_knot` | `missing_knots: Vec<Knot>` |
+| `FraudProof::InvalidLoomTransition` | Inline fields | `knot: Box<Knot>, reason: String` |
+| `FraudProof` | `offender: PublicKey` | `thread_id: ThreadId` or `loom_id: LoomId` |
+| `FraudProofSubmission` | Did not exist | New wrapper with `proof, submitter, timestamp, signature` |
+| `WeaveBlock` | Different field set | Added Merkle roots, `validator_signatures: Vec<ValidatorSignature>` |
+| `LoomAnchor` | Different structure | `loom_id, state_hash, block_height, timestamp, signature` |
+| `Loom` | Different structure | `config: LoomConfig, operator, participants: Vec<Participant>, state_hash, version, active, last_updated` |
+| `LoomConfig` | Did not exist | New type: `loom_id, name, max_participants, min_participants, accepted_tokens, config_data` |
+| `Participant` | Had `balance_locked` | Simplified: `pubkey, address, joined_at, active` |
+| `LoomInteractionPayload` | Different approach | Enum-based: `loom_id, interaction_type: LoomInteractionType, token_id: Option, amount: Option, data: Vec<u8>` |
+
+### 30.3 Architecture Changes
+
+| Area | v1.0 | v2.0 |
+|------|------|------|
+| Crate count | Unclear | 9 crates in workspace |
+| `norn-fraud` | Listed as crate | Does not exist; fraud logic is in `norn-weave` |
+| `norn-network` | Listed as crate | Does not exist; `norn-relay` handles networking |
+| Relay | REST API | P2P via libp2p with GossipSub |
+| Consensus | Unspecified | Full HotStuff BFT with `ConsensusMessage` enum |
+| `ValidatorSet` | Not a first-class type | First-class type with quorum calculation |
+| `StakeOperation` | Not defined | New type for stake/unstake operations |
+| Wire format | Had type tag | `[4B length BE][NB borsh]` -- no type tag, borsh discriminants suffice |
+
+### 30.4 New Features (not in v1.0)
+
+| Feature | Description |
+|---------|-------------|
+| Wallet CLI | 17 subcommands integrated in `norn-node wallet` |
+| Encrypted keystore | Argon2id KDF + XChaCha20-Poly1305 with v1 BLAKE3 fallback |
+| JSON-RPC server | `jsonrpsee`-based with API key authentication |
+| Genesis configuration | Full `GenesisConfig` with parameters |
+| Batch verification | `ed25519_dalek::verify_batch` with fallback |
+| Sparse Merkle tree | 256-bit depth with inclusion/non-inclusion proofs |
+| `SignedAmount` | For representing debits and credits |
+| `LoomBytecode` | Wasm bytecode storage for looms |
+| `LoomStateTransition` | State transition records for dispute resolution |
+| `LoomChallenge` | Challenge mechanism for loom disputes |
+| Solo mode | Single-validator block production without HotStuff |
+| Node metrics | Prometheus-compatible metrics |
+
+### 30.5 Constant Corrections
+
+| Constant | v1.0 | v2.0 |
+|----------|------|------|
+| `FRAUD_PROOF_WINDOW` | Separate thread/loom windows | Unified 86,400 seconds |
+| `BLOCKS_PER_EPOCH` | Defined | `1_000` -- implemented in `constants.rs` |
+| All loom constants | Various | Verified against `norn-types/src/constants.rs` |
+
+---
+
+*End of Norn Protocol Specification v2.0.*
+
+*Your thread. Your fate. The chain just watches.*

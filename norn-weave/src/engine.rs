@@ -1,0 +1,469 @@
+use std::collections::HashSet;
+
+use norn_crypto::keys::Keypair;
+use norn_crypto::merkle::SparseMerkleTree;
+use norn_types::constants::MAX_COMMITMENTS_PER_BLOCK;
+use norn_types::network::NornMessage;
+use norn_types::primitives::*;
+use norn_types::weave::{CommitmentUpdate, Registration, ValidatorSet, WeaveBlock, WeaveState};
+use rayon::prelude::*;
+
+use crate::block;
+use crate::commitment;
+use crate::consensus::{ConsensusAction, HotStuffEngine};
+use crate::mempool::Mempool;
+use crate::registration;
+use crate::staking::StakingState;
+
+/// The top-level weave engine that orchestrates consensus, mempool, staking, and state.
+pub struct WeaveEngine {
+    consensus: HotStuffEngine,
+    mempool: Mempool,
+    staking: StakingState,
+    weave_state: WeaveState,
+    merkle_tree: SparseMerkleTree,
+    keypair: Keypair,
+    /// Known thread IDs for duplicate detection.
+    known_threads: HashSet<[u8; 20]>,
+    /// Last committed block (for RPC queries).
+    last_block: Option<WeaveBlock>,
+    /// Current timestamp, set by the node before each tick.
+    current_timestamp: Timestamp,
+}
+
+impl WeaveEngine {
+    /// Create a new weave engine.
+    pub fn new(keypair: Keypair, validator_set: ValidatorSet, initial_state: WeaveState) -> Self {
+        let staking = StakingState::new(1000, 100);
+        let consensus_keypair = Keypair::from_seed(&keypair_seed(&keypair));
+        let consensus = HotStuffEngine::new(consensus_keypair, validator_set);
+        let mempool = Mempool::new(100_000);
+        let merkle_tree = SparseMerkleTree::new();
+
+        Self {
+            consensus,
+            mempool,
+            staking,
+            weave_state: initial_state,
+            merkle_tree,
+            keypair,
+            known_threads: HashSet::new(),
+            last_block: None,
+            current_timestamp: 0,
+        }
+    }
+
+    /// Handle an incoming network message.
+    pub fn on_network_message(&mut self, msg: NornMessage) -> Vec<NornMessage> {
+        match msg {
+            NornMessage::Commitment(c) => {
+                // Validate and add to mempool using real current timestamp.
+                if commitment::validate_commitment(&c, None, self.current_timestamp).is_ok() {
+                    let _ = self.mempool.add_commitment(c);
+                }
+                vec![]
+            }
+
+            NornMessage::Registration(r) => {
+                // Validate and add to mempool.
+                if registration::validate_registration(&r, &self.known_threads).is_ok() {
+                    let _ = self.mempool.add_registration(r);
+                }
+                vec![]
+            }
+
+            NornMessage::FraudProof(fp) => {
+                if crate::fraud::validate_fraud_proof(&fp).is_ok() {
+                    let _ = self.mempool.add_fraud_proof(*fp);
+                }
+                vec![]
+            }
+
+            NornMessage::Consensus(consensus_msg) => {
+                // Extract the sender from the consensus message.
+                let from = match extract_sender(&consensus_msg, self.consensus.leader_rotation()) {
+                    Some(key) => key,
+                    None => return vec![], // Cannot determine sender (empty validator set)
+                };
+                let actions = self.consensus.on_message(from, consensus_msg);
+                self.process_actions(actions)
+            }
+
+            NornMessage::Block(weave_block) => {
+                // Validate the block structure.
+                let vs = self.staking.active_validators();
+                if block::verify_block(&weave_block, &vs).is_err() {
+                    return vec![];
+                }
+
+                // Reject entire block if ANY commitment is invalid.
+                let current_ts = self.current_timestamp;
+                let all_commitments_valid = weave_block
+                    .commitments
+                    .par_iter()
+                    .all(|c| commitment::validate_commitment(c, None, current_ts).is_ok());
+
+                if !all_commitments_valid {
+                    return vec![];
+                }
+
+                // Reject entire block if ANY registration is invalid (including duplicates).
+                for r in &weave_block.registrations {
+                    if registration::validate_registration(r, &self.known_threads).is_err() {
+                        return vec![];
+                    }
+                }
+
+                // All content is valid — apply commitments.
+                for c in &weave_block.commitments {
+                    let _ = commitment::apply_commitment(
+                        &mut self.weave_state,
+                        &mut self.merkle_tree,
+                        c,
+                    );
+                }
+                // Apply registrations.
+                for r in &weave_block.registrations {
+                    let _ = registration::apply_registration(
+                        &mut self.weave_state,
+                        &mut self.merkle_tree,
+                        r,
+                    );
+                    self.known_threads.insert(r.thread_id);
+                }
+                // Update state.
+                self.weave_state.height = weave_block.height;
+                self.weave_state.latest_hash = weave_block.hash;
+
+                vec![]
+            }
+
+            // Other message types are not handled by the weave engine.
+            _ => vec![],
+        }
+    }
+
+    /// Set the current timestamp (called by the node before each tick).
+    pub fn set_timestamp(&mut self, timestamp: Timestamp) {
+        self.current_timestamp = timestamp;
+    }
+
+    /// Handle a periodic tick.
+    pub fn on_tick(&mut self, timestamp: Timestamp) -> Vec<NornMessage> {
+        self.current_timestamp = timestamp;
+        let mut messages = Vec::new();
+
+        // If we are the leader and have items in the mempool, build and propose a block.
+        if self.consensus.is_leader() && !self.mempool.is_empty() {
+            let contents = self.mempool.drain_for_block(MAX_COMMITMENTS_PER_BLOCK);
+            let weave_block = block::build_block(
+                self.weave_state.latest_hash,
+                self.weave_state.height,
+                contents,
+                &self.keypair,
+                timestamp,
+            );
+
+            let block_hash = weave_block.hash;
+            let block_data = borsh::to_vec(&weave_block).unwrap_or_default();
+
+            let actions = self
+                .consensus
+                .propose_block(block_hash, block_data, timestamp);
+            messages.extend(self.process_actions(actions));
+        }
+
+        messages
+    }
+
+    /// Convert consensus actions into NornMessages.
+    fn process_actions(&self, actions: Vec<ConsensusAction>) -> Vec<NornMessage> {
+        let mut messages = Vec::new();
+
+        for action in actions {
+            match action {
+                ConsensusAction::Broadcast(msg) => {
+                    messages.push(NornMessage::Consensus(msg));
+                }
+                ConsensusAction::SendTo(_to, msg) => {
+                    // In a real implementation, this would be addressed.
+                    // For now, treat as broadcast.
+                    messages.push(NornMessage::Consensus(msg));
+                }
+                ConsensusAction::CommitBlock(_hash) => {
+                    // Block commit is handled internally.
+                }
+                ConsensusAction::RequestViewChange => {
+                    // Trigger timeout handling.
+                }
+            }
+        }
+
+        messages
+    }
+
+    /// Produce a block directly, bypassing HotStuff consensus.
+    /// Drains the mempool, builds a block, applies all state changes, and returns it.
+    /// Returns `None` if the mempool is empty.
+    pub fn produce_block(&mut self, timestamp: Timestamp) -> Option<WeaveBlock> {
+        if self.mempool.is_empty() {
+            return None;
+        }
+
+        let contents = self.mempool.drain_for_block(MAX_COMMITMENTS_PER_BLOCK);
+        let weave_block = block::build_block(
+            self.weave_state.latest_hash,
+            self.weave_state.height,
+            contents,
+            &self.keypair,
+            timestamp,
+        );
+
+        // Apply commitments to state.
+        for c in &weave_block.commitments {
+            let _ = commitment::apply_commitment(&mut self.weave_state, &mut self.merkle_tree, c);
+        }
+
+        // Apply registrations to state.
+        for r in &weave_block.registrations {
+            let _ =
+                registration::apply_registration(&mut self.weave_state, &mut self.merkle_tree, r);
+            self.known_threads.insert(r.thread_id);
+        }
+
+        // Update state.
+        self.weave_state.height = weave_block.height;
+        self.weave_state.latest_hash = weave_block.hash;
+
+        self.last_block = Some(weave_block.clone());
+        Some(weave_block)
+    }
+
+    /// Validate and add a commitment update directly to the mempool.
+    pub fn add_commitment(
+        &mut self,
+        c: CommitmentUpdate,
+    ) -> Result<bool, crate::error::WeaveError> {
+        commitment::validate_commitment(&c, None, c.timestamp)?;
+        self.mempool.add_commitment(c)?;
+        Ok(true)
+    }
+
+    /// Validate and add a registration directly to the mempool.
+    pub fn add_registration(&mut self, r: Registration) -> Result<bool, crate::error::WeaveError> {
+        registration::validate_registration(&r, &self.known_threads)?;
+        self.mempool.add_registration(r)?;
+        Ok(true)
+    }
+
+    /// Get the number of registered threads.
+    pub fn thread_count(&self) -> u64 {
+        self.weave_state.thread_count
+    }
+
+    /// Get the set of known thread IDs.
+    pub fn known_threads(&self) -> &HashSet<[u8; 20]> {
+        &self.known_threads
+    }
+
+    /// Get the last committed block.
+    pub fn last_block(&self) -> Option<&WeaveBlock> {
+        self.last_block.as_ref()
+    }
+
+    /// Access the current weave state.
+    pub fn weave_state(&self) -> &WeaveState {
+        &self.weave_state
+    }
+
+    /// Access the mempool.
+    pub fn mempool(&self) -> &Mempool {
+        &self.mempool
+    }
+
+    /// Get the current active validator set.
+    pub fn validator_set(&self) -> ValidatorSet {
+        self.staking.active_validators()
+    }
+
+    /// Get the current fee estimate for a single commitment.
+    pub fn fee_estimate(&self) -> Amount {
+        crate::fees::compute_fee(&self.weave_state.fee_state, 1)
+    }
+
+    /// Get a Merkle inclusion proof for a thread.
+    pub fn commitment_proof(&mut self, thread_id: &[u8; 20]) -> norn_crypto::merkle::MerkleProof {
+        let key = norn_crypto::hash::blake3_hash(thread_id);
+        self.merkle_tree.prove(&key)
+    }
+}
+
+/// Extract the sender's public key from a consensus message.
+///
+/// For vote messages, the sender is the voter.
+/// For leader-originated messages (Prepare, PreCommit, Commit, NewView),
+/// the sender is the leader for the view carried in the message.
+fn extract_sender(
+    msg: &norn_types::consensus::ConsensusMessage,
+    leader_rotation: &crate::leader::LeaderRotation,
+) -> Option<PublicKey> {
+    use norn_types::consensus::ConsensusMessage;
+    match msg {
+        ConsensusMessage::PrepareVote(vote) => Some(vote.voter),
+        ConsensusMessage::PreCommitVote(vote) => Some(vote.voter),
+        ConsensusMessage::CommitVote(vote) => Some(vote.voter),
+        ConsensusMessage::ViewChange(tv) => Some(tv.voter),
+        ConsensusMessage::Prepare { view, .. } => leader_rotation.leader_for_view(*view).copied(),
+        ConsensusMessage::PreCommit { view, .. } => leader_rotation.leader_for_view(*view).copied(),
+        ConsensusMessage::Commit { view, .. } => leader_rotation.leader_for_view(*view).copied(),
+        ConsensusMessage::NewView { view, .. } => leader_rotation.leader_for_view(*view).copied(),
+    }
+}
+
+/// Derive a deterministic seed from a keypair for the consensus engine.
+/// This allows the consensus engine to have its own Keypair instance while
+/// using the same underlying key material.
+fn keypair_seed(keypair: &Keypair) -> [u8; 32] {
+    keypair.seed()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use norn_crypto::address::pubkey_to_address;
+    use norn_types::weave::{CommitmentUpdate, FeeState, Registration, Validator};
+
+    fn make_weave_state() -> WeaveState {
+        WeaveState {
+            height: 0,
+            latest_hash: [0u8; 32],
+            threads_root: [0u8; 32],
+            thread_count: 0,
+            fee_state: FeeState {
+                base_fee: 100,
+                fee_multiplier: 1000,
+                epoch_fees: 0,
+            },
+        }
+    }
+
+    fn make_validator_set_from_keypair(kp: &Keypair) -> ValidatorSet {
+        ValidatorSet {
+            validators: vec![Validator {
+                pubkey: kp.public_key(),
+                address: pubkey_to_address(&kp.public_key()),
+                stake: 1000,
+                active: true,
+            }],
+            total_stake: 1000,
+            epoch: 0,
+        }
+    }
+
+    #[test]
+    fn test_submit_commitment_to_mempool() {
+        let kp = Keypair::generate();
+        let vs = make_validator_set_from_keypair(&kp);
+        let mut engine = WeaveEngine::new(kp, vs, make_weave_state());
+
+        let commitment = CommitmentUpdate {
+            thread_id: [1u8; 20],
+            owner: [0u8; 32],
+            version: 1,
+            state_hash: [1u8; 32],
+            prev_commitment_hash: [0u8; 32],
+            knot_count: 1,
+            timestamp: 1000,
+            signature: [0u8; 64],
+        };
+
+        // Even with invalid sig, the mempool add happens after validate_commitment
+        // which will fail, so mempool stays empty.
+        engine.on_network_message(NornMessage::Commitment(commitment));
+        // The commitment had an invalid signature, so it should not be in the mempool.
+        assert!(engine.mempool().is_empty());
+    }
+
+    #[test]
+    fn test_submit_registration_to_mempool() {
+        let kp = Keypair::generate();
+        let vs = make_validator_set_from_keypair(&kp);
+        let mut engine = WeaveEngine::new(kp, vs, make_weave_state());
+
+        // Create a properly signed registration.
+        let reg_kp = Keypair::generate();
+        let thread_id = pubkey_to_address(&reg_kp.public_key());
+        let mut reg = Registration {
+            thread_id,
+            owner: reg_kp.public_key(),
+            initial_state_hash: [1u8; 32],
+            timestamp: 1000,
+            signature: [0u8; 64],
+        };
+        // Sign it.
+        let mut sig_data = Vec::new();
+        sig_data.extend_from_slice(&reg.thread_id);
+        sig_data.extend_from_slice(&reg.owner);
+        sig_data.extend_from_slice(&reg.initial_state_hash);
+        sig_data.extend_from_slice(&reg.timestamp.to_le_bytes());
+        reg.signature = reg_kp.sign(&sig_data);
+
+        engine.on_network_message(NornMessage::Registration(reg));
+        assert!(!engine.mempool().is_empty());
+    }
+
+    #[test]
+    fn test_engine_creation() {
+        let kp = Keypair::generate();
+        let vs = make_validator_set_from_keypair(&kp);
+        let engine = WeaveEngine::new(kp, vs, make_weave_state());
+        assert_eq!(engine.weave_state().height, 0);
+    }
+
+    #[test]
+    fn test_keypair_seed_preserves_identity() {
+        // Bug #3 regression: consensus keypair must match the validator's key.
+        let kp = Keypair::generate();
+        let seed = keypair_seed(&kp);
+        let reconstructed = Keypair::from_seed(&seed);
+        assert_eq!(
+            kp.public_key(),
+            reconstructed.public_key(),
+            "consensus keypair must use the same key as the validator"
+        );
+    }
+
+    #[test]
+    fn test_extract_sender_for_leader_messages() {
+        // Bug #4 regression: leader messages must resolve to the leader's key.
+        use crate::leader::LeaderRotation;
+        use norn_types::consensus::ConsensusMessage;
+
+        let leader_key = [1u8; 32];
+        let other_key = [2u8; 32];
+        let rotation = LeaderRotation::new(vec![leader_key, other_key]);
+
+        // Prepare message for view 0 -> leader is key[0].
+        let msg = ConsensusMessage::Prepare {
+            view: 0,
+            block_hash: [0u8; 32],
+            block_data: vec![],
+            justify: None,
+        };
+        let sender = extract_sender(&msg, &rotation);
+        assert_eq!(sender, Some(leader_key));
+
+        // PreCommit for view 1 -> leader is key[1].
+        let msg = ConsensusMessage::PreCommit {
+            view: 1,
+            prepare_qc: norn_types::consensus::QuorumCertificate {
+                view: 1,
+                block_hash: [0u8; 32],
+                phase: norn_types::consensus::ConsensusPhase::Prepare,
+                votes: vec![],
+            },
+        };
+        let sender = extract_sender(&msg, &rotation);
+        assert_eq!(sender, Some(other_key));
+    }
+}
