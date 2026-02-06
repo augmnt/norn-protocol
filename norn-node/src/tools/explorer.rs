@@ -6,10 +6,12 @@ use norn_weave::engine::WeaveEngine;
 use crate::rpc::types::{BlockInfo, WeaveStateInfo};
 
 /// Backend for a block explorer, providing query methods over weave state.
+#[allow(dead_code)]
 pub struct ExplorerBackend {
     weave_engine: Arc<RwLock<WeaveEngine>>,
 }
 
+#[allow(dead_code)]
 impl ExplorerBackend {
     /// Create a new explorer backend.
     pub fn new(weave_engine: Arc<RwLock<WeaveEngine>>) -> Self {

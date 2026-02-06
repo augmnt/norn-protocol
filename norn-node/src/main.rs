@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 

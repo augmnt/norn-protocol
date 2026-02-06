@@ -1,3 +1,8 @@
+//! Off-chain WebAssembly smart contract runtime for the Norn Protocol.
+//!
+//! Provides Loom lifecycle management, a Wasmtime-based execution engine with
+//! host functions, gas metering, and on-chain dispute resolution.
+
 pub mod dispute;
 pub mod error;
 pub mod gas;

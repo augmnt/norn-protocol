@@ -70,6 +70,10 @@ pub struct WalletFile {
     pub has_mnemonic: bool,
     pub encrypted_seed: EncryptedBlob,
     pub encrypted_mnemonic: Option<EncryptedBlob>,
+    /// Per-wallet random salt for Argon2id KDF (v3+). Hex-encoded 16 bytes.
+    /// Absent in v1/v2 wallets (which used fixed salts).
+    #[serde(default)]
+    pub salt: Option<String>,
 }
 
 /// In-memory representation of a loaded wallet.
@@ -93,8 +97,11 @@ impl Keystore {
         let address = pubkey_to_address(&keypair.public_key());
         let public_key = keypair.public_key();
 
+        // Generate a random per-wallet salt for Argon2id KDF (v3).
+        let salt = generate_random_salt();
+
         // Derive a password-based keypair for encryption
-        let password_keypair = password_to_keypair(password);
+        let password_keypair = password_to_keypair_argon2_with_salt(password, &salt)?;
 
         // Encrypt the 64-byte seed
         let encrypted_seed = encrypt_for_keypair(&password_keypair, &seed)?;
@@ -109,7 +116,7 @@ impl Keystore {
             .as_secs();
 
         let file = WalletFile {
-            version: WALLET_VERSION_ARGON2,
+            version: WALLET_VERSION_RANDOM_SALT,
             name: name.to_string(),
             created_at: now,
             address: format!("0x{}", hex::encode(address)),
@@ -118,6 +125,7 @@ impl Keystore {
             has_mnemonic: true,
             encrypted_seed: EncryptedBlob::from_encrypted(&encrypted_seed),
             encrypted_mnemonic: Some(EncryptedBlob::from_encrypted(&encrypted_mnemonic)),
+            salt: Some(hex::encode(salt)),
         };
 
         Ok(Self {
@@ -138,7 +146,9 @@ impl Keystore {
         let address = pubkey_to_address(&keypair.public_key());
         let public_key = keypair.public_key();
 
-        let password_keypair = password_to_keypair(password);
+        // Generate a random per-wallet salt for Argon2id KDF (v3).
+        let salt = generate_random_salt();
+        let password_keypair = password_to_keypair_argon2_with_salt(password, &salt)?;
 
         // For a private key import, we store the 32-byte seed padded to 64 bytes
         // (only first 32 are meaningful)
@@ -152,7 +162,7 @@ impl Keystore {
             .as_secs();
 
         let file = WalletFile {
-            version: WALLET_VERSION_ARGON2,
+            version: WALLET_VERSION_RANDOM_SALT,
             name: name.to_string(),
             created_at: now,
             address: format!("0x{}", hex::encode(address)),
@@ -161,6 +171,7 @@ impl Keystore {
             has_mnemonic: false,
             encrypted_seed: EncryptedBlob::from_encrypted(&encrypted_seed),
             encrypted_mnemonic: None,
+            salt: Some(hex::encode(salt)),
         };
 
         Ok(Self {
@@ -259,9 +270,8 @@ impl Keystore {
 
     /// Decrypt the keypair using a password.
     /// Automatically selects the correct KDF based on wallet version.
-    /// For v1 wallets, tries Argon2 first then falls back to BLAKE3.
     pub fn decrypt_keypair(&self, password: &str) -> Result<Keypair, WalletError> {
-        let password_keypair = password_to_keypair_for_version(password, self.file.version);
+        let password_keypair = self.password_keypair(password)?;
         let (eph, nonce, ct) = self.file.encrypted_seed.to_parts()?;
         let seed_bytes = decrypt(&password_keypair, &eph, &nonce, &ct)
             .map_err(|_| WalletError::InvalidPassword)?;
@@ -286,7 +296,7 @@ impl Keystore {
             Some(e) => e,
             None => return Ok(None),
         };
-        let password_keypair = password_to_keypair_for_version(password, self.file.version);
+        let password_keypair = self.password_keypair(password)?;
         let (eph, nonce, ct) = enc.to_parts()?;
         let bytes = decrypt(&password_keypair, &eph, &nonce, &ct)
             .map_err(|_| WalletError::InvalidPassword)?;
@@ -294,21 +304,45 @@ impl Keystore {
             String::from_utf8(bytes).map_err(|e| WalletError::SerializationError(e.to_string()))?;
         Ok(Some(phrase))
     }
+
+    /// Derive the password keypair for this wallet, choosing KDF based on version and salt.
+    fn password_keypair(&self, password: &str) -> Result<Keypair, WalletError> {
+        password_to_keypair_for_version(password, self.file.version, self.file.salt.as_deref())
+    }
 }
 
-/// Wallet version 1 uses BLAKE3 KDF, version 2 uses Argon2id.
+/// Wallet version 1 uses BLAKE3 KDF, version 2 uses Argon2id with fixed salt,
+/// version 3 uses Argon2id with per-wallet random salt.
+#[allow(dead_code)]
 const WALLET_VERSION_BLAKE3: u32 = 1;
 const WALLET_VERSION_ARGON2: u32 = 2;
+const WALLET_VERSION_RANDOM_SALT: u32 = 3;
 
-/// Derive a keypair from a password using Argon2id (v2 wallets).
-fn password_to_keypair_argon2(password: &str) -> Keypair {
+/// Generate a cryptographically random 16-byte salt.
+fn generate_random_salt() -> [u8; 16] {
+    use rand::RngCore;
+    let mut salt = [0u8; 16];
+    rand::rngs::OsRng.fill_bytes(&mut salt);
+    salt
+}
+
+/// Derive a keypair from a password using Argon2id with a caller-provided salt (v3 wallets).
+fn password_to_keypair_argon2_with_salt(
+    password: &str,
+    salt: &[u8; 16],
+) -> Result<Keypair, WalletError> {
     use argon2::Argon2;
-    let salt = b"norn-keystore-v2"; // Fixed salt (wallet-specific salt would be better but requires format change)
     let mut seed = [0u8; 32];
     Argon2::default()
         .hash_password_into(password.as_bytes(), salt, &mut seed)
-        .expect("argon2 hash should succeed");
-    Keypair::from_seed(&seed)
+        .map_err(|e| WalletError::SerializationError(format!("argon2 hash failed: {}", e)))?;
+    Ok(Keypair::from_seed(&seed))
+}
+
+/// Derive a keypair from a password using Argon2id with fixed salt (v2 wallets, legacy).
+fn password_to_keypair_argon2_fixed(password: &str) -> Result<Keypair, WalletError> {
+    let salt: [u8; 16] = *b"norn-keystore-v2";
+    password_to_keypair_argon2_with_salt(password, &salt)
 }
 
 /// Derive a keypair from a password using BLAKE3 KDF (v1 wallets, legacy).
@@ -317,18 +351,33 @@ fn password_to_keypair_blake3(password: &str) -> Keypair {
     Keypair::from_seed(&seed)
 }
 
-/// Derive a keypair from a password, choosing KDF based on wallet version.
-fn password_to_keypair(password: &str) -> Keypair {
-    // New wallets always use Argon2id (v2).
-    password_to_keypair_argon2(password)
-}
-
-/// Derive a keypair for decryption, trying the version-appropriate KDF.
-fn password_to_keypair_for_version(password: &str, version: u32) -> Keypair {
-    if version >= WALLET_VERSION_ARGON2 {
-        password_to_keypair_argon2(password)
+/// Derive a keypair for decryption, choosing KDF based on wallet version and stored salt.
+fn password_to_keypair_for_version(
+    password: &str,
+    version: u32,
+    salt_hex: Option<&str>,
+) -> Result<Keypair, WalletError> {
+    if version >= WALLET_VERSION_RANDOM_SALT {
+        // v3+: per-wallet random salt (required)
+        let salt_hex = salt_hex.ok_or_else(|| {
+            WalletError::SerializationError("v3 wallet missing salt field".to_string())
+        })?;
+        let salt_bytes = hex::decode(salt_hex)
+            .map_err(|e| WalletError::SerializationError(format!("invalid salt hex: {}", e)))?;
+        if salt_bytes.len() != 16 {
+            return Err(WalletError::SerializationError(
+                "salt must be 16 bytes".to_string(),
+            ));
+        }
+        let mut salt = [0u8; 16];
+        salt.copy_from_slice(&salt_bytes);
+        password_to_keypair_argon2_with_salt(password, &salt)
+    } else if version >= WALLET_VERSION_ARGON2 {
+        // v2: Argon2id with fixed salt
+        password_to_keypair_argon2_fixed(password)
     } else {
-        password_to_keypair_blake3(password)
+        // v1: BLAKE3 KDF
+        Ok(password_to_keypair_blake3(password))
     }
 }
 
@@ -386,7 +435,8 @@ mod tests {
 
     #[test]
     fn test_encrypted_blob_roundtrip() {
-        let password_kp = password_to_keypair("test");
+        let salt = generate_random_salt();
+        let password_kp = password_to_keypair_argon2_with_salt("test", &salt).unwrap();
         let plaintext = b"hello world";
         let encrypted = encrypt_for_keypair(&password_kp, plaintext).unwrap();
         let blob = EncryptedBlob::from_encrypted(&encrypted);
@@ -398,5 +448,51 @@ mod tests {
         let (eph, nonce, ct) = recovered.to_parts().unwrap();
         let decrypted = decrypt(&password_kp, &eph, &nonce, &ct).unwrap();
         assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn test_v3_random_salt_unique_per_wallet() {
+        let mnemonic = generate_mnemonic();
+        let ks1 = Keystore::create("test1", &mnemonic, "", "same-password").unwrap();
+        let ks2 = Keystore::create("test2", &mnemonic, "", "same-password").unwrap();
+
+        // Different wallets with the same password should have different salts.
+        assert_ne!(ks1.file.salt, ks2.file.salt);
+        assert_eq!(ks1.file.version, WALLET_VERSION_RANDOM_SALT);
+    }
+
+    #[test]
+    fn test_v2_backward_compat() {
+        // Simulate a v2 wallet file (fixed salt, no salt field).
+        let password_kp = password_to_keypair_argon2_fixed("testpass").unwrap();
+        let seed = [42u8; 64];
+        let encrypted_seed = encrypt_for_keypair(&password_kp, &seed).unwrap();
+
+        let file = WalletFile {
+            version: WALLET_VERSION_ARGON2,
+            name: "legacy".to_string(),
+            created_at: 0,
+            address: format!("0x{}", hex::encode([0u8; 20])),
+            public_key: hex::encode([0u8; 32]),
+            derivation_index: 0,
+            has_mnemonic: false,
+            encrypted_seed: EncryptedBlob::from_encrypted(&encrypted_seed),
+            encrypted_mnemonic: None,
+            salt: None,
+        };
+
+        let ks = Keystore {
+            name: "legacy".to_string(),
+            address: [0u8; 20],
+            public_key: [0u8; 32],
+            file,
+        };
+
+        // v2 wallet should still decrypt with the fixed salt path.
+        let kp = ks.decrypt_keypair("testpass").unwrap();
+        assert_eq!(
+            kp.public_key(),
+            Keypair::from_seed(&[42u8; 32]).public_key()
+        );
     }
 }

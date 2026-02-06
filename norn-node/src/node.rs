@@ -17,6 +17,7 @@ use crate::error::NodeError;
 use crate::metrics::NodeMetrics;
 
 /// The main node that ties together all subsystems.
+#[allow(dead_code)]
 pub struct Node {
     config: NodeConfig,
     weave_engine: Arc<RwLock<WeaveEngine>>,
@@ -277,11 +278,13 @@ impl Node {
     }
 
     /// Access the weave engine (for testing).
+    #[allow(dead_code)]
     pub fn weave_engine(&self) -> &Arc<RwLock<WeaveEngine>> {
         &self.weave_engine
     }
 
     /// Access the metrics (for testing).
+    #[allow(dead_code)]
     pub fn metrics(&self) -> &Arc<NodeMetrics> {
         &self.metrics
     }

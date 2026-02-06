@@ -1,7 +1,10 @@
 [package]
 name = "norn-types"
-version = "0.1.0"
-edition = "2021"
+description = "Shared type definitions for the Norn Protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 borsh = { workspace = true }

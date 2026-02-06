@@ -114,6 +114,7 @@ pub fn format_address(addr: &Address) -> String {
 }
 
 /// Format an Address in truncated form: 0xab12...ef34
+#[allow(dead_code)]
 pub fn format_address_short(addr: &Address) -> String {
     let full = hex::encode(addr);
     format!("0x{}...{}", &full[..4], &full[full.len() - 4..])
@@ -157,6 +158,7 @@ pub fn parse_token_id(s: &str) -> Result<TokenId, WalletError> {
 // ── Hash / pubkey formatting ────────────────────────────────────────────────
 
 /// Format a Hash as hex.
+#[allow(dead_code)]
 pub fn format_hash(hash: &Hash) -> String {
     hex::encode(hash)
 }
@@ -194,6 +196,7 @@ pub fn print_error(msg: &str, hint: Option<&str>) {
 }
 
 /// Print an informational line.
+#[allow(dead_code)]
 pub fn print_info(label: &str, value: &str) {
     println!(
         "  {}: {}",

@@ -1,10 +1,12 @@
 /// API key configuration for RPC authentication.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct RpcAuthConfig {
     /// If set, mutation methods require this API key via `Authorization: Bearer <key>`.
     pub api_key: Option<String>,
 }
 
+#[allow(dead_code)]
 impl RpcAuthConfig {
     /// Create a new auth config with no authentication required.
     pub fn open() -> Self {

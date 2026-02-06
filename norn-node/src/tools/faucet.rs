@@ -4,11 +4,13 @@ use norn_types::primitives::{Address, Amount};
 use crate::error::NodeError;
 
 /// A simple testnet faucet that can dispense tokens to addresses.
+#[allow(dead_code)]
 pub struct Faucet {
     keypair: Keypair,
     amount_per_request: Amount,
 }
 
+#[allow(dead_code)]
 impl Faucet {
     /// Create a new faucet with the given keypair and dispense amount.
     pub fn new(keypair: Keypair, amount_per_request: Amount) -> Self {

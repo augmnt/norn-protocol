@@ -1,3 +1,9 @@
+//! Shared type definitions for the Norn Protocol.
+//!
+//! This crate defines all core data structures used across the protocol:
+//! Threads, Knots, Weave blocks, Looms, fraud proofs, consensus messages,
+//! genesis configuration, and primitive types.
+
 pub mod consensus;
 pub mod constants;
 pub mod error;

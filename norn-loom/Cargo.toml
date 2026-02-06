@@ -1,7 +1,10 @@
 [package]
 name = "norn-loom"
-version = "0.1.0"
-edition = "2021"
+description = "Off-chain WebAssembly smart contract runtime for the Norn Protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 norn-types = { path = "../norn-types" }

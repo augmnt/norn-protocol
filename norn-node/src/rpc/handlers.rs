@@ -61,7 +61,7 @@ pub trait NornRpc {
         thread_id: String,
     ) -> Result<Option<ThreadStateInfo>, ErrorObjectOwned>;
 
-    /// Request testnet faucet tokens.
+    /// Request testnet faucet tokens (testnet-only, returns error in production builds).
     #[method(name = "norn_faucet")]
     async fn faucet(&self, address: String) -> Result<SubmitResult, ErrorObjectOwned>;
 
@@ -94,6 +94,7 @@ pub trait NornRpc {
 }
 
 /// Implementation of the NornRpc trait.
+#[allow(dead_code)]
 pub struct NornRpcImpl {
     pub weave_engine: Arc<RwLock<WeaveEngine>>,
     pub metrics: Arc<NodeMetrics>,
@@ -298,51 +299,67 @@ impl NornRpcServer for NornRpcImpl {
         }
     }
 
+    // Faucet: testnet-only endpoint that bypasses signature verification
+    // to auto-register threads and credit test tokens. Returns an error in
+    // production builds (compile without the "testnet" feature).
     async fn faucet(&self, address_hex: String) -> Result<SubmitResult, ErrorObjectOwned> {
-        use norn_types::constants::ONE_NORN;
-
-        let addr_bytes = hex::decode(&address_hex).map_err(|e| {
-            ErrorObjectOwned::owned(-32602, format!("invalid hex address: {}", e), None::<()>)
-        })?;
-
-        if addr_bytes.len() != 20 {
+        #[cfg(not(feature = "testnet"))]
+        {
+            let _ = address_hex;
             return Err(ErrorObjectOwned::owned(
-                -32602,
-                "address must be 20 bytes",
+                -32601,
+                "faucet is disabled in production builds",
                 None::<()>,
             ));
         }
 
-        let mut address = [0u8; 20];
-        address.copy_from_slice(&addr_bytes);
+        #[cfg(feature = "testnet")]
+        {
+            use norn_types::constants::ONE_NORN;
 
-        let faucet_amount: u128 = 100 * ONE_NORN; // 100 NORN per faucet request
+            let addr_bytes = hex::decode(&address_hex).map_err(|e| {
+                ErrorObjectOwned::owned(-32602, format!("invalid hex address: {}", e), None::<()>)
+            })?;
 
-        let mut engine = self.weave_engine.write().await;
+            if addr_bytes.len() != 20 {
+                return Err(ErrorObjectOwned::owned(
+                    -32602,
+                    "address must be 20 bytes",
+                    None::<()>,
+                ));
+            }
 
-        // Register the thread if not already known.
-        if !engine.known_threads().contains(&address) {
-            let reg = norn_types::weave::Registration {
-                thread_id: address,
-                owner: [0u8; 32], // Owner unknown (faucet auto-registers)
-                initial_state_hash: [0u8; 32],
-                timestamp: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-                signature: [0u8; 64], // Faucet-issued (no signature verification)
-            };
-            // Add registration directly (bypass signature check for faucet).
-            let _ = engine.add_registration(reg);
+            let mut address = [0u8; 20];
+            address.copy_from_slice(&addr_bytes);
+
+            let faucet_amount: u128 = 100 * ONE_NORN; // 100 NORN per faucet request
+
+            let mut engine = self.weave_engine.write().await;
+
+            // Register the thread if not already known.
+            if !engine.known_threads().contains(&address) {
+                let reg = norn_types::weave::Registration {
+                    thread_id: address,
+                    owner: [0u8; 32], // Owner unknown (faucet auto-registers)
+                    initial_state_hash: [0u8; 32],
+                    timestamp: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                    signature: [0u8; 64], // Faucet-issued (no signature verification)
+                };
+                // Add registration directly (bypass signature check for faucet).
+                let _ = engine.add_registration(reg);
+            }
+
+            Ok(SubmitResult {
+                success: true,
+                reason: Some(format!(
+                    "credited {} nits to {}",
+                    faucet_amount, address_hex
+                )),
+            })
         }
-
-        Ok(SubmitResult {
-            success: true,
-            reason: Some(format!(
-                "credited {} nits to {}",
-                faucet_amount, address_hex
-            )),
-        })
     }
 
     async fn submit_knot(&self, knot_hex: String) -> Result<SubmitResult, ErrorObjectOwned> {

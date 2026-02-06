@@ -26,7 +26,7 @@ pub trait BatchWriter: KvStore {
     fn write_batch(&self, ops: Vec<BatchOp>) -> Result<(), StorageError>;
 }
 
-/// Blanket implementation of KvStore for Arc<S> so that a store can be shared
+/// Blanket implementation of KvStore for `Arc<S>` so that a store can be shared
 /// across multiple owners (e.g. for persistence-across-restart tests).
 impl<S: KvStore> KvStore for Arc<S> {
     fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, StorageError> {

@@ -1,0 +1,56 @@
+# Norn Protocol Node Configuration
+# Copy this file to norn.toml and adjust for your setup.
+
+[network]
+# Address to listen for P2P connections.
+listen_addr = "0.0.0.0:9740"
+
+# Boot nodes to connect to on startup (multiaddr format).
+# Example: ["/ip4/1.2.3.4/tcp/9740"]
+boot_nodes = []
+
+# Maximum number of peer connections.
+max_connections = 50
+
+[storage]
+# Directory for on-disk data (blocks, state).
+data_dir = "./norn-data"
+
+# Storage backend: "memory", "sqlite", or "rocksdb".
+# Use "memory" for development, "rocksdb" for production.
+db_type = "memory"
+
+[validator]
+# Enable block production.
+enabled = false
+
+# Path to an Ed25519 keypair file (PEM). Mutually exclusive with keypair_seed.
+# keypair_path = "/path/to/validator.key"
+
+# Hex-encoded 32-byte seed for deterministic keypair (dev/test only).
+# keypair_seed = "deadbeef..."
+
+# Solo mode: produce blocks without HotStuff consensus (dev/test only).
+solo_mode = false
+
+[rpc]
+# Enable the JSON-RPC server.
+enabled = true
+
+# Address for the JSON-RPC server.
+listen_addr = "127.0.0.1:9741"
+
+# Maximum concurrent RPC connections.
+max_connections = 100
+
+# Optional API key for mutation methods. Clients must send
+# "Authorization: Bearer <key>" to call write endpoints.
+# api_key = "your-secret-key"
+
+[logging]
+# Log level: "error", "warn", "info", "debug", "trace".
+# Can also be overridden with the RUST_LOG environment variable.
+level = "info"
+
+# Path to a genesis file. If unset, starts from the default genesis state.
+# genesis_path = "./genesis.json"

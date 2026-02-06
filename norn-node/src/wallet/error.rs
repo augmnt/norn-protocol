@@ -2,6 +2,7 @@ use thiserror::Error;
 
 /// Errors that can occur in wallet operations.
 #[derive(Debug, Error)]
+#[allow(dead_code)]
 pub enum WalletError {
     #[error("no active wallet set — run `norn-node wallet use <name>` to select one")]
     NoActiveWallet,

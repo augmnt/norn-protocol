@@ -1,5 +1,9 @@
 # Norn Protocol
 
+[![CI](https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml/badge.svg)](https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org/)
+
 **Your thread. Your fate. The chain just watches.**
 
 ---

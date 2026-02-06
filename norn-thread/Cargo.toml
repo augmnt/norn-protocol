@@ -1,7 +1,10 @@
 [package]
 name = "norn-thread"
-version = "0.1.0"
-edition = "2021"
+description = "Thread chain management and Knot validation for the Norn Protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 norn-types = { path = "../norn-types" }

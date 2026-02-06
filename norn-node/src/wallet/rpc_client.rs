@@ -135,6 +135,7 @@ impl RpcClient {
     }
 
     /// Get thread state info.
+    #[allow(dead_code)]
     pub async fn get_thread_state(
         &self,
         thread_id: &str,

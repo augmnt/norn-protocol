@@ -2,7 +2,7 @@ use thiserror::Error;
 
 /// Errors that can occur in the node.
 #[derive(Debug, Error)]
-#[allow(clippy::enum_variant_names)]
+#[allow(clippy::enum_variant_names, dead_code)]
 pub enum NodeError {
     #[error("config error: {reason}")]
     ConfigError { reason: String },
