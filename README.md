@@ -37,14 +37,14 @@ Norn's architecture consists of six core components:
 ```mermaid
 flowchart TB
     subgraph Threads
-        A["Thread A\n(Alice)"]
-        B["Thread B\n(Bob)"]
+        A["Thread A<br/>(Alice)"]
+        B["Thread B<br/>(Bob)"]
     end
 
-    A <-->|"Bilateral Knots\n(instant, free, private)"| B
+    A <-->|"Bilateral Knots<br/>(instant, free, private)"| B
 
-    A -->|"Periodic commitments\n(state hash + version)"| W
-    B -->|"Periodic commitments\n(state hash + version)"| W
+    A -->|"Periodic commitments<br/>(state hash + version)"| W
+    B -->|"Periodic commitments<br/>(state hash + version)"| W
 
     subgraph W["The Weave (Anchor Chain -- HotStuff BFT Consensus)"]
         C[Commitments]
@@ -53,9 +53,9 @@ flowchart TB
         L2[Looms]
     end
 
-    SP["Spindles\n(Watchtower Services)"] --> W
-    LM["Looms\n(Off-chain Contracts)"] --> W
-    RL["Relays\n(P2P Message Buffers)"] --> W
+    SP["Spindles<br/>(Watchtower Services)"] --> W
+    LM["Looms<br/>(Off-chain Contracts)"] --> W
+    RL["Relays<br/>(P2P Message Buffers)"] --> W
 ```
 
 ## Repository Structure

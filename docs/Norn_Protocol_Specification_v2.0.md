@@ -102,13 +102,13 @@ This document specifies:
 
 ```mermaid
 flowchart TB
-    NODE["norn-node\n(Full node binary: config, RPC server, wallet CLI, metrics)"]
+    NODE["norn-node<br/>(Full node binary: config, RPC server, wallet CLI, metrics)"]
 
-    NODE --> WEAVE["norn-weave\n(Consensus, blocks, fraud,\nfees, staking, mempool)"]
-    NODE --> RELAY["norn-relay\n(P2P via libp2p, gossipsub)"]
-    NODE --> LOOM["norn-loom\n(Wasm runtime, gas,\ndispute, lifecycle)"]
-    NODE --> SPINDLE["norn-spindle\n(Watchtower, monitoring,\nrate limit)"]
-    NODE --> THREAD["norn-thread\n(Thread mgmt, knot building,\nvalidation, chain verify)"]
+    NODE --> WEAVE["norn-weave<br/>(Consensus, blocks, fraud,<br/>fees, staking, mempool)"]
+    NODE --> RELAY["norn-relay<br/>(P2P via libp2p, gossipsub)"]
+    NODE --> LOOM["norn-loom<br/>(Wasm runtime, gas,<br/>dispute, lifecycle)"]
+    NODE --> SPINDLE["norn-spindle<br/>(Watchtower, monitoring,<br/>rate limit)"]
+    NODE --> THREAD["norn-thread<br/>(Thread mgmt, knot building,<br/>validation, chain verify)"]
 
     WEAVE --> STORAGE
     RELAY --> STORAGE
@@ -116,20 +116,20 @@ flowchart TB
     SPINDLE --> STORAGE
     THREAD --> STORAGE
 
-    STORAGE["norn-storage\n(KvStore trait + memory/SQLite/RocksDB backends)"]
+    STORAGE["norn-storage<br/>(KvStore trait + memory/SQLite/RocksDB backends)"]
     STORAGE --> CRYPTO
 
-    CRYPTO["norn-crypto\n(Ed25519, BLAKE3, Merkle, encryption, HD wallet, seed)"]
+    CRYPTO["norn-crypto<br/>(Ed25519, BLAKE3, Merkle, encryption, HD wallet, seed)"]
     CRYPTO --> TYPES
 
-    TYPES["norn-types\n(All shared types, constants, error enum)"]
+    TYPES["norn-types<br/>(All shared types, constants, error enum)"]
 ```
 
 ### 3.1 Crate Dependency Flow
 
 ```mermaid
 flowchart BT
-    TYPES["norn-types\n(leaf -- no internal dependencies)"]
+    TYPES["norn-types<br/>(leaf -- no internal dependencies)"]
     CRYPTO["norn-crypto"] -->|depends on| TYPES
     STORAGE["norn-storage"] -->|depends on| TYPES
     THREAD["norn-thread"] -->|depends on| TYPES & CRYPTO
