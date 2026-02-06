@@ -34,29 +34,28 @@ Norn's architecture consists of six core components:
 | **Spindles** | Watchtower services -- monitor the Weave on behalf of offline users and submit fraud proofs when misbehavior is detected. |
 | **Relays** | P2P message buffers -- asynchronous message delivery between Threads via the libp2p protocol stack. |
 
-```
-                              Norn Protocol Architecture
+```mermaid
+flowchart TB
+    subgraph Threads
+        A["Thread A\n(Alice)"]
+        B["Thread B\n(Bob)"]
+    end
 
- +---------------+         Bilateral Knots          +---------------+
- |  Thread A     |<-------------------------------->|  Thread B     |
- |  (Alice)      |     (instant, free, private)     |  (Bob)        |
- +-------+-------+                                  +-------+-------+
-         | Periodic commitments                             |
-         | (state hash + version)                           |
-         v                                                  v
- +------------------------------------------------------------------+
- |                         The Weave                                 |
- |             (Anchor Chain -- HotStuff BFT Consensus)              |
- |                                                                   |
- |   Commitments  |  Registrations  |  Fraud Proofs  |  Looms       |
- +------------------------------------------------------------------+
-         ^                      ^                      ^
-         |                      |                      |
- +-------+-------+     +-------+--------+     +-------+-------+
- |   Spindles    |     |     Looms      |     |    Relays     |
- |  (Watchtower  |     | (Off-chain     |     | (P2P Message  |
- |   Services)   |     |  Contracts)    |     |   Buffers)    |
- +---------------+     +----------------+     +---------------+
+    A <-->|"Bilateral Knots\n(instant, free, private)"| B
+
+    A -->|"Periodic commitments\n(state hash + version)"| W
+    B -->|"Periodic commitments\n(state hash + version)"| W
+
+    subgraph W["The Weave (Anchor Chain -- HotStuff BFT Consensus)"]
+        C[Commitments]
+        R[Registrations]
+        F[Fraud Proofs]
+        L2[Looms]
+    end
+
+    SP["Spindles\n(Watchtower Services)"] --> W
+    LM["Looms\n(Off-chain Contracts)"] --> W
+    RL["Relays\n(P2P Message Buffers)"] --> W
 ```
 
 ## Repository Structure

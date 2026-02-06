@@ -100,51 +100,44 @@ This document specifies:
 
 ## 3. Architecture Overview
 
-```
-+-------------------------------------------------------------------+
-|                         norn-node                                  |
-|  (Full node binary: config, RPC server, wallet CLI, metrics)      |
-+--------+----------+-----------+----------+-----------+------------+
-         |          |           |          |           |
-    norn-weave  norn-relay  norn-loom  norn-spindle  norn-thread
-    (Consensus, (P2P via   (Wasm      (Watchtower,  (Thread mgmt,
-     blocks,    libp2p,     runtime,   monitoring,   knot building,
-     fraud,     gossipsub)  gas,       rate limit)   validation,
-     fees,                  dispute,                  chain verify)
-     staking,               lifecycle)
-     mempool)
-         |          |           |          |           |
-    +----+----------+-----------+----------+-----------+----+
-    |                    norn-storage                        |
-    |  (KvStore trait + memory/SQLite/RocksDB backends)      |
-    +------------------------+------------------------------+
-                             |
-    +------------------------+------------------------------+
-    |                    norn-crypto                          |
-    |  (Ed25519, BLAKE3, Merkle, encryption, HD wallet, seed)|
-    +------------------------+------------------------------+
-                             |
-    +------------------------+------------------------------+
-    |                    norn-types                           |
-    |  (All shared types, constants, error enum)             |
-    +-------------------------------------------------------+
+```mermaid
+flowchart TB
+    NODE["norn-node\n(Full node binary: config, RPC server, wallet CLI, metrics)"]
+
+    NODE --> WEAVE["norn-weave\n(Consensus, blocks, fraud,\nfees, staking, mempool)"]
+    NODE --> RELAY["norn-relay\n(P2P via libp2p, gossipsub)"]
+    NODE --> LOOM["norn-loom\n(Wasm runtime, gas,\ndispute, lifecycle)"]
+    NODE --> SPINDLE["norn-spindle\n(Watchtower, monitoring,\nrate limit)"]
+    NODE --> THREAD["norn-thread\n(Thread mgmt, knot building,\nvalidation, chain verify)"]
+
+    WEAVE --> STORAGE
+    RELAY --> STORAGE
+    LOOM --> STORAGE
+    SPINDLE --> STORAGE
+    THREAD --> STORAGE
+
+    STORAGE["norn-storage\n(KvStore trait + memory/SQLite/RocksDB backends)"]
+    STORAGE --> CRYPTO
+
+    CRYPTO["norn-crypto\n(Ed25519, BLAKE3, Merkle, encryption, HD wallet, seed)"]
+    CRYPTO --> TYPES
+
+    TYPES["norn-types\n(All shared types, constants, error enum)"]
 ```
 
 ### 3.1 Crate Dependency Flow
 
-```
-norn-types         (leaf -- no internal dependencies)
-    ^
-norn-crypto        (depends on norn-types)
-    ^
-norn-storage       (depends on norn-types)
-    ^
-norn-thread        (depends on norn-types, norn-crypto)
-norn-relay         (depends on norn-types, norn-crypto)
-norn-weave         (depends on norn-types, norn-crypto, norn-storage)
-norn-loom          (depends on norn-types, norn-crypto)
-norn-spindle       (depends on norn-types, norn-crypto)
-norn-node          (depends on all above)
+```mermaid
+flowchart BT
+    TYPES["norn-types\n(leaf -- no internal dependencies)"]
+    CRYPTO["norn-crypto"] -->|depends on| TYPES
+    STORAGE["norn-storage"] -->|depends on| TYPES
+    THREAD["norn-thread"] -->|depends on| TYPES & CRYPTO
+    RELAY["norn-relay"] -->|depends on| TYPES & CRYPTO
+    WEAVE["norn-weave"] -->|depends on| TYPES & CRYPTO & STORAGE
+    LOOM["norn-loom"] -->|depends on| TYPES & CRYPTO
+    SPINDLE["norn-spindle"] -->|depends on| TYPES & CRYPTO
+    NODE["norn-node"] -->|depends on| WEAVE & RELAY & LOOM & SPINDLE & THREAD & STORAGE
 ```
 
 ---

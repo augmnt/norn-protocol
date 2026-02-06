@@ -108,31 +108,30 @@ Clarity about what Norn is *not* is as important as clarity about what it is.
 
 Norn's architecture consists of six core components that work together to separate transaction execution from dispute resolution.
 
-```
-                              Norn Protocol Architecture
+```mermaid
+flowchart TB
+    subgraph Threads
+        A["Thread A\n(Alice)"]
+        B["Thread B\n(Bob)"]
+    end
 
- ┌─────────────┐         Bilateral Knots          ┌─────────────┐
- │  Thread A   │◄────────────────────────────────►│  Thread B   │
- │  (Alice)    │     (instant, free, private)      │  (Bob)      │
- └──────┬──────┘                                   └──────┬──────┘
-        │ Periodic commitments                            │
-        │ (state hash + version)                          │
-        ▼                                                 ▼
- ┌────────────────────────────────────────────────────────────────┐
- │                         The Weave                              │
- │             (Anchor Chain -- HotStuff BFT Consensus)           │
- │                                                                │
- │   Commitments  |  Registrations  |  Fraud Proofs  |  Looms    │
- │                                                                │
- │   Block time: 3 sec    Target: 10,000 commitments/block        │
- └────────────────────────────────────────────────────────────────┘
-        ▲                      ▲                      ▲
-        │                      │                      │
- ┌──────┴──────┐     ┌────────┴────────┐     ┌──────┴───────┐
- │  Spindles   │     │     Looms       │     │    Relays    │
- │ (Watchtower │     │ (Off-chain Smart│     │ (P2P Message │
- │  Services)  │     │   Contracts)    │     │   Buffers)   │
- └─────────────┘     └────────────────-┘     └──────────────┘
+    A <-->|"Bilateral Knots\n(instant, free, private)"| B
+
+    A -->|"Periodic commitments\n(state hash + version)"| W
+    B -->|"Periodic commitments\n(state hash + version)"| W
+
+    subgraph W["The Weave (Anchor Chain -- HotStuff BFT Consensus)"]
+        direction LR
+        C[Commitments]
+        R[Registrations]
+        F[Fraud Proofs]
+        L2[Looms]
+        META["Block time: 3 sec | Target: 10,000 commitments/block"]
+    end
+
+    SP["Spindles\n(Watchtower Services)"] --> W
+    LM["Looms\n(Off-chain Smart Contracts)"] --> W
+    RL["Relays\n(P2P Message Buffers)"] --> W
 ```
 
 ### 4.1 Threads -- Personal State Chains
@@ -494,14 +493,15 @@ Loom contracts interact with the Norn Protocol through a set of host functions e
 
 ### 8.4 Loom Lifecycle
 
-```
- ┌──────────┐     ┌──────────┐     ┌───────────┐     ┌──────────┐     ┌──────────┐
- │  Deploy  │────►│  Entry   │────►│ Interact  │────►│  Anchor  │────►│   Exit   │
- │          │     │(Deposit) │     │ (Execute) │     │ (On-chain│     │(Withdraw)│
- └──────────┘     └──────────┘     └───────────┘     │ snapshot)│     └──────────┘
-                                        │             └──────────┘         │
-                                        │                                  │
-                                        └──────────(repeat)────────────────┘
+```mermaid
+stateDiagram-v2
+    [*] --> Deploy
+    Deploy --> Entry : Register config + upload Wasm
+    Entry --> Interact : Deposit tokens
+    Interact --> Anchor : Execute off-chain
+    Anchor --> Exit : On-chain snapshot
+    Exit --> Interact : repeat
+    Exit --> [*] : Withdraw
 ```
 
 1. **Deploy**: Operator registers Loom configuration (name, participant limits, accepted tokens) and uploads Wasm bytecode. The bytecode hash is stored on-chain.
