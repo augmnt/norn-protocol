@@ -96,4 +96,16 @@ pub enum NornMessage {
     Block(Box<WeaveBlock>),
     /// A consensus protocol message.
     Consensus(ConsensusMessage),
+    /// Request state from peers (used for initial sync).
+    StateRequest {
+        /// The requester's current block height.
+        current_height: u64,
+    },
+    /// Response with blocks for state sync.
+    StateResponse {
+        /// Blocks to apply.
+        blocks: Vec<WeaveBlock>,
+        /// The sender's tip height.
+        tip_height: u64,
+    },
 }

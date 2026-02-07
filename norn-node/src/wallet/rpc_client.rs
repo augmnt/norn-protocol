@@ -3,7 +3,9 @@ use jsonrpsee::core::client::ClientT;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use jsonrpsee::rpc_params;
 
-use crate::rpc::types::{BlockInfo, SubmitResult, TransactionHistoryEntry, WeaveStateInfo};
+use crate::rpc::types::{
+    BlockInfo, NameInfo, NameResolution, SubmitResult, TransactionHistoryEntry, WeaveStateInfo,
+};
 
 use super::error::WalletError;
 
@@ -188,6 +190,47 @@ impl RpcClient {
                 "norn_getTransactionHistory",
                 rpc_params![address, limit, offset],
             )
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Register a name for an address.
+    pub async fn register_name(
+        &self,
+        name: &str,
+        owner_hex: &str,
+        knot_hex: &str,
+    ) -> Result<SubmitResult, WalletError> {
+        let pb = Self::spinner("Registering name...");
+        let result: SubmitResult = self
+            .client
+            .request("norn_registerName", rpc_params![name, owner_hex, knot_hex])
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Resolve a name to its owner.
+    pub async fn resolve_name(&self, name: &str) -> Result<Option<NameResolution>, WalletError> {
+        let pb = Self::spinner("Resolving name...");
+        let result: Option<NameResolution> = self
+            .client
+            .request("norn_resolveName", rpc_params![name])
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// List names owned by an address.
+    pub async fn list_names(&self, address_hex: &str) -> Result<Vec<NameInfo>, WalletError> {
+        let pb = Self::spinner("Fetching names...");
+        let result: Vec<NameInfo> = self
+            .client
+            .request("norn_listNames", rpc_params![address_hex])
             .await
             .map_err(|e| Self::map_rpc_error(&e))?;
         pb.finish_and_clear();

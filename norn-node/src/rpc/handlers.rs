@@ -7,11 +7,13 @@ use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::ErrorObjectOwned;
 use jsonrpsee::PendingSubscriptionSink;
 
+use norn_types::network::NornMessage;
 use norn_weave::engine::WeaveEngine;
 
 use super::types::{
-    BlockInfo, CommitmentProofInfo, FeeEstimateInfo, HealthInfo, SubmitResult, ThreadInfo,
-    ThreadStateInfo, TransactionHistoryEntry, ValidatorInfo, ValidatorSetInfo, WeaveStateInfo,
+    BlockInfo, CommitmentProofInfo, FeeEstimateInfo, HealthInfo, NameInfo, NameResolution,
+    SubmitResult, ThreadInfo, ThreadStateInfo, TransactionHistoryEntry, ValidatorInfo,
+    ValidatorSetInfo, WeaveStateInfo,
 };
 use crate::metrics::NodeMetrics;
 use crate::state_manager::StateManager;
@@ -102,6 +104,23 @@ pub trait NornRpc {
         limit: u64,
         offset: u64,
     ) -> Result<Vec<TransactionHistoryEntry>, ErrorObjectOwned>;
+
+    /// Register a name for an address (requires signed knot for authentication).
+    #[method(name = "norn_registerName")]
+    async fn register_name(
+        &self,
+        name: String,
+        owner_hex: String,
+        knot_hex: String,
+    ) -> Result<SubmitResult, ErrorObjectOwned>;
+
+    /// Resolve a name to its owner address.
+    #[method(name = "norn_resolveName")]
+    async fn resolve_name(&self, name: String) -> Result<Option<NameResolution>, ErrorObjectOwned>;
+
+    /// List names owned by an address.
+    #[method(name = "norn_listNames")]
+    async fn list_names(&self, address_hex: String) -> Result<Vec<NameInfo>, ErrorObjectOwned>;
 }
 
 /// Implementation of the NornRpc trait.
@@ -111,6 +130,7 @@ pub struct NornRpcImpl {
     pub state_manager: Arc<RwLock<StateManager>>,
     pub metrics: Arc<NodeMetrics>,
     pub block_tx: tokio::sync::broadcast::Sender<BlockInfo>,
+    pub relay_handle: Option<norn_relay::relay::RelayHandle>,
 }
 
 /// Parse a hex string into a 20-byte address.
@@ -244,11 +264,20 @@ impl NornRpcServer for NornRpcImpl {
             })?;
 
         let mut engine = self.weave_engine.write().await;
-        match engine.add_commitment(commitment) {
-            Ok(_) => Ok(SubmitResult {
-                success: true,
-                reason: None,
-            }),
+        match engine.add_commitment(commitment.clone()) {
+            Ok(_) => {
+                if let Some(ref handle) = self.relay_handle {
+                    let h = handle.clone();
+                    let msg = NornMessage::Commitment(commitment);
+                    tokio::spawn(async move {
+                        let _ = h.broadcast(msg).await;
+                    });
+                }
+                Ok(SubmitResult {
+                    success: true,
+                    reason: None,
+                })
+            }
             Err(e) => Ok(SubmitResult {
                 success: false,
                 reason: Some(e.to_string()),
@@ -276,11 +305,20 @@ impl NornRpcServer for NornRpcImpl {
         }
 
         let mut engine = self.weave_engine.write().await;
-        match engine.add_registration(registration) {
-            Ok(_) => Ok(SubmitResult {
-                success: true,
-                reason: None,
-            }),
+        match engine.add_registration(registration.clone()) {
+            Ok(_) => {
+                if let Some(ref handle) = self.relay_handle {
+                    let h = handle.clone();
+                    let msg = NornMessage::Registration(registration);
+                    tokio::spawn(async move {
+                        let _ = h.broadcast(msg).await;
+                    });
+                }
+                Ok(SubmitResult {
+                    success: true,
+                    reason: None,
+                })
+            }
             Err(e) => Ok(SubmitResult {
                 success: false,
                 reason: Some(e.to_string()),
@@ -501,10 +539,19 @@ impl NornRpcServer for NornRpcImpl {
         sm.auto_register_if_needed(to);
 
         match sm.apply_transfer(from, to, token_id, amount, knot.id, memo, knot.timestamp) {
-            Ok(()) => Ok(SubmitResult {
-                success: true,
-                reason: None,
-            }),
+            Ok(()) => {
+                if let Some(ref handle) = self.relay_handle {
+                    let h = handle.clone();
+                    let msg = NornMessage::KnotProposal(Box::new(knot));
+                    tokio::spawn(async move {
+                        let _ = h.broadcast(msg).await;
+                    });
+                }
+                Ok(SubmitResult {
+                    success: true,
+                    reason: None,
+                })
+            }
             Err(e) => Ok(SubmitResult {
                 success: false,
                 reason: Some(e.to_string()),
@@ -641,6 +688,91 @@ impl NornRpcServer for NornRpcImpl {
             .collect();
 
         Ok(entries)
+    }
+
+    async fn register_name(
+        &self,
+        name: String,
+        owner_hex: String,
+        knot_hex: String,
+    ) -> Result<SubmitResult, ErrorObjectOwned> {
+        // Decode and verify the authentication knot.
+        let bytes = hex::decode(&knot_hex).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>)
+        })?;
+
+        let knot: norn_types::knot::Knot = borsh::from_slice(&bytes).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid knot: {}", e), None::<()>)
+        })?;
+
+        if knot.signatures.is_empty() || knot.before_states.is_empty() {
+            return Ok(SubmitResult {
+                success: false,
+                reason: Some("knot must have a signature and before_states".to_string()),
+            });
+        }
+
+        // Verify signature.
+        let sender_pubkey = knot.before_states[0].pubkey;
+        if let Err(e) = norn_crypto::keys::verify(&knot.id, &knot.signatures[0], &sender_pubkey) {
+            return Ok(SubmitResult {
+                success: false,
+                reason: Some(format!("invalid signature: {}", e)),
+            });
+        }
+
+        // Verify the signer matches the claimed owner.
+        let signer_address = norn_crypto::address::pubkey_to_address(&sender_pubkey);
+        let owner_address = parse_address_hex(&owner_hex)?;
+        if signer_address != owner_address {
+            return Ok(SubmitResult {
+                success: false,
+                reason: Some("signer address does not match owner".to_string()),
+            });
+        }
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let mut sm = self.state_manager.write().await;
+        match sm.register_name(&name, owner_address, now) {
+            Ok(()) => Ok(SubmitResult {
+                success: true,
+                reason: Some(format!("name '{}' registered", name)),
+            }),
+            Err(e) => Ok(SubmitResult {
+                success: false,
+                reason: Some(e.to_string()),
+            }),
+        }
+    }
+
+    async fn resolve_name(&self, name: String) -> Result<Option<NameResolution>, ErrorObjectOwned> {
+        let sm = self.state_manager.read().await;
+        Ok(sm.resolve_name(&name).map(|record| NameResolution {
+            name: name.clone(),
+            owner: format_address(&record.owner),
+            registered_at: record.registered_at,
+            fee_paid: record.fee_paid.to_string(),
+        }))
+    }
+
+    async fn list_names(&self, address_hex: String) -> Result<Vec<NameInfo>, ErrorObjectOwned> {
+        let address = parse_address_hex(&address_hex)?;
+        let sm = self.state_manager.read().await;
+        let names = sm.names_for_address(&address);
+        let infos = names
+            .into_iter()
+            .filter_map(|name| {
+                sm.resolve_name(name).map(|record| NameInfo {
+                    name: name.to_string(),
+                    registered_at: record.registered_at,
+                })
+            })
+            .collect();
+        Ok(infos)
     }
 }
 

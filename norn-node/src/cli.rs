@@ -60,6 +60,7 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
                 cfg.rpc.enabled = true;
                 cfg.rpc.listen_addr = "127.0.0.1:9741".to_string();
                 cfg.storage.db_type = "memory".to_string();
+                cfg.network.listen_addr = "0.0.0.0:9740".to_string();
                 // No keypair_seed — will auto-generate.
                 cfg
             } else {

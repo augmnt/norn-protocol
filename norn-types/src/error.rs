@@ -99,6 +99,13 @@ pub enum NornError {
     #[error("not a loom participant")]
     NotLoomParticipant,
 
+    // ─── Name Registry Errors ─────────────────────────────────────────────────
+    #[error("name already registered: {0}")]
+    NameAlreadyRegistered(String),
+
+    #[error("invalid name: {0}")]
+    InvalidName(String),
+
     // ─── Serialization Errors ────────────────────────────────────────────────
     #[error("serialization error: {reason}")]
     SerializationError { reason: String },

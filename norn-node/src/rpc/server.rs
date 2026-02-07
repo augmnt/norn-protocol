@@ -3,6 +3,7 @@ use tokio::sync::RwLock;
 
 use jsonrpsee::server::{ServerBuilder, ServerHandle};
 
+use norn_relay::relay::RelayHandle;
 use norn_weave::engine::WeaveEngine;
 
 use super::handlers::{NornRpcImpl, NornRpcServer};
@@ -17,6 +18,7 @@ pub async fn start_rpc_server(
     weave_engine: Arc<RwLock<WeaveEngine>>,
     state_manager: Arc<RwLock<StateManager>>,
     metrics: Arc<NodeMetrics>,
+    relay_handle: Option<RelayHandle>,
 ) -> Result<(ServerHandle, tokio::sync::broadcast::Sender<BlockInfo>), NodeError> {
     let server = ServerBuilder::default()
         .build(addr)
@@ -32,6 +34,7 @@ pub async fn start_rpc_server(
         state_manager,
         metrics,
         block_tx: block_tx.clone(),
+        relay_handle,
     };
 
     let handle = server.start(rpc_impl.into_rpc());

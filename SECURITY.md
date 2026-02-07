@@ -6,7 +6,7 @@ If you discover a security vulnerability in the Norn Protocol, please report it 
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 
-Instead, please email security concerns to: **security@norn.dev**
+Instead, please email security concerns to: **security@norn.to**
 
 ### What to include
 

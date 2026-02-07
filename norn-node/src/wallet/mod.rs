@@ -60,5 +60,8 @@ pub async fn run(command: WalletCommand) -> Result<(), WalletError> {
         WalletCommand::Config { rpc_url, json } => {
             commands::config_cmd::run(rpc_url.as_deref(), json)
         }
+        WalletCommand::RegisterName { name, yes } => commands::register_name::run(&name, yes).await,
+        WalletCommand::Resolve { name, json } => commands::resolve::run(&name, json).await,
+        WalletCommand::Names { json } => commands::names::run(json).await,
     }
 }

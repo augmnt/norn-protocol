@@ -5,7 +5,7 @@ use libp2p::swarm::SwarmEvent;
 use libp2p::{Multiaddr, PeerId, Swarm, SwarmBuilder};
 use norn_types::network::NornMessage;
 use norn_types::primitives::Address;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, info, warn};
 
 use crate::behaviour::{build_behaviour, NornBehaviour, NornBehaviourEvent};
@@ -17,6 +17,24 @@ use crate::peer_manager::PeerManager;
 use crate::protocol::{BLOCKS_TOPIC, COMMITMENTS_TOPIC, FRAUD_PROOFS_TOPIC, GENERAL_TOPIC};
 use crate::spindle_registry::SpindleRegistry;
 
+/// A cloneable handle for sending messages through the relay after `run()` is spawned.
+#[derive(Clone)]
+pub struct RelayHandle {
+    outbound_tx: mpsc::Sender<NornMessage>,
+}
+
+impl RelayHandle {
+    /// Broadcast a message through the relay's gossipsub network.
+    pub async fn broadcast(&self, msg: NornMessage) -> Result<(), RelayError> {
+        self.outbound_tx
+            .send(msg)
+            .await
+            .map_err(|_| RelayError::ChannelError {
+                reason: "relay outbound channel closed".to_string(),
+            })
+    }
+}
+
 /// The main relay node that handles networking.
 pub struct RelayNode {
     config: RelayConfig,
@@ -25,6 +43,8 @@ pub struct RelayNode {
     _spindle_registry: SpindleRegistry,
     _discovery: Discovery,
     message_tx: broadcast::Sender<NornMessage>,
+    outbound_tx: mpsc::Sender<NornMessage>,
+    outbound_rx: Option<mpsc::Receiver<NornMessage>>,
 }
 
 impl RelayNode {
@@ -108,6 +128,7 @@ impl RelayNode {
         let peer_manager = PeerManager::new(config.max_connections);
         let spindle_registry = SpindleRegistry::new();
         let (message_tx, _) = broadcast::channel(1024);
+        let (outbound_tx, outbound_rx) = mpsc::channel(256);
 
         info!(
             peer_id = %swarm.local_peer_id(),
@@ -122,6 +143,8 @@ impl RelayNode {
             _spindle_registry: spindle_registry,
             _discovery: discovery,
             message_tx,
+            outbound_tx,
+            outbound_rx: Some(outbound_rx),
         })
     }
 
@@ -133,6 +156,14 @@ impl RelayNode {
     /// Subscribe to receive messages from the network.
     pub fn subscribe(&self) -> broadcast::Receiver<NornMessage> {
         self.message_tx.subscribe()
+    }
+
+    /// Get a cloneable handle for sending outbound messages through the relay.
+    /// Call this before spawning `run()`.
+    pub fn handle(&self) -> RelayHandle {
+        RelayHandle {
+            outbound_tx: self.outbound_tx.clone(),
+        }
     }
 
     /// Send a direct message to a specific Norn address.
@@ -196,41 +227,69 @@ impl RelayNode {
         Ok(())
     }
 
-    /// Main event loop. Processes swarm events.
+    /// Main event loop. Processes swarm events and outbound messages.
     pub async fn run(&mut self) -> Result<(), RelayError> {
+        let mut outbound_rx = self
+            .outbound_rx
+            .take()
+            .ok_or_else(|| RelayError::ChannelError {
+                reason: "outbound channel already consumed (run called twice?)".to_string(),
+            })?;
+
         loop {
-            let event = self.swarm.next().await;
-            match event {
-                Some(SwarmEvent::Behaviour(event)) => {
-                    self.handle_behaviour_event(event);
-                }
-                Some(SwarmEvent::ConnectionEstablished {
-                    peer_id, endpoint, ..
-                }) => {
-                    debug!(%peer_id, ?endpoint, "connection established");
-                    if !self.peer_manager.add_peer(peer_id) {
-                        warn!(
-                            %peer_id,
-                            max = self.config.max_connections,
-                            "peer limit reached, disconnecting peer"
-                        );
-                        let _ = self.swarm.disconnect_peer_id(peer_id);
+            tokio::select! {
+                event = self.swarm.next() => {
+                    match event {
+                        Some(SwarmEvent::Behaviour(event)) => {
+                            self.handle_behaviour_event(event);
+                        }
+                        Some(SwarmEvent::ConnectionEstablished {
+                            peer_id, endpoint, ..
+                        }) => {
+                            debug!(%peer_id, ?endpoint, "connection established");
+                            if !self.peer_manager.add_peer(peer_id) {
+                                warn!(
+                                    %peer_id,
+                                    max = self.config.max_connections,
+                                    "peer limit reached, disconnecting peer"
+                                );
+                                let _ = self.swarm.disconnect_peer_id(peer_id);
+                            }
+                        }
+                        Some(SwarmEvent::ConnectionClosed { peer_id, cause, .. }) => {
+                            debug!(%peer_id, ?cause, "connection closed");
+                            self.peer_manager.remove_peer(&peer_id);
+                        }
+                        Some(SwarmEvent::NewListenAddr { address, .. }) => {
+                            info!(%address, "listening on new address");
+                        }
+                        Some(other) => {
+                            debug!(?other, "other swarm event");
+                        }
+                        None => {
+                            return Err(RelayError::NetworkError {
+                                reason: "swarm stream ended".to_string(),
+                            });
+                        }
                     }
                 }
-                Some(SwarmEvent::ConnectionClosed { peer_id, cause, .. }) => {
-                    debug!(%peer_id, ?cause, "connection closed");
-                    self.peer_manager.remove_peer(&peer_id);
-                }
-                Some(SwarmEvent::NewListenAddr { address, .. }) => {
-                    info!(%address, "listening on new address");
-                }
-                Some(other) => {
-                    debug!(?other, "other swarm event");
-                }
-                None => {
-                    return Err(RelayError::NetworkError {
-                        reason: "swarm stream ended".to_string(),
-                    });
+                Some(msg) = outbound_rx.recv() => {
+                    let topic_name = topic_for_message(&msg);
+                    match codec::encode_message(&msg) {
+                        Ok(data) => {
+                            let topic = IdentTopic::new(topic_name);
+                            if let Err(e) = self.swarm
+                                .behaviour_mut()
+                                .gossipsub
+                                .publish(topic, data)
+                            {
+                                debug!("outbound publish failed: {}", e);
+                            }
+                        }
+                        Err(e) => {
+                            warn!("failed to encode outbound message: {}", e);
+                        }
+                    }
                 }
             }
         }

@@ -4,7 +4,7 @@ use tokio::sync::RwLock;
 use norn_crypto::address::pubkey_to_address;
 use norn_crypto::keys::Keypair;
 use norn_relay::config::RelayConfig;
-use norn_relay::relay::RelayNode;
+use norn_relay::relay::{RelayHandle, RelayNode};
 use norn_storage::memory::MemoryStore;
 use norn_storage::weave_store::WeaveStore;
 use norn_types::constants::BLOCK_TIME_TARGET;
@@ -29,6 +29,7 @@ pub struct Node {
     weave_store: WeaveStore<MemoryStore>,
     relay: Option<RelayNode>,
     relay_rx: Option<tokio::sync::broadcast::Receiver<NornMessage>>,
+    relay_handle: Option<RelayHandle>,
 }
 
 impl Node {
@@ -110,25 +111,11 @@ impl Node {
         let metrics = Arc::new(NodeMetrics::new());
         let state_manager = Arc::new(RwLock::new(StateManager::new()));
 
-        // Start the RPC server if enabled.
-        let (rpc_handle, block_tx) = if config.rpc.enabled {
-            let (handle, tx) = crate::rpc::server::start_rpc_server(
-                &config.rpc.listen_addr,
-                weave_engine.clone(),
-                state_manager.clone(),
-                metrics.clone(),
-            )
-            .await?;
-            (Some(handle), Some(tx))
-        } else {
-            (None, None)
-        };
-
         // Initialize persistent storage.
         let weave_store = WeaveStore::new(MemoryStore::new());
 
-        // Initialize the relay if networking is configured.
-        let (relay, relay_rx) =
+        // Initialize the relay if networking is configured (before RPC, so handle is available).
+        let (relay, relay_rx, relay_handle) =
             if !config.network.boot_nodes.is_empty() || config.network.listen_addr != "0.0.0.0:0" {
                 let listen_addr = config
                     .network
@@ -150,16 +137,32 @@ impl Node {
                 match RelayNode::new(relay_config).await {
                     Ok(relay_node) => {
                         let rx = relay_node.subscribe();
-                        (Some(relay_node), Some(rx))
+                        let handle = relay_node.handle();
+                        (Some(relay_node), Some(rx), Some(handle))
                     }
                     Err(e) => {
                         tracing::warn!("Failed to initialize relay: {}", e);
-                        (None, None)
+                        (None, None, None)
                     }
                 }
             } else {
-                (None, None)
+                (None, None, None)
             };
+
+        // Start the RPC server if enabled.
+        let (rpc_handle, block_tx) = if config.rpc.enabled {
+            let (handle, tx) = crate::rpc::server::start_rpc_server(
+                &config.rpc.listen_addr,
+                weave_engine.clone(),
+                state_manager.clone(),
+                metrics.clone(),
+                relay_handle.clone(),
+            )
+            .await?;
+            (Some(handle), Some(tx))
+        } else {
+            (None, None)
+        };
 
         tracing::info!(
             listen = %config.network.listen_addr,
@@ -179,7 +182,74 @@ impl Node {
             weave_store,
             relay,
             relay_rx,
+            relay_handle,
         })
+    }
+
+    /// Attempt state sync with peers on startup.
+    async fn sync_state(&mut self) {
+        let handle = match self.relay_handle {
+            Some(ref h) => h.clone(),
+            None => return,
+        };
+
+        tracing::info!("Requesting state sync from peers...");
+
+        let request = NornMessage::StateRequest { current_height: 0 };
+        if handle.broadcast(request).await.is_err() {
+            tracing::debug!("Failed to send state sync request");
+            return;
+        }
+
+        // Listen for a StateResponse with a timeout.
+        if let Some(ref mut rx) = self.relay_rx {
+            let timeout = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                loop {
+                    match rx.recv().await {
+                        Ok(NornMessage::StateResponse { blocks, tip_height }) => {
+                            return Some((blocks, tip_height));
+                        }
+                        Ok(_) => continue, // ignore other messages during sync
+                        Err(_) => return None,
+                    }
+                }
+            })
+            .await;
+
+            match timeout {
+                Ok(Some((blocks, tip_height))) => {
+                    let count = blocks.len();
+                    for block in blocks {
+                        {
+                            let mut sm = self.state_manager.write().await;
+                            for reg in &block.registrations {
+                                sm.register_thread(reg.thread_id, reg.owner);
+                            }
+                            for commit in &block.commitments {
+                                sm.record_commitment(
+                                    commit.thread_id,
+                                    commit.version,
+                                    commit.state_hash,
+                                    commit.prev_commitment_hash,
+                                    commit.knot_count,
+                                );
+                            }
+                            sm.archive_block(block.clone());
+                        }
+                        let mut engine = self.weave_engine.write().await;
+                        engine.set_timestamp(current_timestamp());
+                        let _ = engine.on_network_message(NornMessage::Block(Box::new(block)));
+                    }
+                    tracing::info!(synced_blocks = count, tip_height, "state sync complete");
+                }
+                Ok(None) => {
+                    tracing::info!("State sync: no response from peers (channel closed)");
+                }
+                Err(_) => {
+                    tracing::info!("State sync: timed out waiting for response (starting fresh)");
+                }
+            }
+        }
     }
 
     /// Run the main node event loop.
@@ -196,15 +266,126 @@ impl Node {
             })
         });
 
+        // Attempt state sync with peers before starting the main loop.
+        self.sync_state().await;
+
         tracing::info!("Node is running. Press Ctrl+C to stop.");
 
         loop {
             // Check for incoming relay messages (non-blocking).
             if let Some(ref mut rx) = self.relay_rx {
                 while let Ok(msg) = rx.try_recv() {
-                    let mut engine = self.weave_engine.write().await;
-                    engine.set_timestamp(current_timestamp());
-                    let _responses = engine.on_network_message(msg);
+                    match msg {
+                        NornMessage::KnotProposal(knot) => {
+                            // Validate and apply incoming knot from the network.
+                            if let norn_types::knot::KnotPayload::Transfer(ref transfer) =
+                                knot.payload
+                            {
+                                if !knot.signatures.is_empty() && !knot.before_states.is_empty() {
+                                    let sender_pubkey = knot.before_states[0].pubkey;
+                                    if norn_crypto::keys::verify(
+                                        &knot.id,
+                                        &knot.signatures[0],
+                                        &sender_pubkey,
+                                    )
+                                    .is_ok()
+                                    {
+                                        let mut sm = self.state_manager.write().await;
+                                        sm.auto_register_if_needed(transfer.to);
+                                        let _ = sm.apply_transfer(
+                                            transfer.from,
+                                            transfer.to,
+                                            transfer.token_id,
+                                            transfer.amount,
+                                            knot.id,
+                                            transfer.memo.clone(),
+                                            knot.timestamp,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        NornMessage::Block(block) => {
+                            // Apply block contents to StateManager.
+                            {
+                                let mut sm = self.state_manager.write().await;
+                                for reg in &block.registrations {
+                                    sm.register_thread(reg.thread_id, reg.owner);
+                                }
+                                for commit in &block.commitments {
+                                    sm.record_commitment(
+                                        commit.thread_id,
+                                        commit.version,
+                                        commit.state_hash,
+                                        commit.prev_commitment_hash,
+                                        commit.knot_count,
+                                    );
+                                }
+                                sm.archive_block(*block.clone());
+                            }
+                            // Forward to WeaveEngine.
+                            let mut engine = self.weave_engine.write().await;
+                            engine.set_timestamp(current_timestamp());
+                            let _responses = engine.on_network_message(NornMessage::Block(block));
+                        }
+                        NornMessage::StateRequest { current_height } => {
+                            // Respond with blocks the requester is missing.
+                            if let Some(ref handle) = self.relay_handle {
+                                let sm = self.state_manager.read().await;
+                                let mut blocks = Vec::new();
+                                let tip = sm.latest_block_height();
+                                for h in (current_height + 1)..=tip {
+                                    if let Some(b) = sm.get_block(h) {
+                                        blocks.push(b.clone());
+                                        if blocks.len() >= 100 {
+                                            break;
+                                        }
+                                    }
+                                }
+                                if !blocks.is_empty() {
+                                    let h = handle.clone();
+                                    let resp = NornMessage::StateResponse {
+                                        blocks,
+                                        tip_height: tip,
+                                    };
+                                    tokio::spawn(async move {
+                                        let _ = h.broadcast(resp).await;
+                                    });
+                                }
+                            }
+                        }
+                        NornMessage::StateResponse { blocks, .. } => {
+                            // Apply synced blocks.
+                            for block in blocks {
+                                {
+                                    let mut sm = self.state_manager.write().await;
+                                    for reg in &block.registrations {
+                                        sm.register_thread(reg.thread_id, reg.owner);
+                                    }
+                                    for commit in &block.commitments {
+                                        sm.record_commitment(
+                                            commit.thread_id,
+                                            commit.version,
+                                            commit.state_hash,
+                                            commit.prev_commitment_hash,
+                                            commit.knot_count,
+                                        );
+                                    }
+                                    sm.archive_block(block.clone());
+                                }
+                                let mut engine = self.weave_engine.write().await;
+                                engine.set_timestamp(current_timestamp());
+                                let _ =
+                                    engine.on_network_message(NornMessage::Block(Box::new(block)));
+                            }
+                        }
+                        other => {
+                            // Forward all other messages to WeaveEngine.
+                            let mut engine = self.weave_engine.write().await;
+                            engine.set_timestamp(current_timestamp());
+                            let _responses = engine.on_network_message(other);
+                        }
+                    }
                 }
             }
 
@@ -246,6 +427,16 @@ impl Node {
                                         );
                                     }
                                     sm.archive_block(block.clone());
+                                }
+
+                                // Broadcast block to P2P network.
+                                if let Some(ref handle) = self.relay_handle {
+                                    let h = handle.clone();
+                                    let block_msg =
+                                        NornMessage::Block(Box::new(block.clone()));
+                                    tokio::spawn(async move {
+                                        let _ = h.broadcast(block_msg).await;
+                                    });
                                 }
 
                                 // Notify WebSocket subscribers.

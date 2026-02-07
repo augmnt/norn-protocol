@@ -21,7 +21,6 @@ pub async fn run(
     let wallet_name = config.active_wallet_name()?;
     let ks = Keystore::load(wallet_name)?;
 
-    let to_addr = parse_address(to)?;
     let amount = parse_amount(amount_str)?;
     let token_id = match token {
         Some(t) => parse_token_id(t)?,
@@ -35,6 +34,21 @@ pub async fn run(
     }
 
     let rpc = RpcClient::new(&config.rpc_url)?;
+
+    // Resolve `to` — try as address first, otherwise resolve as a name.
+    let to_addr = if to.starts_with("0x") || (to.len() == 40 && hex::decode(to).is_ok()) {
+        parse_address(to)?
+    } else {
+        match rpc.resolve_name(to).await? {
+            Some(resolution) => parse_address(&resolution.owner)?,
+            None => {
+                return Err(WalletError::InvalidAddress(format!(
+                    "name '{}' not registered",
+                    to
+                )));
+            }
+        }
+    };
 
     // Pre-check sender balance.
     let addr_hex = hex::encode(ks.address);

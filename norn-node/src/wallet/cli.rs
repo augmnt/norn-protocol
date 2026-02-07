@@ -156,4 +156,28 @@ pub enum WalletCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Register a name for the active wallet (costs 1 NORN)
+    RegisterName {
+        /// Name to register (lowercase alphanumeric + hyphens, 3-32 chars)
+        #[arg(long)]
+        name: String,
+        /// Skip confirmation prompt
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Resolve a name to its owner address
+    Resolve {
+        /// Name to resolve
+        #[arg(long)]
+        name: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// List names owned by the active wallet
+    Names {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }

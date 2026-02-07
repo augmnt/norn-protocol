@@ -174,6 +174,28 @@ pub struct TransactionHistoryEntry {
     pub direction: String,
 }
 
+/// Result of resolving a name.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NameResolution {
+    /// The registered name.
+    pub name: String,
+    /// Owner address as hex string.
+    pub owner: String,
+    /// Timestamp when the name was registered.
+    pub registered_at: u64,
+    /// Fee paid for registration as string.
+    pub fee_paid: String,
+}
+
+/// Information about a name owned by an address.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NameInfo {
+    /// The registered name.
+    pub name: String,
+    /// Timestamp when the name was registered.
+    pub registered_at: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
