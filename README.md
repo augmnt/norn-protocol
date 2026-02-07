@@ -3,7 +3,7 @@
 [![CI](https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml/badge.svg)](https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org/)
-[![Version](https://img.shields.io/badge/version-0.4.1-green.svg)](https://github.com/augmnt/norn-protocol/releases/tag/v0.4.1)
+[![Version](https://img.shields.io/badge/version-0.5.0-green.svg)](https://github.com/augmnt/norn-protocol/releases/tag/v0.5.0)
 
 **Your thread. Your fate. The chain just watches.**
 
