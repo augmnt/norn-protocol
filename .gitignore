@@ -3,3 +3,4 @@
 *.pdb
 *.pdf
 .DS_Store
+norn-data/
