@@ -14,7 +14,7 @@ pub fn run(json: bool) -> Result<(), WalletError> {
             println!("  No wallets found.");
             println!(
                 "  {}",
-                style_dim().apply_to("Create one with: norn-node wallet create --name <NAME>")
+                style_dim().apply_to("Create one with: norn wallet create --name <NAME>")
             );
         }
         return Ok(());

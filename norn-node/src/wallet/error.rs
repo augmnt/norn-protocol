@@ -4,7 +4,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 #[allow(dead_code)] // Variants constructed across wallet subcommands; clippy can't see cross-module usage
 pub enum WalletError {
-    #[error("no active wallet set — run `norn-node wallet use <name>` to select one")]
+    #[error("no active wallet set — run `norn wallet use <name>` to select one")]
     NoActiveWallet,
 
     #[error("wallet '{0}' not found")]

@@ -69,7 +69,7 @@ pub async fn run(
             "  {}",
             console::Style::new()
                 .dim()
-                .apply_to("Hint: Use `norn-node wallet faucet` to get testnet tokens")
+                .apply_to("Hint: Use `norn wallet faucet` to get testnet tokens")
         );
     }
     println!();

@@ -71,7 +71,7 @@ pub async fn run(name: Option<&str>, rpc_url: Option<&str>) -> Result<(), Wallet
                 "Registration failed: {}",
                 result.reason.unwrap_or_else(|| "unknown".to_string())
             ),
-            Some("Your thread may already be registered. Check with `norn-node wallet status`."),
+            Some("Your thread may already be registered. Check with `norn wallet status`."),
         );
     }
     println!();

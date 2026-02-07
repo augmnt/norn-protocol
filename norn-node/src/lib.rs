@@ -1,7 +1,7 @@
 //! Full node binary for the Norn Protocol.
 //!
 //! Provides the CLI interface, JSON-RPC server (jsonrpsee), wallet management
-//! (20 subcommands with encrypted keystore), Prometheus metrics, node
+//! (24 subcommands with encrypted keystore), Prometheus metrics, node
 //! configuration, and genesis state handling.
 
 pub mod banner;

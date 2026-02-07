@@ -56,7 +56,7 @@ pub async fn run(name: Option<&str>, json: bool, rpc_url: Option<&str>) -> Resul
             println!("  Status:  {}", style_warn().apply_to("Not registered"));
             println!(
                 "  {}",
-                style_dim().apply_to("Run `norn-node wallet register` to register your thread.")
+                style_dim().apply_to("Run `norn wallet register` to register your thread.")
             );
         }
     }

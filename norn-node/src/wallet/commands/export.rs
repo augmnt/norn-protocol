@@ -20,7 +20,7 @@ pub fn run(
     if !show_mnemonic && !show_private_key {
         print_error(
             "specify --show-mnemonic or --show-private-key",
-            Some("norn-node wallet export --name <NAME> --show-mnemonic"),
+            Some("norn wallet export --name <NAME> --show-mnemonic"),
         );
         return Ok(());
     }

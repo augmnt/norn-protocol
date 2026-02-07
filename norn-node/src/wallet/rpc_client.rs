@@ -4,7 +4,8 @@ use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use jsonrpsee::rpc_params;
 
 use crate::rpc::types::{
-    BlockInfo, NameInfo, NameResolution, SubmitResult, TransactionHistoryEntry, WeaveStateInfo,
+    BlockInfo, FeeEstimateInfo, HealthInfo, NameInfo, NameResolution, SubmitResult,
+    TransactionHistoryEntry, ValidatorSetInfo, WeaveStateInfo,
 };
 
 use super::error::WalletError;
@@ -42,8 +43,7 @@ impl RpcClient {
         let msg = e.to_string();
         if msg.contains("connection") || msg.contains("Connection") || msg.contains("refused") {
             WalletError::RpcError(
-                "Could not connect to node.\nHint: Start a node with `norn-node run --dev`"
-                    .to_string(),
+                "Could not connect to node.\nHint: Start a node with `norn run --dev`".to_string(),
             )
         } else {
             WalletError::RpcError(msg)
@@ -231,6 +231,42 @@ impl RpcClient {
         let result: Vec<NameInfo> = self
             .client
             .request("norn_listNames", rpc_params![address_hex])
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Get node health info.
+    pub async fn health(&self) -> Result<HealthInfo, WalletError> {
+        let pb = Self::spinner("Checking node health...");
+        let result: HealthInfo = self
+            .client
+            .request("norn_health", rpc_params![])
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Get the current validator set.
+    pub async fn get_validator_set(&self) -> Result<ValidatorSetInfo, WalletError> {
+        let pb = Self::spinner("Fetching validator set...");
+        let result: ValidatorSetInfo = self
+            .client
+            .request("norn_getValidatorSet", rpc_params![])
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Get fee estimate.
+    pub async fn get_fee_estimate(&self) -> Result<FeeEstimateInfo, WalletError> {
+        let pb = Self::spinner("Fetching fee estimate...");
+        let result: FeeEstimateInfo = self
+            .client
+            .request("norn_getFeeEstimate", rpc_params![])
             .await
             .map_err(|e| Self::map_rpc_error(&e))?;
         pb.finish_and_clear();

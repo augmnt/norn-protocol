@@ -83,6 +83,7 @@ pub enum WalletCommand {
         rpc_url: Option<String>,
     },
     /// Transfer tokens to another address
+    #[command(alias = "send")]
     Transfer {
         /// Recipient address
         #[arg(long)]
@@ -212,6 +213,42 @@ pub enum WalletCommand {
     },
     /// List names owned by the active wallet
     Names {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
+    /// Check node connectivity and chain info
+    NodeInfo {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
+    /// Check current transaction fees
+    Fees {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
+    /// View the validator set
+    Validators {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
+    /// Dashboard for the active wallet
+    Whoami {
         /// Output as JSON
         #[arg(long)]
         json: bool,

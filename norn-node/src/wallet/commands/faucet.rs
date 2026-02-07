@@ -22,7 +22,7 @@ pub async fn run(address: Option<&str>, rpc_url: Option<&str>) -> Result<(), Wal
     let result = rpc.faucet(&hex::encode(addr)).await?;
 
     if result.success {
-        print_success("Tokens sent! Check your balance with `norn-node wallet balance`.");
+        print_success("Tokens sent! Check your balance with `norn wallet balance`.");
     } else {
         print_error(
             &format!(

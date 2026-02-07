@@ -111,5 +111,17 @@ pub async fn run(command: WalletCommand) -> Result<(), WalletError> {
         WalletCommand::Names { json, rpc_url } => {
             commands::names::run(json, rpc_url.as_deref()).await
         }
+        WalletCommand::NodeInfo { json, rpc_url } => {
+            commands::node_info::run(json, rpc_url.as_deref()).await
+        }
+        WalletCommand::Fees { json, rpc_url } => {
+            commands::fees::run(json, rpc_url.as_deref()).await
+        }
+        WalletCommand::Validators { json, rpc_url } => {
+            commands::validators::run(json, rpc_url.as_deref()).await
+        }
+        WalletCommand::Whoami { json, rpc_url } => {
+            commands::whoami::run(json, rpc_url.as_deref()).await
+        }
     }
 }

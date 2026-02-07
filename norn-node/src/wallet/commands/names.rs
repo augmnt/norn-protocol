@@ -29,7 +29,7 @@ pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
         if names.is_empty() {
             println!(
                 "  {}",
-                style_dim().apply_to("No names registered. Use `norn-node wallet register-name --name <name>` to register one.")
+                style_dim().apply_to("No names registered. Use `norn wallet register-name --name <name>` to register one.")
             );
         } else {
             for name_info in &names {

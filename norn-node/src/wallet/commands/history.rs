@@ -33,7 +33,7 @@ pub async fn run(limit: usize, json: bool, rpc_url: Option<&str>) -> Result<(), 
         );
         println!(
             "  {}",
-            style_dim().apply_to("Use `norn-node wallet faucet` to get testnet tokens.")
+            style_dim().apply_to("Use `norn wallet faucet` to get testnet tokens.")
         );
         println!();
         return Ok(());
