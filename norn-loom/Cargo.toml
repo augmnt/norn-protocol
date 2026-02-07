@@ -7,15 +7,15 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-norn-types = { path = "../norn-types", version = "0.4.0" }
-norn-crypto = { path = "../norn-crypto", version = "0.4.0" }
-norn-storage = { path = "../norn-storage", version = "0.4.0" }
+norn-types = { path = "../norn-types", version = "0.4.1" }
+norn-crypto = { path = "../norn-crypto", version = "0.4.1" }
+norn-storage = { path = "../norn-storage", version = "0.4.1" }
 borsh = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-wasmtime = "41"
+wasmtime = { version = "41", default-features = false, features = ["cranelift", "runtime"] }
 
 [dev-dependencies]
 proptest = "1"
