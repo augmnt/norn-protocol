@@ -3187,6 +3187,9 @@ dependencies = [
  "dialoguer",
  "dirs",
  "hex",
+ "http 1.4.0",
+ "http-body-util",
+ "hyper 1.8.1",
  "indicatif",
  "jsonrpsee",
  "norn-crypto",
@@ -3205,6 +3208,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "toml",
+ "tower",
  "tracing",
  "tracing-subscriber",
 ]

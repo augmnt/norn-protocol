@@ -119,7 +119,7 @@ norn run --network mainnet --genesis genesis/mainnet.json
 | `norn-weave` | Anchor chain (block production, commitment processing, HotStuff consensus, dynamic fees, fraud proof verification, staking) |
 | `norn-loom` | Smart contract runtime (Wasm runtime, host functions, gas metering, Loom lifecycle, dispute resolution) |
 | `norn-spindle` | Watchtower service (Weave monitoring, fraud proof construction, rate limiting, service orchestration) |
-| `norn-node` | Full node binary (CLI, node configuration, genesis handling, JSON-RPC server, wallet CLI, NornNames, metrics) |
+| `norn-node` | Full node binary (CLI, node configuration, genesis handling, JSON-RPC server with API key auth, wallet CLI, NornNames, Prometheus metrics endpoint, fraud proof submission, spindle watchtower integration) |
 
 ## Getting Started
 

@@ -48,8 +48,9 @@ listen_addr = "127.0.0.1:9741"
 # Maximum concurrent RPC connections.
 max_connections = 100
 
-# Optional API key for mutation methods. Clients must send
-# "Authorization: Bearer <key>" to call write endpoints.
+# Optional API key for RPC authentication. When set, ALL RPC calls require
+# the "Authorization: Bearer <key>" HTTP header. Without a valid key, the
+# server returns HTTP 401 Unauthorized. Leave commented out for open access.
 # api_key = "your-secret-key"
 
 [logging]

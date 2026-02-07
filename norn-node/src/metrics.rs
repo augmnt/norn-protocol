@@ -3,9 +3,9 @@ use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
 
 /// Node-wide Prometheus metrics.
-#[allow(dead_code)]
 pub struct NodeMetrics {
     pub weave_height: Gauge,
+    #[allow(dead_code)] // Registered in Prometheus; updated when relay exposes peer count API
     pub peer_count: Gauge,
     pub mempool_size: Gauge,
     pub blocks_produced: Counter,
@@ -69,7 +69,6 @@ impl NodeMetrics {
     }
 
     /// Encode all metrics in Prometheus text exposition format.
-    #[allow(dead_code)]
     pub fn encode(&self) -> String {
         let mut buf = String::new();
         prometheus_client::encoding::text::encode(&mut buf, &self.registry)

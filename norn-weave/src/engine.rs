@@ -235,6 +235,20 @@ impl WeaveEngine {
         self.weave_state.height = weave_block.height;
         self.weave_state.latest_hash = weave_block.hash;
 
+        // Accumulate fees and update dynamic fee state based on block utilization.
+        let commitment_count = weave_block.commitments.len() as u64;
+        let total_fee = crate::fees::compute_fee(&self.weave_state.fee_state, commitment_count);
+        self.weave_state.fee_state.epoch_fees = self
+            .weave_state
+            .fee_state
+            .epoch_fees
+            .saturating_add(total_fee);
+        crate::fees::update_fee_state(
+            &mut self.weave_state.fee_state,
+            commitment_count,
+            MAX_COMMITMENTS_PER_BLOCK as u64,
+        );
+
         self.last_block = Some(weave_block.clone());
         Some(weave_block)
     }

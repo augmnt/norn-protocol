@@ -121,10 +121,21 @@ pub trait NornRpc {
     /// List names owned by an address.
     #[method(name = "norn_listNames")]
     async fn list_names(&self, address_hex: String) -> Result<Vec<NameInfo>, ErrorObjectOwned>;
+
+    /// Get node metrics in Prometheus text exposition format.
+    #[method(name = "norn_getMetrics")]
+    async fn get_metrics(&self) -> Result<String, ErrorObjectOwned>;
+
+    /// Submit a fraud proof (hex-encoded borsh bytes).
+    #[method(name = "norn_submitFraudProof")]
+    async fn submit_fraud_proof(
+        &self,
+        fraud_proof_hex: String,
+    ) -> Result<SubmitResult, ErrorObjectOwned>;
 }
 
 /// Implementation of the NornRpc trait.
-#[allow(dead_code)]
+#[allow(dead_code)] // Required: jsonrpsee accesses fields via trait impl
 pub struct NornRpcImpl {
     pub weave_engine: Arc<RwLock<WeaveEngine>>,
     pub state_manager: Arc<RwLock<StateManager>>,
@@ -591,6 +602,7 @@ impl NornRpcServer for NornRpcImpl {
 
         match sm.apply_transfer(from, to, token_id, amount, knot.id, memo, knot.timestamp) {
             Ok(()) => {
+                self.metrics.knots_validated.inc();
                 if let Some(ref handle) = self.relay_handle {
                     let h = handle.clone();
                     let msg = NornMessage::KnotProposal(Box::new(knot));
@@ -827,6 +839,52 @@ impl NornRpcServer for NornRpcImpl {
             })
             .collect();
         Ok(infos)
+    }
+
+    async fn get_metrics(&self) -> Result<String, ErrorObjectOwned> {
+        Ok(self.metrics.encode())
+    }
+
+    async fn submit_fraud_proof(
+        &self,
+        fraud_proof_hex: String,
+    ) -> Result<SubmitResult, ErrorObjectOwned> {
+        let bytes = hex::decode(&fraud_proof_hex).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>)
+        })?;
+
+        let submission: norn_types::fraud::FraudProofSubmission = borsh::from_slice(&bytes)
+            .map_err(|e| {
+                ErrorObjectOwned::owned(-32602, format!("invalid fraud proof: {}", e), None::<()>)
+            })?;
+
+        let mut engine = self.weave_engine.write().await;
+        let responses =
+            engine.on_network_message(NornMessage::FraudProof(Box::new(submission.clone())));
+        drop(engine);
+
+        // Broadcast via relay if accepted.
+        if let Some(ref handle) = self.relay_handle {
+            let h = handle.clone();
+            let msg = NornMessage::FraudProof(Box::new(submission));
+            tokio::spawn(async move {
+                let _ = h.broadcast(msg).await;
+            });
+        }
+
+        self.metrics.fraud_proofs_submitted.inc();
+
+        Ok(SubmitResult {
+            success: true,
+            reason: if responses.is_empty() {
+                Some("fraud proof accepted".to_string())
+            } else {
+                Some(format!(
+                    "fraud proof accepted, {} response(s) generated",
+                    responses.len()
+                ))
+            },
+        })
     }
 }
 

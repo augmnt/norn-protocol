@@ -33,6 +33,10 @@ tracing-subscriber = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 toml = "0.8"
 jsonrpsee = { version = "0.24", features = ["server", "client", "macros", "http-client"] }
+tower = "0.4"
+http = "1"
+hyper = "1"
+http-body-util = "0.1"
 prometheus-client = "0.22"
 hex = "0.4"
 dialoguer = "0.11"

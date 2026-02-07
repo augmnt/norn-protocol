@@ -2,7 +2,7 @@ use thiserror::Error;
 
 /// Errors that can occur in wallet operations.
 #[derive(Debug, Error)]
-#[allow(dead_code)]
+#[allow(dead_code)] // Variants constructed across wallet subcommands; clippy can't see cross-module usage
 pub enum WalletError {
     #[error("no active wallet set — run `norn-node wallet use <name>` to select one")]
     NoActiveWallet,

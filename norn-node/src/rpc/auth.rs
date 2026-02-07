@@ -8,7 +8,7 @@ pub struct RpcAuthConfig {
     pub api_key: Option<String>,
 }
 
-#[allow(dead_code)]
+#[allow(dead_code)] // Utility methods used in tests; auth enforced via tower middleware in server.rs
 impl RpcAuthConfig {
     /// Create a new auth config with no authentication required.
     pub fn open() -> Self {

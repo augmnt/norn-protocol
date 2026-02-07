@@ -42,7 +42,7 @@ impl Mempool {
     }
 
     /// Total number of items in the mempool.
-    fn total_size(&self) -> usize {
+    pub fn total_size(&self) -> usize {
         self.commitments.len()
             + self.registrations.len()
             + self.anchors.len()

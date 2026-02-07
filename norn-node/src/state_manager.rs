@@ -45,7 +45,7 @@ pub fn validate_name(name: &str) -> Result<(), NornError> {
 
 /// Metadata tracked per thread beyond its ThreadState.
 #[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
-#[allow(dead_code)]
+#[allow(dead_code)] // Fields accessed via borsh serialization and pattern matching; nonce reserved for future use
 pub struct ThreadMeta {
     pub owner: PublicKey,
     pub version: u64,
@@ -97,21 +97,6 @@ impl StateManager {
             name_registry: HashMap::new(),
             address_names: HashMap::new(),
             state_store: None,
-            total_supply_cache: 0,
-        }
-    }
-
-    /// Create a new StateManager with an attached persistent store.
-    #[allow(dead_code)]
-    pub fn with_store(store: crate::state_store::StateStore) -> Self {
-        Self {
-            thread_states: HashMap::new(),
-            thread_meta: HashMap::new(),
-            transfer_log: Vec::new(),
-            block_archive: Vec::new(),
-            name_registry: HashMap::new(),
-            address_names: HashMap::new(),
-            state_store: Some(store),
             total_supply_cache: 0,
         }
     }
@@ -197,7 +182,7 @@ impl StateManager {
     }
 
     /// Get the total circulating supply of native tokens.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Used in tests and as a pub API
     pub fn total_supply(&self) -> Amount {
         self.total_supply_cache
     }
@@ -354,6 +339,53 @@ impl StateManager {
             .unwrap_or(0)
     }
 
+    /// Debit a commitment fee from an address. Logs a warning if the address
+    /// has insufficient balance (does not fail the block).
+    pub fn debit_fee(&mut self, address: Address, fee: Amount) {
+        if fee == 0 {
+            return;
+        }
+        let state = match self.thread_states.get_mut(&address) {
+            Some(s) => s,
+            None => {
+                tracing::warn!(
+                    "fee debit: address {} not registered, skipping",
+                    hex::encode(address)
+                );
+                return;
+            }
+        };
+        if !state.has_balance(&NATIVE_TOKEN_ID, fee) {
+            tracing::warn!(
+                "fee debit: address {} has insufficient balance for fee {}",
+                hex::encode(address),
+                fee
+            );
+            return;
+        }
+        state.debit(&NATIVE_TOKEN_ID, fee);
+
+        // Update state hash in meta.
+        if let Some(meta) = self.thread_meta.get_mut(&address) {
+            meta.state_hash =
+                norn_thread::state::compute_state_hash(self.thread_states.get(&address).unwrap());
+        }
+
+        // Persist.
+        if let Some(ref store) = self.state_store {
+            if let Err(e) =
+                store.save_thread_state(&address, self.thread_states.get(&address).unwrap())
+            {
+                tracing::warn!("Failed to persist thread state after fee debit: {}", e);
+            }
+            if let Some(meta) = self.thread_meta.get(&address) {
+                if let Err(e) = store.save_thread_meta(&address, meta) {
+                    tracing::warn!("Failed to persist thread meta after fee debit: {}", e);
+                }
+            }
+        }
+    }
+
     /// Get a reference to a thread's state.
     pub fn get_thread_state(&self, address: &Address) -> Option<&ThreadState> {
         self.thread_states.get(address)
@@ -413,7 +445,6 @@ impl StateManager {
     }
 
     /// Get the latest block height.
-    #[allow(dead_code)]
     pub fn latest_block_height(&self) -> u64 {
         self.block_archive.last().map(|b| b.height).unwrap_or(0)
     }

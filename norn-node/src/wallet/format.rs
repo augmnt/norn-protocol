@@ -1,6 +1,6 @@
 use console::Style;
 use norn_types::constants::{NORN_DECIMALS, ONE_NORN};
-use norn_types::primitives::{Address, Amount, Hash, PublicKey, TokenId, NATIVE_TOKEN_ID};
+use norn_types::primitives::{Address, Amount, PublicKey, TokenId, NATIVE_TOKEN_ID};
 
 use super::error::WalletError;
 
@@ -113,13 +113,6 @@ pub fn format_address(addr: &Address) -> String {
     format!("0x{}", hex::encode(addr))
 }
 
-/// Format an Address in truncated form: 0xab12...ef34
-#[allow(dead_code)]
-pub fn format_address_short(addr: &Address) -> String {
-    let full = hex::encode(addr);
-    format!("0x{}...{}", &full[..4], &full[full.len() - 4..])
-}
-
 /// Parse a hex address string (with or without 0x prefix) into an Address.
 pub fn parse_address(s: &str) -> Result<Address, WalletError> {
     let hex_str = s.strip_prefix("0x").unwrap_or(s);
@@ -157,12 +150,6 @@ pub fn parse_token_id(s: &str) -> Result<TokenId, WalletError> {
 
 // ── Hash / pubkey formatting ────────────────────────────────────────────────
 
-/// Format a Hash as hex.
-#[allow(dead_code)]
-pub fn format_hash(hash: &Hash) -> String {
-    hex::encode(hash)
-}
-
 /// Format a PublicKey as hex.
 pub fn format_pubkey(pk: &PublicKey) -> String {
     hex::encode(pk)
@@ -193,16 +180,6 @@ pub fn print_error(msg: &str, hint: Option<&str>) {
             style_dim().apply_to(h)
         );
     }
-}
-
-/// Print an informational line.
-#[allow(dead_code)]
-pub fn print_info(label: &str, value: &str) {
-    println!(
-        "  {}: {}",
-        style_bold().apply_to(label),
-        style_info().apply_to(value)
-    );
 }
 
 /// Print a divider.
@@ -335,14 +312,6 @@ mod tests {
         let formatted = format_address(&addr);
         assert!(formatted.starts_with("0x"));
         assert_eq!(formatted.len(), 42);
-    }
-
-    #[test]
-    fn test_format_address_short() {
-        let addr = [0xab; 20];
-        let short = format_address_short(&addr);
-        assert!(short.starts_with("0x"));
-        assert!(short.contains("..."));
     }
 
     #[test]

@@ -5,6 +5,7 @@ use norn_crypto::address::pubkey_to_address;
 use norn_crypto::keys::Keypair;
 use norn_relay::config::RelayConfig;
 use norn_relay::relay::{RelayHandle, RelayNode};
+use norn_spindle::service::SpindleService;
 use norn_storage::memory::MemoryStore;
 use norn_storage::traits::KvStore;
 use norn_storage::weave_store::WeaveStore;
@@ -19,7 +20,7 @@ use crate::metrics::NodeMetrics;
 use crate::state_manager::StateManager;
 
 /// The main node that ties together all subsystems.
-#[allow(dead_code)]
+#[allow(dead_code)] // Fields accessed indirectly via methods, not all read individually
 pub struct Node {
     config: NodeConfig,
     weave_engine: Arc<RwLock<WeaveEngine>>,
@@ -31,6 +32,7 @@ pub struct Node {
     relay: Option<RelayNode>,
     relay_rx: Option<tokio::sync::broadcast::Receiver<NornMessage>>,
     relay_handle: Option<RelayHandle>,
+    spindle: SpindleService,
 }
 
 /// Create a storage backend from the node configuration.
@@ -152,6 +154,9 @@ impl Node {
             _ => initial_state,
         };
 
+        // Create a spindle keypair from the same seed (before moving keypair into WeaveEngine).
+        let spindle_keypair = Keypair::from_seed(&keypair.seed());
+
         let weave_engine = Arc::new(RwLock::new(WeaveEngine::new(
             keypair,
             validator_set,
@@ -159,6 +164,9 @@ impl Node {
         )));
 
         let metrics = Arc::new(NodeMetrics::new());
+
+        // Initialize spindle watchtower service.
+        let spindle = SpindleService::new(spindle_keypair);
 
         // Rebuild StateManager from persistent storage.
         let ss = crate::state_store::StateStore::new(store.clone());
@@ -254,6 +262,7 @@ impl Node {
                 relay_handle.clone(),
                 network_id,
                 config.validator.enabled,
+                config.rpc.api_key.clone(),
             )
             .await?;
             (Some(handle), Some(tx))
@@ -280,6 +289,7 @@ impl Node {
             relay,
             relay_rx,
             relay_handle,
+            spindle,
         })
     }
 
@@ -373,7 +383,18 @@ impl Node {
             if let Some(ref mut rx) = self.relay_rx {
                 while let Ok(msg) = rx.try_recv() {
                     match msg {
-                        NornMessage::KnotProposal(knot) => {
+                        NornMessage::KnotProposal(ref knot) => {
+                            // Feed to spindle watchtower for fraud detection.
+                            let timestamp = current_timestamp();
+                            let fraud_msgs = self.spindle.on_message(&msg, timestamp);
+                            for fraud_msg in fraud_msgs {
+                                if let Some(ref handle) = self.relay_handle {
+                                    let h = handle.clone();
+                                    tokio::spawn(async move {
+                                        let _ = h.broadcast(fraud_msg).await;
+                                    });
+                                }
+                            }
                             // Validate and apply incoming knot from the network.
                             if let norn_types::knot::KnotPayload::Transfer(ref transfer) =
                                 knot.payload
@@ -408,6 +429,7 @@ impl Node {
                                 let mut sm = self.state_manager.write().await;
                                 for reg in &block.registrations {
                                     sm.register_thread(reg.thread_id, reg.owner);
+                                    self.spindle.watch_thread(reg.thread_id);
                                 }
                                 for commit in &block.commitments {
                                     sm.record_commitment(
@@ -480,7 +502,17 @@ impl Node {
                             // Forward all other messages to WeaveEngine.
                             let mut engine = self.weave_engine.write().await;
                             engine.set_timestamp(current_timestamp());
-                            let _responses = engine.on_network_message(other);
+                            let responses = engine.on_network_message(other);
+                            drop(engine);
+                            // Route consensus responses through P2P relay.
+                            for msg in responses {
+                                if let Some(ref handle) = self.relay_handle {
+                                    let h = handle.clone();
+                                    tokio::spawn(async move {
+                                        let _ = h.broadcast(msg).await;
+                                    });
+                                }
+                            }
                         }
                     }
                 }
@@ -513,7 +545,14 @@ impl Node {
                                     let mut sm = self.state_manager.write().await;
                                     for reg in &block.registrations {
                                         sm.register_thread(reg.thread_id, reg.owner);
+                                        // Watch new threads in spindle for fraud detection.
+                                        self.spindle.watch_thread(reg.thread_id);
                                     }
+                                    // Deduct commitment fees from committers.
+                                    let fee_per = norn_weave::fees::compute_fee(
+                                        &engine.weave_state().fee_state,
+                                        1,
+                                    );
                                     for commit in &block.commitments {
                                         sm.record_commitment(
                                             commit.thread_id,
@@ -522,6 +561,7 @@ impl Node {
                                             commit.prev_commitment_hash,
                                             commit.knot_count,
                                         );
+                                        sm.debit_fee(commit.thread_id, fee_per);
                                     }
                                     sm.archive_block(block.clone());
                                 }
@@ -553,12 +593,26 @@ impl Node {
                                 }
                             }
                         } else {
-                            let _messages = engine.on_tick(timestamp);
+                            let messages = engine.on_tick(timestamp);
+                            // Route consensus messages through P2P relay.
+                            if !messages.is_empty() {
+                                if let Some(ref handle) = self.relay_handle {
+                                    for msg in messages {
+                                        let h = handle.clone();
+                                        tokio::spawn(
+                                            async move { let _ = h.broadcast(msg).await; },
+                                        );
+                                    }
+                                }
+                            }
                         }
 
                         // Update metrics.
                         let state = engine.weave_state();
                         self.metrics.weave_height.set(state.height as i64);
+                        self.metrics
+                            .mempool_size
+                            .set(engine.mempool().total_size() as i64);
                     }
                 }
                 _ = tokio::signal::ctrl_c() => {
@@ -586,18 +640,6 @@ impl Node {
 
         tracing::info!("Node shutdown complete");
         Ok(())
-    }
-
-    /// Access the weave engine (for testing).
-    #[allow(dead_code)]
-    pub fn weave_engine(&self) -> &Arc<RwLock<WeaveEngine>> {
-        &self.weave_engine
-    }
-
-    /// Access the metrics (for testing).
-    #[allow(dead_code)]
-    pub fn metrics(&self) -> &Arc<NodeMetrics> {
-        &self.metrics
     }
 
     /// Persist a block and the current weave state to storage.

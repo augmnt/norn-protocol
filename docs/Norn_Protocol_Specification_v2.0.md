@@ -825,7 +825,12 @@ Where:
 
 ### 16.3 Fee State Tracking
 
-The `FeeState` tracks `epoch_fees` (total fees collected in the current epoch) for redistribution to validators.
+The `FeeState` tracks `epoch_fees` (total fees collected in the current epoch) for redistribution to validators. At block production time:
+
+1. The fee per commitment is computed via `compute_fee()`.
+2. Fees are deducted from each committer's balance (logged as a warning if insufficient, does not fail the block).
+3. The total fee is accumulated in `epoch_fees`.
+4. The dynamic fee multiplier is updated via `update_fee_state()` based on block utilization.
 
 ---
 
@@ -1603,6 +1608,8 @@ The RPC server uses `jsonrpsee` over HTTP. All methods use the `norn_` namespace
 | `norn_registerName` | `name: String`, `owner_hex: String`, `knot_hex: String` | `SubmitResult` | Yes |
 | `norn_resolveName` | `name: String` | `Option<NameResolution>` | No |
 | `norn_listNames` | `address: String` (hex) | `Vec<NameInfo>` | No |
+| `norn_getMetrics` | -- | `String` (Prometheus text format) | No |
+| `norn_submitFraudProof` | `fraud_proof: String` (hex borsh) | `SubmitResult` | Yes |
 
 #### WebSocket Subscriptions
 
