@@ -9,11 +9,13 @@ use super::handlers::{NornRpcImpl, NornRpcServer};
 use super::types::BlockInfo;
 use crate::error::NodeError;
 use crate::metrics::NodeMetrics;
+use crate::state_manager::StateManager;
 
 /// Start the JSON-RPC HTTP+WS server.
 pub async fn start_rpc_server(
     addr: &str,
     weave_engine: Arc<RwLock<WeaveEngine>>,
+    state_manager: Arc<RwLock<StateManager>>,
     metrics: Arc<NodeMetrics>,
 ) -> Result<(ServerHandle, tokio::sync::broadcast::Sender<BlockInfo>), NodeError> {
     let server = ServerBuilder::default()
@@ -27,6 +29,7 @@ pub async fn start_rpc_server(
 
     let rpc_impl = NornRpcImpl {
         weave_engine,
+        state_manager,
         metrics,
         block_tx: block_tx.clone(),
     };

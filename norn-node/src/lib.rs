@@ -11,5 +11,6 @@ pub mod genesis;
 pub mod metrics;
 pub mod node;
 pub mod rpc;
+pub mod state_manager;
 pub mod tools;
 pub mod wallet;

@@ -24,22 +24,55 @@ pub async fn run(name: Option<&str>) -> Result<(), WalletError> {
     let keypair = ks.decrypt_keypair(&password)?;
 
     let address = pubkey_to_address(&keypair.public_key());
-    let state = ThreadState::new();
-    let state_hash = compute_state_hash(&state);
+
+    let rpc = RpcClient::new(&config.rpc_url)?;
+
+    // Query the node for current thread version and state.
+    let thread_id_hex = hex::encode(address);
+    let (current_version, prev_hash, state_hash) = match rpc.get_thread(&thread_id_hex).await? {
+        Some(info) => {
+            let mut prev = [0u8; 32];
+            if let Ok(bytes) = hex::decode(&info.state_hash) {
+                if bytes.len() == 32 {
+                    prev.copy_from_slice(&bytes);
+                }
+            }
+            // Query thread state for the actual state hash.
+            let sh = match rpc.get_thread_state(&thread_id_hex).await? {
+                Some(ts_info) => {
+                    let mut h = [0u8; 32];
+                    if let Ok(bytes) = hex::decode(&ts_info.state_hash) {
+                        if bytes.len() == 32 {
+                            h.copy_from_slice(&bytes);
+                        }
+                    }
+                    h
+                }
+                None => compute_state_hash(&ThreadState::new()),
+            };
+            (info.version, prev, sh)
+        }
+        None => {
+            // Thread not registered yet — use genesis defaults.
+            let state = ThreadState::new();
+            let state_hash = compute_state_hash(&state);
+            (0, [0u8; 32], state_hash)
+        }
+    };
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
 
-    // Build a commitment update.
-    // In a full implementation, we'd query the node for current version and prev hash.
+    // Build a commitment update with the real version from the node.
+    let new_version = current_version + 1;
     let mut commitment = CommitmentUpdate {
         thread_id: address,
         owner: keypair.public_key(),
-        version: 0,
+        version: new_version,
         state_hash,
-        prev_commitment_hash: [0u8; 32],
+        prev_commitment_hash: prev_hash,
         knot_count: 0,
         timestamp: now,
         signature: [0u8; 64],
@@ -83,12 +116,12 @@ pub async fn run(name: Option<&str>) -> Result<(), WalletError> {
 
     println!();
     println!(
-        "  {} {}",
+        "  {} {} (version {})",
         style_bold().apply_to("Committing thread state for"),
-        format_address(&address)
+        format_address(&address),
+        new_version
     );
 
-    let rpc = RpcClient::new(&config.rpc_url)?;
     let result = rpc.submit_commitment(&hex_data).await?;
 
     if result.success {

@@ -11,9 +11,11 @@ use norn_weave::engine::WeaveEngine;
 
 use super::types::{
     BlockInfo, CommitmentProofInfo, FeeEstimateInfo, HealthInfo, SubmitResult, ThreadInfo,
-    ThreadStateInfo, ValidatorInfo, ValidatorSetInfo, WeaveStateInfo,
+    ThreadStateInfo, TransactionHistoryEntry, ValidatorInfo, ValidatorSetInfo, WeaveStateInfo,
 };
 use crate::metrics::NodeMetrics;
+use crate::state_manager::StateManager;
+use crate::wallet::format::{format_address, format_amount_with_symbol};
 
 /// JSON-RPC trait for the Norn node.
 #[rpc(server)]
@@ -91,24 +93,81 @@ pub trait NornRpc {
     /// Subscribe to new blocks.
     #[subscription(name = "norn_subscribeNewBlocks" => "norn_newBlocks", unsubscribe = "norn_unsubscribeNewBlocks", item = BlockInfo)]
     async fn subscribe_new_blocks(&self) -> SubscriptionResult;
+
+    /// Get transaction history for an address.
+    #[method(name = "norn_getTransactionHistory")]
+    async fn get_transaction_history(
+        &self,
+        address: String,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<TransactionHistoryEntry>, ErrorObjectOwned>;
 }
 
 /// Implementation of the NornRpc trait.
 #[allow(dead_code)]
 pub struct NornRpcImpl {
     pub weave_engine: Arc<RwLock<WeaveEngine>>,
+    pub state_manager: Arc<RwLock<StateManager>>,
     pub metrics: Arc<NodeMetrics>,
     pub block_tx: tokio::sync::broadcast::Sender<BlockInfo>,
+}
+
+/// Parse a hex string into a 20-byte address.
+fn parse_address_hex(hex_str: &str) -> Result<[u8; 20], ErrorObjectOwned> {
+    let bytes = hex::decode(hex_str)
+        .map_err(|e| ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>))?;
+    if bytes.len() != 20 {
+        return Err(ErrorObjectOwned::owned(
+            -32602,
+            format!("address must be 20 bytes, got {}", bytes.len()),
+            None::<()>,
+        ));
+    }
+    let mut addr = [0u8; 20];
+    addr.copy_from_slice(&bytes);
+    Ok(addr)
+}
+
+/// Parse a hex string into a 32-byte token ID.
+fn parse_token_hex(hex_str: &str) -> Result<[u8; 32], ErrorObjectOwned> {
+    let bytes = hex::decode(hex_str)
+        .map_err(|e| ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>))?;
+    if bytes.len() != 32 {
+        return Err(ErrorObjectOwned::owned(
+            -32602,
+            format!("token_id must be 32 bytes, got {}", bytes.len()),
+            None::<()>,
+        ));
+    }
+    let mut id = [0u8; 32];
+    id.copy_from_slice(&bytes);
+    Ok(id)
 }
 
 #[async_trait]
 impl NornRpcServer for NornRpcImpl {
     async fn get_block(&self, height: u64) -> Result<Option<BlockInfo>, ErrorObjectOwned> {
+        // Try the StateManager archive first.
+        let sm = self.state_manager.read().await;
+        if let Some(block) = sm.get_block(height) {
+            return Ok(Some(BlockInfo {
+                height: block.height,
+                hash: hex::encode(block.hash),
+                prev_hash: hex::encode(block.prev_hash),
+                timestamp: block.timestamp,
+                proposer: hex::encode(block.proposer),
+                commitment_count: block.commitments.len(),
+                registration_count: block.registrations.len(),
+                anchor_count: block.anchors.len(),
+                fraud_proof_count: block.fraud_proofs.len(),
+            }));
+        }
+        drop(sm);
+
+        // Fallback: check if it's the current height from weave state.
         let engine = self.weave_engine.read().await;
         let state = engine.weave_state();
-
-        // For now, we only know about the latest block height.
-        // A full implementation would query storage for historical blocks.
         if height == state.height {
             Ok(Some(BlockInfo {
                 height: state.height,
@@ -210,6 +269,12 @@ impl NornRpcServer for NornRpcImpl {
                 ErrorObjectOwned::owned(-32602, format!("invalid registration: {}", e), None::<()>)
             })?;
 
+        // Also register in StateManager.
+        {
+            let mut sm = self.state_manager.write().await;
+            sm.register_thread(registration.thread_id, registration.owner);
+        }
+
         let mut engine = self.weave_engine.write().await;
         match engine.add_registration(registration) {
             Ok(_) => Ok(SubmitResult {
@@ -227,72 +292,77 @@ impl NornRpcServer for NornRpcImpl {
         &self,
         thread_id_hex: String,
     ) -> Result<Option<ThreadInfo>, ErrorObjectOwned> {
-        let thread_bytes = hex::decode(&thread_id_hex).map_err(|e| {
-            ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>)
-        })?;
+        let thread_id = parse_address_hex(&thread_id_hex)?;
 
-        if thread_bytes.len() != 20 {
-            return Err(ErrorObjectOwned::owned(
-                -32602,
-                "thread_id must be 20 bytes",
-                None::<()>,
-            ));
-        }
-
-        let mut thread_id = [0u8; 20];
-        thread_id.copy_from_slice(&thread_bytes);
-
-        let engine = self.weave_engine.read().await;
-        if engine.known_threads().contains(&thread_id) {
+        let sm = self.state_manager.read().await;
+        if let Some(meta) = sm.get_thread_meta(&thread_id) {
             Ok(Some(ThreadInfo {
                 thread_id: thread_id_hex,
-                owner: String::new(),
-                version: 0,
-                state_hash: hex::encode([0u8; 32]),
+                owner: hex::encode(meta.owner),
+                version: meta.version,
+                state_hash: hex::encode(meta.state_hash),
             }))
         } else {
-            Ok(None)
+            // Fallback: check WeaveEngine known_threads.
+            drop(sm);
+            let engine = self.weave_engine.read().await;
+            if engine.known_threads().contains(&thread_id) {
+                Ok(Some(ThreadInfo {
+                    thread_id: thread_id_hex,
+                    owner: String::new(),
+                    version: 0,
+                    state_hash: hex::encode([0u8; 32]),
+                }))
+            } else {
+                Ok(None)
+            }
         }
     }
 
     async fn get_balance(
         &self,
-        _address: String,
-        _token_id: String,
+        address_hex: String,
+        token_id_hex: String,
     ) -> Result<String, ErrorObjectOwned> {
-        // Thread state is maintained off-chain; the weave only stores commitments.
-        // For a full implementation, the node would need to index thread states.
-        // Return 0 as placeholder.
-        Ok("0".to_string())
+        let address = parse_address_hex(&address_hex)?;
+        let token_id = parse_token_hex(&token_id_hex)?;
+
+        let sm = self.state_manager.read().await;
+        let balance = sm.get_balance(&address, &token_id);
+        Ok(balance.to_string())
     }
 
     async fn get_thread_state(
         &self,
         thread_id_hex: String,
     ) -> Result<Option<ThreadStateInfo>, ErrorObjectOwned> {
-        let thread_bytes = hex::decode(&thread_id_hex).map_err(|e| {
-            ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>)
-        })?;
+        let thread_id = parse_address_hex(&thread_id_hex)?;
 
-        if thread_bytes.len() != 20 {
-            return Err(ErrorObjectOwned::owned(
-                -32602,
-                "thread_id must be 20 bytes",
-                None::<()>,
-            ));
-        }
+        let sm = self.state_manager.read().await;
+        if let Some(state) = sm.get_thread_state(&thread_id) {
+            let meta = sm.get_thread_meta(&thread_id);
+            let owner = meta.map(|m| hex::encode(m.owner)).unwrap_or_default();
+            let version = meta.map(|m| m.version).unwrap_or(0);
+            let state_hash = meta
+                .map(|m| hex::encode(m.state_hash))
+                .unwrap_or_else(|| hex::encode([0u8; 32]));
 
-        let mut thread_id = [0u8; 20];
-        thread_id.copy_from_slice(&thread_bytes);
+            let balances = state
+                .balances
+                .iter()
+                .map(|(token_id, &amount)| super::types::BalanceEntry {
+                    token_id: hex::encode(token_id),
+                    amount: amount.to_string(),
+                    human_readable: format_amount_with_symbol(amount, token_id),
+                })
+                .collect();
 
-        let engine = self.weave_engine.read().await;
-        if engine.known_threads().contains(&thread_id) {
             Ok(Some(ThreadStateInfo {
                 thread_id: thread_id_hex,
-                owner: String::new(),
-                version: 0,
-                state_hash: hex::encode([0u8; 32]),
-                balances: vec![],
+                owner,
+                version,
+                state_hash,
+                balances,
             }))
         } else {
             Ok(None)
@@ -300,8 +370,7 @@ impl NornRpcServer for NornRpcImpl {
     }
 
     // Faucet: testnet-only endpoint that bypasses signature verification
-    // to auto-register threads and credit test tokens. Returns an error in
-    // production builds (compile without the "testnet" feature).
+    // to auto-register threads and credit test tokens.
     async fn faucet(&self, address_hex: String) -> Result<SubmitResult, ErrorObjectOwned> {
         #[cfg(not(feature = "testnet"))]
         {
@@ -317,62 +386,130 @@ impl NornRpcServer for NornRpcImpl {
         {
             use norn_types::constants::ONE_NORN;
 
-            let addr_bytes = hex::decode(&address_hex).map_err(|e| {
-                ErrorObjectOwned::owned(-32602, format!("invalid hex address: {}", e), None::<()>)
-            })?;
-
-            if addr_bytes.len() != 20 {
-                return Err(ErrorObjectOwned::owned(
-                    -32602,
-                    "address must be 20 bytes",
-                    None::<()>,
-                ));
-            }
-
-            let mut address = [0u8; 20];
-            address.copy_from_slice(&addr_bytes);
+            let address = parse_address_hex(&address_hex)?;
 
             let faucet_amount: u128 = 100 * ONE_NORN; // 100 NORN per faucet request
 
-            let mut engine = self.weave_engine.write().await;
+            // Register in WeaveEngine if not already known.
+            {
+                let mut engine = self.weave_engine.write().await;
+                if !engine.known_threads().contains(&address) {
+                    let reg = norn_types::weave::Registration {
+                        thread_id: address,
+                        owner: [0u8; 32],
+                        initial_state_hash: [0u8; 32],
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs(),
+                        signature: [0u8; 64],
+                    };
+                    let _ = engine.add_registration(reg);
+                }
+            }
 
-            // Register the thread if not already known.
-            if !engine.known_threads().contains(&address) {
-                let reg = norn_types::weave::Registration {
-                    thread_id: address,
-                    owner: [0u8; 32], // Owner unknown (faucet auto-registers)
-                    initial_state_hash: [0u8; 32],
-                    timestamp: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs(),
-                    signature: [0u8; 64], // Faucet-issued (no signature verification)
-                };
-                // Add registration directly (bypass signature check for faucet).
-                let _ = engine.add_registration(reg);
+            // Register and credit in StateManager.
+            {
+                let mut sm = self.state_manager.write().await;
+                sm.auto_register_if_needed(address);
+                sm.credit(
+                    address,
+                    norn_types::primitives::NATIVE_TOKEN_ID,
+                    faucet_amount,
+                )
+                .map_err(|e| {
+                    ErrorObjectOwned::owned(
+                        -32000,
+                        format!("faucet credit failed: {}", e),
+                        None::<()>,
+                    )
+                })?;
+
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                sm.log_faucet_credit(address, faucet_amount, now);
             }
 
             Ok(SubmitResult {
                 success: true,
                 reason: Some(format!(
-                    "credited {} nits to {}",
-                    faucet_amount, address_hex
+                    "credited {} to {}",
+                    format_amount_with_symbol(
+                        faucet_amount,
+                        &norn_types::primitives::NATIVE_TOKEN_ID
+                    ),
+                    format_address(&address)
                 )),
             })
         }
     }
 
     async fn submit_knot(&self, knot_hex: String) -> Result<SubmitResult, ErrorObjectOwned> {
-        let _bytes = hex::decode(&knot_hex).map_err(|e| {
+        let bytes = hex::decode(&knot_hex).map_err(|e| {
             ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>)
         })?;
 
-        // Knot submission requires the node to validate and relay the knot.
-        // For now, accept and acknowledge.
-        Ok(SubmitResult {
-            success: true,
-            reason: None,
-        })
+        let knot: norn_types::knot::Knot = borsh::from_slice(&bytes).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid knot: {}", e), None::<()>)
+        })?;
+
+        // Extract transfer details from the payload.
+        let (from, to, token_id, amount, memo) = match &knot.payload {
+            norn_types::knot::KnotPayload::Transfer(transfer) => (
+                transfer.from,
+                transfer.to,
+                transfer.token_id,
+                transfer.amount,
+                transfer.memo.clone(),
+            ),
+            _ => {
+                return Ok(SubmitResult {
+                    success: false,
+                    reason: Some("only Transfer knots are supported via RPC".to_string()),
+                });
+            }
+        };
+
+        // Validate: at least one signature, and the first before_state pubkey matches the signer.
+        if knot.signatures.is_empty() {
+            return Ok(SubmitResult {
+                success: false,
+                reason: Some("knot has no signatures".to_string()),
+            });
+        }
+
+        if knot.before_states.is_empty() {
+            return Ok(SubmitResult {
+                success: false,
+                reason: Some("knot has no before_states".to_string()),
+            });
+        }
+
+        // Verify the sender's signature.
+        let sender_pubkey = knot.before_states[0].pubkey;
+        if let Err(e) = norn_crypto::keys::verify(&knot.id, &knot.signatures[0], &sender_pubkey) {
+            return Ok(SubmitResult {
+                success: false,
+                reason: Some(format!("invalid sender signature: {}", e)),
+            });
+        }
+
+        // Apply transfer via StateManager.
+        let mut sm = self.state_manager.write().await;
+        sm.auto_register_if_needed(to);
+
+        match sm.apply_transfer(from, to, token_id, amount, knot.id, memo, knot.timestamp) {
+            Ok(()) => Ok(SubmitResult {
+                success: true,
+                reason: None,
+            }),
+            Err(e) => Ok(SubmitResult {
+                success: false,
+                reason: Some(e.to_string()),
+            }),
+        }
     }
 
     async fn health(&self) -> Result<HealthInfo, ErrorObjectOwned> {
@@ -443,20 +580,7 @@ impl NornRpcServer for NornRpcImpl {
         &self,
         thread_id_hex: String,
     ) -> Result<Option<CommitmentProofInfo>, ErrorObjectOwned> {
-        let thread_bytes = hex::decode(&thread_id_hex).map_err(|e| {
-            ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>)
-        })?;
-
-        if thread_bytes.len() != 20 {
-            return Err(ErrorObjectOwned::owned(
-                -32602,
-                "thread_id must be 20 bytes",
-                None::<()>,
-            ));
-        }
-
-        let mut thread_id = [0u8; 20];
-        thread_id.copy_from_slice(&thread_bytes);
+        let thread_id = parse_address_hex(&thread_id_hex)?;
 
         let engine = self.weave_engine.read().await;
         if !engine.known_threads().contains(&thread_id) {
@@ -474,6 +598,49 @@ impl NornRpcServer for NornRpcImpl {
             value: hex::encode(&proof.value),
             siblings: proof.siblings.iter().map(hex::encode).collect(),
         }))
+    }
+
+    async fn get_transaction_history(
+        &self,
+        address_hex: String,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<TransactionHistoryEntry>, ErrorObjectOwned> {
+        let address = parse_address_hex(&address_hex)?;
+
+        let sm = self.state_manager.read().await;
+        let records = sm.get_history(&address, limit as usize, offset as usize);
+
+        let entries = records
+            .into_iter()
+            .map(|r| {
+                let direction = if r.from == address {
+                    "sent".to_string()
+                } else {
+                    "received".to_string()
+                };
+
+                let memo_str = r
+                    .memo
+                    .as_ref()
+                    .and_then(|m| String::from_utf8(m.clone()).ok());
+
+                TransactionHistoryEntry {
+                    knot_id: hex::encode(r.knot_id),
+                    from: format_address(&r.from),
+                    to: format_address(&r.to),
+                    token_id: hex::encode(r.token_id),
+                    amount: r.amount.to_string(),
+                    human_readable: format_amount_with_symbol(r.amount, &r.token_id),
+                    memo: memo_str,
+                    timestamp: r.timestamp,
+                    block_height: r.block_height,
+                    direction,
+                }
+            })
+            .collect();
+
+        Ok(entries)
     }
 }
 

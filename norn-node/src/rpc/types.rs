@@ -149,6 +149,31 @@ pub struct CommitmentProofInfo {
     pub siblings: Vec<String>,
 }
 
+/// A single entry in the transaction history.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransactionHistoryEntry {
+    /// Knot ID as hex string.
+    pub knot_id: String,
+    /// Sender address as hex string.
+    pub from: String,
+    /// Recipient address as hex string.
+    pub to: String,
+    /// Token ID as hex string.
+    pub token_id: String,
+    /// Raw amount as string.
+    pub amount: String,
+    /// Human-readable formatted amount.
+    pub human_readable: String,
+    /// Optional memo as UTF-8 string.
+    pub memo: Option<String>,
+    /// Timestamp of the transfer.
+    pub timestamp: u64,
+    /// Block height (if included in a block).
+    pub block_height: Option<u64>,
+    /// Direction relative to the queried address: "sent" or "received".
+    pub direction: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

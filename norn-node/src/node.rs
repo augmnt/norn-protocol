@@ -15,12 +15,14 @@ use norn_weave::engine::WeaveEngine;
 use crate::config::NodeConfig;
 use crate::error::NodeError;
 use crate::metrics::NodeMetrics;
+use crate::state_manager::StateManager;
 
 /// The main node that ties together all subsystems.
 #[allow(dead_code)]
 pub struct Node {
     config: NodeConfig,
     weave_engine: Arc<RwLock<WeaveEngine>>,
+    state_manager: Arc<RwLock<StateManager>>,
     metrics: Arc<NodeMetrics>,
     rpc_handle: Option<jsonrpsee::server::ServerHandle>,
     block_tx: Option<tokio::sync::broadcast::Sender<crate::rpc::types::BlockInfo>>,
@@ -106,12 +108,14 @@ impl Node {
         )));
 
         let metrics = Arc::new(NodeMetrics::new());
+        let state_manager = Arc::new(RwLock::new(StateManager::new()));
 
         // Start the RPC server if enabled.
         let (rpc_handle, block_tx) = if config.rpc.enabled {
             let (handle, tx) = crate::rpc::server::start_rpc_server(
                 &config.rpc.listen_addr,
                 weave_engine.clone(),
+                state_manager.clone(),
                 metrics.clone(),
             )
             .await?;
@@ -168,6 +172,7 @@ impl Node {
         Ok(Self {
             config,
             weave_engine,
+            state_manager,
             metrics,
             rpc_handle,
             block_tx,
@@ -224,6 +229,24 @@ impl Node {
 
                                 // Persist block and state to storage.
                                 self.persist_block(&block, engine.weave_state());
+
+                                // Update StateManager with block contents.
+                                {
+                                    let mut sm = self.state_manager.write().await;
+                                    for reg in &block.registrations {
+                                        sm.register_thread(reg.thread_id, reg.owner);
+                                    }
+                                    for commit in &block.commitments {
+                                        sm.record_commitment(
+                                            commit.thread_id,
+                                            commit.version,
+                                            commit.state_hash,
+                                            commit.prev_commitment_hash,
+                                            commit.knot_count,
+                                        );
+                                    }
+                                    sm.archive_block(block.clone());
+                                }
 
                                 // Notify WebSocket subscribers.
                                 if let Some(ref tx) = self.block_tx {

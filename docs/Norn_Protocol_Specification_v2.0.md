@@ -1535,7 +1535,24 @@ Default values:
 | `rpc.api_key` | `None` (open access) |
 | `logging.level` | `info` |
 
-### 24.2 JSON-RPC API
+### 24.2 Dev Mode
+
+The node can be started in dev mode for local development and testing:
+
+```
+norn-node run --dev
+```
+
+This creates a solo-validator node with:
+- Auto-generated keypair (no seed file needed)
+- Memory-backed storage
+- RPC enabled on `127.0.0.1:9741`
+- Solo block production (no consensus required)
+- Testnet faucet enabled
+
+No configuration file is needed in dev mode.
+
+### 24.3 JSON-RPC API
 
 The RPC server uses `jsonrpsee` over HTTP. All methods use the `norn_` namespace.
 
@@ -1557,6 +1574,7 @@ The RPC server uses `jsonrpsee` over HTTP. All methods use the `norn_` namespace
 | `norn_getValidatorSet` | -- | `ValidatorSetInfo` | No |
 | `norn_getFeeEstimate` | -- | `FeeEstimateInfo` | No |
 | `norn_getCommitmentProof` | `thread_id: String` (hex) | `Option<CommitmentProofInfo>` | No |
+| `norn_getTransactionHistory` | `address: String`, `limit: u64`, `offset: u64` | `Vec<TransactionHistoryEntry>` | No |
 
 #### WebSocket Subscriptions
 
@@ -1645,6 +1663,19 @@ pub struct CommitmentProofInfo {
     pub key: String,
     pub value: String,
     pub siblings: Vec<String>,
+}
+
+pub struct TransactionHistoryEntry {
+    pub knot_id: String,
+    pub from: String,
+    pub to: String,
+    pub token_id: String,
+    pub amount: String,
+    pub human_readable: String,
+    pub memo: Option<String>,
+    pub timestamp: u64,
+    pub block_height: Option<u64>,
+    pub direction: String,  // "sent" or "received"
 }
 ```
 
@@ -1889,8 +1920,29 @@ norn-node wallet transfer --to <ADDRESS> --amount <AMOUNT> [--token <TOKEN_ID>] 
 ```
 
 - `<AMOUNT>` is human-readable (e.g., `"10.5"` = 10.5 NORN = 10,500,000,000,000 nits).
-- Prompts for wallet password to unlock the signing key.
+- Pre-checks the sender's balance before prompting for password.
+- Shows current balance in the confirmation summary.
 - Constructs a `Knot` with a `TransferPayload`, signs it, and submits via `norn_submitKnot`.
+- The node validates the sender's signature and applies the balance transfer.
+- Recipients are auto-registered if not already on the network.
+- On success, displays the remaining balance.
+
+#### End-to-End Transfer Example
+
+```bash
+# Terminal 1: Start a dev node
+norn-node run --dev
+
+# Terminal 2: Create wallets, fund, and transfer
+norn-node wallet create --name alice
+norn-node wallet faucet                          # Alice gets 100 NORN
+norn-node wallet balance                         # Shows 100.000000000000 NORN
+norn-node wallet create --name bob
+norn-node wallet transfer --to 0x<bob_addr> --amount 50 --yes
+norn-node wallet balance                         # Shows 50.000000000000 NORN
+norn-node wallet balance --address 0x<bob_addr>  # Shows 50.000000000000 NORN
+norn-node wallet history                         # Shows transfer records
+```
 
 #### export
 

@@ -4,7 +4,7 @@ use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
 use crate::wallet::format::{
     format_address, format_amount_with_symbol, parse_address, parse_amount, parse_token_id,
-    print_divider, print_error, print_success, style_bold, style_info,
+    print_divider, print_error, print_success, style_bold, style_dim, style_info,
 };
 use crate::wallet::keystore::Keystore;
 use crate::wallet::prompt::{confirm, prompt_password};
@@ -34,6 +34,21 @@ pub async fn run(
         ));
     }
 
+    let rpc = RpcClient::new(&config.rpc_url)?;
+
+    // Pre-check sender balance.
+    let addr_hex = hex::encode(ks.address);
+    let token_hex = hex::encode(token_id);
+    let balance_str = rpc.get_balance(&addr_hex, &token_hex).await?;
+    let current_balance: u128 = balance_str.parse().unwrap_or(0);
+
+    if current_balance < amount {
+        return Err(WalletError::InsufficientBalance {
+            available: format_amount_with_symbol(current_balance, &token_id),
+            required: format_amount_with_symbol(amount, &token_id),
+        });
+    }
+
     // Show confirmation
     if !yes {
         println!();
@@ -51,6 +66,10 @@ pub async fn run(
         println!(
             "  Amount:  {}",
             style_bold().apply_to(format_amount_with_symbol(amount, &token_id))
+        );
+        println!(
+            "  Balance: {}",
+            style_dim().apply_to(format_amount_with_symbol(current_balance, &token_id))
         );
         if let Some(m) = memo {
             println!("  Memo:    \"{}\"", m);
@@ -73,10 +92,6 @@ pub async fn run(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-
-    // For a local dev/solo transfer, we build and sign the knot with the sender's key.
-    // The node will need to handle state lookup. We construct a minimal signed knot
-    // and submit it. A full implementation would query thread states from the node first.
 
     let memo_bytes = memo.map(|m| m.as_bytes().to_vec());
     let payload = norn_types::knot::KnotPayload::Transfer(norn_types::knot::TransferPayload {
@@ -108,7 +123,6 @@ pub async fn run(
         borsh::to_vec(&signed_knot).map_err(|e| WalletError::SerializationError(e.to_string()))?;
     let hex_data = hex::encode(&bytes);
 
-    let rpc = RpcClient::new(&config.rpc_url)?;
     let result = rpc.submit_knot(&hex_data).await?;
 
     if result.success {
@@ -119,6 +133,15 @@ pub async fn run(
         println!(
             "  Knot ID: {}",
             style_info().apply_to(hex::encode(signed_knot.id))
+        );
+        // Show post-transfer balance hint.
+        let remaining = current_balance - amount;
+        println!(
+            "  {}",
+            style_dim().apply_to(format!(
+                "Remaining balance: {}",
+                format_amount_with_symbol(remaining, &token_id)
+            ))
         );
     } else {
         print_error(

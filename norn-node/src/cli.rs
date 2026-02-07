@@ -17,6 +17,9 @@ pub enum Command {
         /// Path to config file
         #[arg(short, long, default_value = "norn.toml")]
         config: String,
+        /// Start in dev mode (solo validator, testnet faucet, auto-config)
+        #[arg(long)]
+        dev: bool,
     },
     /// Initialize a new node configuration
     Init {
@@ -48,8 +51,20 @@ pub enum Command {
 
 pub async fn run(cli: Cli) -> Result<(), NodeError> {
     match cli.command {
-        Command::Run { config } => {
-            let config = crate::config::NodeConfig::load(&config)?;
+        Command::Run { config, dev } => {
+            let config = if dev {
+                tracing::info!("Starting in dev mode (solo validator, memory storage)");
+                let mut cfg = crate::config::NodeConfig::default();
+                cfg.validator.enabled = true;
+                cfg.validator.solo_mode = true;
+                cfg.rpc.enabled = true;
+                cfg.rpc.listen_addr = "127.0.0.1:9741".to_string();
+                cfg.storage.db_type = "memory".to_string();
+                // No keypair_seed — will auto-generate.
+                cfg
+            } else {
+                crate::config::NodeConfig::load(&config)?
+            };
             let mut node = crate::node::Node::new(config).await?;
             node.run().await
         }

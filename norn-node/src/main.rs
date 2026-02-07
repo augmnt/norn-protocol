@@ -8,6 +8,7 @@ mod genesis;
 mod metrics;
 mod node;
 mod rpc;
+mod state_manager;
 mod tools;
 mod wallet;
 
