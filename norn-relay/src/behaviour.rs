@@ -17,6 +17,8 @@ pub struct NornBehaviour {
     pub request_response: request_response::Behaviour<NornCodec>,
     /// Identify protocol for peer identification.
     pub identify: libp2p::identify::Behaviour,
+    /// mDNS for automatic local network peer discovery.
+    pub mdns: libp2p::mdns::tokio::Behaviour,
 }
 
 /// Build a NornBehaviour from a keypair.
@@ -62,9 +64,16 @@ pub fn build_behaviour(
         keypair.public(),
     ));
 
+    // --- mDNS ---
+    let mdns = libp2p::mdns::tokio::Behaviour::new(
+        libp2p::mdns::Config::default(),
+        keypair.public().to_peer_id(),
+    )?;
+
     Ok(NornBehaviour {
         gossipsub,
         request_response,
         identify,
+        mdns,
     })
 }

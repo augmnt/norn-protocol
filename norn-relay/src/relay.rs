@@ -349,6 +349,24 @@ impl RelayNode {
                     "identified peer"
                 );
             }
+            NornBehaviourEvent::Mdns(libp2p::mdns::Event::Discovered(peers)) => {
+                for (peer_id, addr) in peers {
+                    info!(%peer_id, %addr, "mDNS: discovered peer");
+                    self.swarm
+                        .behaviour_mut()
+                        .gossipsub
+                        .add_explicit_peer(&peer_id);
+                }
+            }
+            NornBehaviourEvent::Mdns(libp2p::mdns::Event::Expired(peers)) => {
+                for (peer_id, addr) in peers {
+                    debug!(%peer_id, %addr, "mDNS: peer expired");
+                    self.swarm
+                        .behaviour_mut()
+                        .gossipsub
+                        .remove_explicit_peer(&peer_id);
+                }
+            }
             _ => {}
         }
     }

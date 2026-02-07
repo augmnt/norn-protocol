@@ -36,6 +36,9 @@ pub enum Command {
         /// Wipe the data directory before starting (useful after breaking upgrades)
         #[arg(long)]
         reset_state: bool,
+        /// Boot node multiaddr to connect to (can be specified multiple times)
+        #[arg(long = "boot-node")]
+        boot_nodes: Vec<String>,
     },
     /// Initialize a new node configuration
     Init {
@@ -74,6 +77,7 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
             storage,
             network,
             reset_state,
+            boot_nodes,
         } => {
             crate::banner::print_banner();
 
@@ -102,6 +106,9 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
             }
             if let Some(ref net) = network {
                 config.network_id = net.clone();
+            }
+            if !boot_nodes.is_empty() {
+                config.network.boot_nodes.extend(boot_nodes);
             }
 
             // Wipe data directory if requested.
