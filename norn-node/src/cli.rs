@@ -82,7 +82,7 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
                 cfg.storage.db_type = "memory".to_string();
                 cfg.network.listen_addr = "0.0.0.0:9740".to_string();
                 cfg.network_id = "dev".to_string();
-                let (devnet_config, _, _) = crate::genesis::devnet_genesis();
+                let (devnet_config, _) = crate::genesis::devnet_genesis();
                 cfg.genesis_config = Some(devnet_config);
                 cfg
             } else {
@@ -134,16 +134,12 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
                 );
                 println!("  {}  {}", dim.apply_to("Mode    "), cyan.apply_to(mode),);
                 if dev {
-                    let (_, founder_addr, _) = crate::genesis::devnet_genesis();
+                    let (_, founder_addr) = crate::genesis::devnet_genesis();
                     let green = console::Style::new().green();
                     println!(
                         "  {} 0x{} (10,000,000 NORN)",
                         dim.apply_to("Founder "),
                         green.apply_to(hex::encode(founder_addr)),
-                    );
-                    println!(
-                        "  {}  blake3(b\"augmnt-devnet-founder\")",
-                        dim.apply_to("Seed    "),
                     );
                 }
                 println!();

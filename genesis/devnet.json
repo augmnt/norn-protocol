@@ -5,7 +5,7 @@
     "validators": [],
     "allocations": [
       {
-        "address": "fa9018f844109f5f80886170a4f1482c4c2dbe65",
+        "address": "557dede07828fc8ea66477a6056dbd446a640003",
         "token_id": "0000000000000000000000000000000000000000000000000000000000000000",
         "amount": 10000000000000000000
       }
@@ -20,6 +20,5 @@
     }
   },
   "_note": "Reference file. Runtime source is devnet_genesis() in norn-node/src/genesis.rs",
-  "_founder_seed": "blake3(b\"augmnt-devnet-founder\")",
   "_genesis_hash": "6793f6bfbea003c9ec10f5e96c954fb8a778fc541c20f1229662f02cf1649ac1"
 }

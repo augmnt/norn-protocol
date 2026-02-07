@@ -1,6 +1,4 @@
-use norn_crypto::address::pubkey_to_address;
 use norn_crypto::hash::blake3_hash;
-use norn_crypto::keys::Keypair;
 use norn_types::genesis::{GenesisAllocation, GenesisConfig, GenesisParameters};
 use norn_types::primitives::{Address, NATIVE_TOKEN_ID};
 use norn_types::weave::{FeeState, WeaveBlock, WeaveState};
@@ -61,23 +59,25 @@ pub fn compute_genesis_hash(block: &WeaveBlock, chain_id: &str) -> [u8; 32] {
     blake3_hash(&data)
 }
 
-/// Create a deterministic devnet genesis config with the "augmnt" founder pre-funded.
+/// Augmnt founder address — private key held securely in local encrypted wallet.
 ///
-/// The seed is derived from `blake3(b"augmnt-devnet-founder")` — intentionally public
-/// and deterministic so every `--dev` node starts with the same funded account.
-///
-/// Returns `(genesis_config, founder_address, seed_bytes)`.
-pub fn devnet_genesis() -> (GenesisConfig, Address, [u8; 32]) {
-    let seed = blake3_hash(b"augmnt-devnet-founder");
-    let keypair = Keypair::from_seed(&seed);
-    let founder_address = pubkey_to_address(&keypair.public_key());
+/// Every `--dev` node allocates 10M NORN to this address at genesis.
+/// Only the wallet holder can sign transactions from this address.
+const DEVNET_FOUNDER: Address = [
+    0x55, 0x7d, 0xed, 0xe0, 0x78, 0x28, 0xfc, 0x8e, 0xa6, 0x64, 0x77, 0xa6, 0x05, 0x6d, 0xbd, 0x44,
+    0x6a, 0x64, 0x00, 0x03,
+];
 
+/// Create a devnet genesis config with the augmnt founder pre-funded.
+///
+/// Returns `(genesis_config, founder_address)`.
+pub fn devnet_genesis() -> (GenesisConfig, Address) {
     let config = GenesisConfig {
         chain_id: "norn-dev".to_string(),
         timestamp: 1700000000,
         validators: Vec::new(), // auto-filled by Node::new() when validator.enabled
         allocations: vec![GenesisAllocation {
-            address: founder_address,
+            address: DEVNET_FOUNDER,
             token_id: NATIVE_TOKEN_ID,
             amount: 10_000_000_000_000_000_000, // 10M NORN (10^7 * 10^12 base units)
         }],
@@ -91,7 +91,7 @@ pub fn devnet_genesis() -> (GenesisConfig, Address, [u8; 32]) {
         },
     };
 
-    (config, founder_address, seed)
+    (config, DEVNET_FOUNDER)
 }
 
 /// Generate a genesis block from a config file and write it to output.
@@ -207,16 +207,15 @@ mod tests {
 
     #[test]
     fn test_devnet_genesis_deterministic() {
-        let (config1, addr1, seed1) = devnet_genesis();
-        let (config2, addr2, seed2) = devnet_genesis();
+        let (config1, addr1) = devnet_genesis();
+        let (config2, addr2) = devnet_genesis();
         assert_eq!(config1, config2);
         assert_eq!(addr1, addr2);
-        assert_eq!(seed1, seed2);
     }
 
     #[test]
     fn test_devnet_genesis_allocation() {
-        let (config, founder_addr, _seed) = devnet_genesis();
+        let (config, founder_addr) = devnet_genesis();
         assert_eq!(config.chain_id, "norn-dev");
         assert_eq!(config.allocations.len(), 1);
         assert_eq!(config.allocations[0].address, founder_addr);
@@ -229,7 +228,7 @@ mod tests {
 
     #[test]
     fn test_devnet_genesis_block_has_valid_hash() {
-        let (config, _, _) = devnet_genesis();
+        let (config, _) = devnet_genesis();
         let (block, _state) = create_genesis_block(&config).unwrap();
         assert_ne!(block.hash, [0u8; 32]);
         assert_eq!(block.height, 0);
