@@ -441,6 +441,17 @@ impl Node {
         // Attempt state sync with peers before starting the main loop.
         self.sync_state().await;
 
+        // Schedule a sync retry for after mDNS has time to discover peers.
+        let needs_sync_retry = {
+            let engine = self.weave_engine.read().await;
+            engine.weave_state().height == 0
+        };
+        let mut sync_retry = if needs_sync_retry {
+            Some(Box::pin(tokio::time::sleep(std::time::Duration::from_secs(15))))
+        } else {
+            None
+        };
+
         tracing::info!("Node is running. Press Ctrl+C to stop.");
 
         loop {
@@ -751,6 +762,26 @@ impl Node {
                         self.metrics
                             .mempool_size
                             .set(engine.mempool().total_size() as i64);
+                    }
+                }
+                _ = async { if let Some(ref mut s) = sync_retry { s.await } else { std::future::pending().await } } => {
+                    sync_retry = None;
+                    let height = {
+                        let engine = self.weave_engine.read().await;
+                        engine.weave_state().height
+                    };
+                    if height == 0 {
+                        if let Some(ref handle) = self.relay_handle {
+                            tracing::info!("Retrying state sync after peer discovery...");
+                            let request = NornMessage::StateRequest {
+                                current_height: 0,
+                                genesis_hash: self.genesis_hash,
+                            };
+                            let h = handle.clone();
+                            tokio::spawn(async move {
+                                let _ = h.broadcast(request).await;
+                            });
+                        }
                     }
                 }
                 _ = tokio::signal::ctrl_c() => {
