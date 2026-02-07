@@ -24,6 +24,7 @@ pub fn build_block(
     let commitments_root = compute_merkle_root_borsh(&contents.commitments);
     let registrations_root = compute_merkle_root_borsh(&contents.registrations);
     let anchors_root = compute_merkle_root_borsh(&contents.anchors);
+    let name_registrations_root = compute_merkle_root_borsh(&contents.name_registrations);
     let fraud_proofs_root = compute_merkle_root_borsh(&contents.fraud_proofs);
 
     let mut block = WeaveBlock {
@@ -36,6 +37,8 @@ pub fn build_block(
         commitments: contents.commitments,
         registrations: contents.registrations,
         anchors: contents.anchors,
+        name_registrations: contents.name_registrations,
+        name_registrations_root,
         fraud_proofs: contents.fraud_proofs,
         fraud_proofs_root,
         timestamp,
@@ -64,6 +67,7 @@ pub fn compute_block_hash(block: &WeaveBlock) -> Hash {
     data.extend_from_slice(&block.commitments_root);
     data.extend_from_slice(&block.registrations_root);
     data.extend_from_slice(&block.anchors_root);
+    data.extend_from_slice(&block.name_registrations_root);
     data.extend_from_slice(&block.fraud_proofs_root);
     data.extend_from_slice(&block.timestamp.to_le_bytes());
     data.extend_from_slice(&block.proposer);
@@ -77,6 +81,9 @@ pub fn compute_block_hash(block: &WeaveBlock) -> Hash {
     }
     if let Ok(a_bytes) = borsh::to_vec(&block.anchors) {
         data.extend_from_slice(&blake3_hash(&a_bytes));
+    }
+    if let Ok(nr_bytes) = borsh::to_vec(&block.name_registrations) {
+        data.extend_from_slice(&blake3_hash(&nr_bytes));
     }
     if let Ok(f_bytes) = borsh::to_vec(&block.fraud_proofs) {
         data.extend_from_slice(&blake3_hash(&f_bytes));
@@ -132,6 +139,13 @@ pub fn verify_block(block: &WeaveBlock, validator_set: &ValidatorSet) -> Result<
     if block.anchors_root != expected_anchors_root {
         return Err(WeaveError::InvalidBlock {
             reason: "anchors merkle root mismatch".to_string(),
+        });
+    }
+
+    let expected_name_registrations_root = compute_merkle_root_borsh(&block.name_registrations);
+    if block.name_registrations_root != expected_name_registrations_root {
+        return Err(WeaveError::InvalidBlock {
+            reason: "name registrations merkle root mismatch".to_string(),
         });
     }
 
@@ -218,6 +232,7 @@ mod tests {
             commitments: vec![],
             registrations: vec![],
             anchors: vec![],
+            name_registrations: vec![],
             fraud_proofs: vec![],
         };
 
@@ -239,6 +254,7 @@ mod tests {
             commitments: vec![],
             registrations: vec![],
             anchors: vec![],
+            name_registrations: vec![],
             fraud_proofs: vec![],
         };
         let block = build_block([0u8; 32], 0, contents, &kp, 1000);
@@ -255,6 +271,7 @@ mod tests {
             commitments: vec![],
             registrations: vec![],
             anchors: vec![],
+            name_registrations: vec![],
             fraud_proofs: vec![],
         };
         let mut block = build_block([0u8; 32], 0, contents, &kp, 1000);
@@ -272,6 +289,7 @@ mod tests {
             commitments: vec![],
             registrations: vec![],
             anchors: vec![],
+            name_registrations: vec![],
             fraud_proofs: vec![],
         };
         let block = build_block([0u8; 32], 0, contents, &kp, 1000);
@@ -299,6 +317,7 @@ mod tests {
             commitments: vec![commitment],
             registrations: vec![],
             anchors: vec![],
+            name_registrations: vec![],
             fraud_proofs: vec![],
         };
         let block = build_block([0u8; 32], 0, contents, &kp, 1000);
@@ -315,6 +334,7 @@ mod tests {
             commitments: vec![],
             registrations: vec![],
             anchors: vec![],
+            name_registrations: vec![],
             fraud_proofs: vec![],
         };
         let mut block = build_block([0u8; 32], 0, contents, &kp, 1000);

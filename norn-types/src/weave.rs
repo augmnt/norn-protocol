@@ -58,6 +58,24 @@ pub struct LoomAnchor {
     pub signature: Signature,
 }
 
+/// A name registration on the weave.
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+pub struct NameRegistration {
+    /// The name being registered.
+    pub name: String,
+    /// The owner's address.
+    pub owner: Address,
+    /// The owner's public key (needed for signature verification).
+    pub owner_pubkey: PublicKey,
+    /// Timestamp of registration.
+    pub timestamp: Timestamp,
+    /// Fee paid for registration.
+    pub fee_paid: Amount,
+    /// Signature by the owner.
+    #[serde(with = "crate::primitives::serde_sig")]
+    pub signature: Signature,
+}
+
 /// A validator's signature on a weave block.
 #[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 pub struct ValidatorSignature {
@@ -102,6 +120,10 @@ pub struct WeaveBlock {
     pub registrations: Vec<Registration>,
     /// Loom anchors included in this block.
     pub anchors: Vec<LoomAnchor>,
+    /// Name registrations included in this block.
+    pub name_registrations: Vec<NameRegistration>,
+    /// Merkle root of all name registrations in this block.
+    pub name_registrations_root: Hash,
     /// Fraud proof submissions included in this block.
     pub fraud_proofs: Vec<FraudProofSubmission>,
     /// Merkle root of all fraud proofs in this block.

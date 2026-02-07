@@ -18,6 +18,8 @@ pub fn create_genesis_block(config: &GenesisConfig) -> Result<(WeaveBlock, Weave
         commitments: Vec::new(),
         registrations: Vec::new(),
         anchors: Vec::new(),
+        name_registrations: Vec::new(),
+        name_registrations_root: [0u8; 32],
         fraud_proofs: Vec::new(),
         fraud_proofs_root: [0u8; 32],
         timestamp: config.timestamp,

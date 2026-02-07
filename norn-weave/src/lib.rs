@@ -12,5 +12,6 @@ pub mod fees;
 pub mod fraud;
 pub mod leader;
 pub mod mempool;
+pub mod name;
 pub mod registration;
 pub mod staking;

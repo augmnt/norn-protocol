@@ -11,6 +11,7 @@ pub mod fraud;
 pub mod genesis;
 pub mod knot;
 pub mod loom;
+pub mod name;
 pub mod network;
 pub mod primitives;
 pub mod thread;

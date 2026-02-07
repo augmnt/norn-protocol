@@ -5,7 +5,9 @@ use norn_crypto::merkle::SparseMerkleTree;
 use norn_types::constants::MAX_COMMITMENTS_PER_BLOCK;
 use norn_types::network::NornMessage;
 use norn_types::primitives::*;
-use norn_types::weave::{CommitmentUpdate, Registration, ValidatorSet, WeaveBlock, WeaveState};
+use norn_types::weave::{
+    CommitmentUpdate, NameRegistration, Registration, ValidatorSet, WeaveBlock, WeaveState,
+};
 use rayon::prelude::*;
 
 use crate::block;
@@ -25,6 +27,8 @@ pub struct WeaveEngine {
     keypair: Keypair,
     /// Known thread IDs for duplicate detection.
     known_threads: HashSet<[u8; 20]>,
+    /// Known names for duplicate detection.
+    known_names: HashSet<String>,
     /// Last committed block (for RPC queries).
     last_block: Option<WeaveBlock>,
     /// Current timestamp, set by the node before each tick.
@@ -48,6 +52,7 @@ impl WeaveEngine {
             merkle_tree,
             keypair,
             known_threads: HashSet::new(),
+            known_names: HashSet::new(),
             last_block: None,
             current_timestamp: 0,
         }
@@ -68,6 +73,13 @@ impl WeaveEngine {
                 // Validate and add to mempool.
                 if registration::validate_registration(&r, &self.known_threads).is_ok() {
                     let _ = self.mempool.add_registration(r);
+                }
+                vec![]
+            }
+
+            NornMessage::NameRegistration(nr) => {
+                if crate::name::validate_name_registration(&nr, &self.known_names).is_ok() {
+                    let _ = self.mempool.add_name_registration(nr);
                 }
                 vec![]
             }
@@ -114,6 +126,13 @@ impl WeaveEngine {
                     }
                 }
 
+                // Reject entire block if ANY name registration is invalid.
+                for nr in &weave_block.name_registrations {
+                    if crate::name::validate_name_registration(nr, &self.known_names).is_err() {
+                        return vec![];
+                    }
+                }
+
                 // All content is valid — apply commitments.
                 for c in &weave_block.commitments {
                     let _ = commitment::apply_commitment(
@@ -130,6 +149,10 @@ impl WeaveEngine {
                         r,
                     );
                     self.known_threads.insert(r.thread_id);
+                }
+                // Apply name registrations.
+                for nr in &weave_block.name_registrations {
+                    self.known_names.insert(nr.name.clone());
                 }
                 // Update state.
                 self.weave_state.height = weave_block.height;
@@ -231,6 +254,11 @@ impl WeaveEngine {
             self.known_threads.insert(r.thread_id);
         }
 
+        // Apply name registrations to state.
+        for nr in &weave_block.name_registrations {
+            self.known_names.insert(nr.name.clone());
+        }
+
         // Update state.
         self.weave_state.height = weave_block.height;
         self.weave_state.latest_hash = weave_block.hash;
@@ -260,6 +288,16 @@ impl WeaveEngine {
     ) -> Result<bool, crate::error::WeaveError> {
         commitment::validate_commitment(&c, None, c.timestamp)?;
         self.mempool.add_commitment(c)?;
+        Ok(true)
+    }
+
+    /// Validate and add a name registration directly to the mempool.
+    pub fn add_name_registration(
+        &mut self,
+        nr: NameRegistration,
+    ) -> Result<bool, crate::error::WeaveError> {
+        crate::name::validate_name_registration(&nr, &self.known_names)?;
+        self.mempool.add_name_registration(nr)?;
         Ok(true)
     }
 

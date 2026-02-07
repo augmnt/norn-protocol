@@ -5,7 +5,7 @@ use crate::consensus::ConsensusMessage;
 use crate::fraud::FraudProofSubmission;
 use crate::knot::Knot;
 use crate::primitives::*;
-use crate::weave::{CommitmentUpdate, Registration, WeaveBlock};
+use crate::weave::{CommitmentUpdate, NameRegistration, Registration, WeaveBlock};
 
 /// Network identifier for distinguishing dev, testnet, and mainnet environments.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -218,6 +218,8 @@ pub enum NornMessage {
         /// Genesis hash for chain identity validation.
         genesis_hash: Hash,
     },
+    /// A name registration.
+    NameRegistration(NameRegistration),
 }
 
 impl NornMessage {
@@ -238,6 +240,7 @@ impl NornMessage {
             NornMessage::Consensus(_) => 10,
             NornMessage::StateRequest { .. } => 11,
             NornMessage::StateResponse { .. } => 12,
+            NornMessage::NameRegistration(_) => 13,
         }
     }
 }

@@ -21,6 +21,12 @@ pub enum WeaveError {
     #[error("stale commitment: age {age}s exceeds max {max_age}s")]
     StaleCommitment { age: u64, max_age: u64 },
 
+    #[error("invalid name registration: {reason}")]
+    InvalidNameRegistration { reason: String },
+
+    #[error("duplicate name: {name}")]
+    DuplicateName { name: String },
+
     #[error("consensus error: {reason}")]
     ConsensusError { reason: String },
 

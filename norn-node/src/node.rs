@@ -388,6 +388,15 @@ impl Node {
                             for reg in &block.registrations {
                                 sm.register_thread(reg.thread_id, reg.owner);
                             }
+                            for name_reg in &block.name_registrations {
+                                if let Err(e) = sm.register_name(
+                                    &name_reg.name,
+                                    name_reg.owner,
+                                    name_reg.timestamp,
+                                ) {
+                                    tracing::warn!("name registration failed: {}", e);
+                                }
+                            }
                             for commit in &block.commitments {
                                 sm.record_commitment(
                                     commit.thread_id,
@@ -499,6 +508,15 @@ impl Node {
                                     sm.register_thread(reg.thread_id, reg.owner);
                                     self.spindle.watch_thread(reg.thread_id);
                                 }
+                                for name_reg in &block.name_registrations {
+                                    if let Err(e) = sm.register_name(
+                                        &name_reg.name,
+                                        name_reg.owner,
+                                        name_reg.timestamp,
+                                    ) {
+                                        tracing::warn!("name registration failed: {}", e);
+                                    }
+                                }
                                 for commit in &block.commitments {
                                     sm.record_commitment(
                                         commit.thread_id,
@@ -581,6 +599,15 @@ impl Node {
                                     for reg in &block.registrations {
                                         sm.register_thread(reg.thread_id, reg.owner);
                                     }
+                                    for name_reg in &block.name_registrations {
+                                        if let Err(e) = sm.register_name(
+                                            &name_reg.name,
+                                            name_reg.owner,
+                                            name_reg.timestamp,
+                                        ) {
+                                            tracing::warn!("name registration failed: {}", e);
+                                        }
+                                    }
                                     for commit in &block.commitments {
                                         sm.record_commitment(
                                             commit.thread_id,
@@ -633,6 +660,7 @@ impl Node {
                                     height = block.height,
                                     commitments = block.commitments.len(),
                                     registrations = block.registrations.len(),
+                                    name_registrations = block.name_registrations.len(),
                                     "produced block (solo mode)"
                                 );
                                 self.metrics.blocks_produced.inc();
@@ -647,6 +675,16 @@ impl Node {
                                         sm.register_thread(reg.thread_id, reg.owner);
                                         // Watch new threads in spindle for fraud detection.
                                         self.spindle.watch_thread(reg.thread_id);
+                                    }
+                                    // Apply name registrations.
+                                    for name_reg in &block.name_registrations {
+                                        if let Err(e) = sm.register_name(
+                                            &name_reg.name,
+                                            name_reg.owner,
+                                            name_reg.timestamp,
+                                        ) {
+                                            tracing::warn!("name registration failed: {}", e);
+                                        }
                                     }
                                     // Deduct commitment fees from committers.
                                     let fee_per = norn_weave::fees::compute_fee(

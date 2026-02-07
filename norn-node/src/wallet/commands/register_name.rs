@@ -1,3 +1,4 @@
+use norn_types::name::NAME_REGISTRATION_FEE;
 use norn_types::primitives::NATIVE_TOKEN_ID;
 
 use crate::state_manager::validate_name;
@@ -39,7 +40,7 @@ pub async fn run(name: &str, yes: bool, rpc_url: Option<&str>) -> Result<(), Wal
     let token_hex = hex::encode(NATIVE_TOKEN_ID);
     let balance_str = rpc.get_balance(&addr_hex, &token_hex).await?;
     let current_balance: u128 = balance_str.parse().unwrap_or(0);
-    let fee = norn_types::constants::ONE_NORN;
+    let fee = NAME_REGISTRATION_FEE;
 
     if current_balance < fee {
         return Err(WalletError::InsufficientBalance {
@@ -79,39 +80,36 @@ pub async fn run(name: &str, yes: bool, rpc_url: Option<&str>) -> Result<(), Wal
     let keypair = ks.decrypt_keypair(&password)?;
     let sender_addr = norn_crypto::address::pubkey_to_address(&keypair.public_key());
 
-    // Build an authentication knot (signed by the wallet keypair).
+    // Build a consensus-level NameRegistration (signed by the wallet keypair).
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
 
-    let sender_state = norn_types::thread::ThreadState::new();
-    let payload = norn_types::knot::KnotPayload::Transfer(norn_types::knot::TransferPayload {
-        token_id: NATIVE_TOKEN_ID,
-        amount: 0,
-        from: sender_addr,
-        to: sender_addr,
-        memo: Some(format!("register-name:{}", name).into_bytes()),
-    });
+    let mut name_reg = norn_types::weave::NameRegistration {
+        name: name.to_string(),
+        owner: sender_addr,
+        owner_pubkey: keypair.public_key(),
+        timestamp: now,
+        fee_paid: fee,
+        signature: [0u8; 64],
+    };
 
-    let knot = norn_thread::knot::KnotBuilder::transfer(now)
-        .add_before_state(sender_addr, keypair.public_key(), 0, &sender_state)
-        .add_after_state(sender_addr, keypair.public_key(), 0, &sender_state)
-        .with_payload(payload)
-        .build()?;
+    // Sign the name registration data.
+    let sig_data = norn_weave::name::name_registration_signing_data(&name_reg);
+    name_reg.signature = keypair.sign(&sig_data);
 
-    let sig = norn_thread::knot::sign_knot(&knot, &keypair);
-    let mut signed_knot = knot;
-    norn_thread::knot::add_signature(&mut signed_knot, sig);
+    let nr_bytes =
+        borsh::to_vec(&name_reg).map_err(|e| WalletError::SerializationError(e.to_string()))?;
+    let nr_hex = hex::encode(&nr_bytes);
 
-    let knot_bytes =
-        borsh::to_vec(&signed_knot).map_err(|e| WalletError::SerializationError(e.to_string()))?;
-    let knot_hex = hex::encode(&knot_bytes);
-
-    let result = rpc.register_name(name, &addr_hex, &knot_hex).await?;
+    let result = rpc.register_name(name, &addr_hex, &nr_hex).await?;
 
     if result.success {
-        print_success(&format!("Name '{}' registered!", name));
+        print_success(&format!(
+            "Name '{}' submitted for registration (will be included in next block)",
+            name
+        ));
         let remaining = current_balance - fee;
         println!(
             "  {}",

@@ -453,6 +453,8 @@ mod tests {
             commitments: vec![],
             registrations: vec![],
             anchors: vec![],
+            name_registrations: vec![],
+            name_registrations_root: [0u8; 32],
             fraud_proofs: vec![],
             fraud_proofs_root: [0u8; 32],
             timestamp: 1000,

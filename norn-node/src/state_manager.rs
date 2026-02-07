@@ -2,14 +2,15 @@ use std::collections::HashMap;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 
-use norn_types::constants::{MAX_SUPPLY, ONE_NORN};
+use norn_types::constants::MAX_SUPPLY;
 use norn_types::error::NornError;
+use norn_types::name::NAME_REGISTRATION_FEE;
 use norn_types::primitives::{Address, Amount, Hash, PublicKey, TokenId, NATIVE_TOKEN_ID};
 use norn_types::thread::ThreadState;
 use norn_types::weave::WeaveBlock;
 
-/// Fee for registering a name (1 NORN, burned).
-pub const NAME_REGISTRATION_FEE: Amount = ONE_NORN;
+// Re-export for backward compatibility (used by wallet CLI and state_store).
+pub use norn_types::name::validate_name;
 
 /// A record of a registered name.
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
@@ -17,30 +18,6 @@ pub struct NameRecord {
     pub owner: Address,
     pub registered_at: u64,
     pub fee_paid: Amount,
-}
-
-/// Validate a name: lowercase alphanumeric + hyphens, 3-32 chars, no leading/trailing hyphens.
-pub fn validate_name(name: &str) -> Result<(), NornError> {
-    if name.len() < 3 || name.len() > 32 {
-        return Err(NornError::InvalidName(format!(
-            "name must be 3-32 characters, got {}",
-            name.len()
-        )));
-    }
-    if name.starts_with('-') || name.ends_with('-') {
-        return Err(NornError::InvalidName(
-            "name must not start or end with a hyphen".to_string(),
-        ));
-    }
-    for c in name.chars() {
-        if !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '-' {
-            return Err(NornError::InvalidName(format!(
-                "name must be lowercase alphanumeric or hyphens, found '{}'",
-                c
-            )));
-        }
-    }
-    Ok(())
 }
 
 /// Metadata tracked per thread beyond its ThreadState.
@@ -590,6 +567,7 @@ impl StateManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use norn_types::constants::ONE_NORN;
 
     fn test_address(byte: u8) -> Address {
         [byte; 20]
@@ -724,6 +702,8 @@ mod tests {
             commitments: vec![],
             registrations: vec![],
             anchors: vec![],
+            name_registrations: vec![],
+            name_registrations_root: [0u8; 32],
             fraud_proofs: vec![],
             fraud_proofs_root: [0u8; 32],
             timestamp: 1000,

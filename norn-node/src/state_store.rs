@@ -22,7 +22,7 @@ const SCHEMA_VERSION_KEY: &[u8] = b"meta:schema_version";
 
 /// Current schema version. Bump this whenever a breaking change is made to any
 /// borsh-serialized type persisted through StateStore.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Persistent store for StateManager data backed by a KvStore.
 pub struct StateStore {
@@ -471,6 +471,8 @@ mod tests {
             commitments: vec![],
             registrations: vec![],
             anchors: vec![],
+            name_registrations: vec![],
+            name_registrations_root: [0u8; 32],
             fraud_proofs: vec![],
             fraud_proofs_root: [0u8; 32],
             timestamp: 1000,

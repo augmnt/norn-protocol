@@ -762,52 +762,57 @@ impl NornRpcServer for NornRpcImpl {
         owner_hex: String,
         knot_hex: String,
     ) -> Result<SubmitResult, ErrorObjectOwned> {
-        // Decode and verify the authentication knot.
+        // The knot_hex now carries a hex-encoded borsh NameRegistration (signed by the wallet).
         let bytes = hex::decode(&knot_hex).map_err(|e| {
             ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>)
         })?;
 
-        let knot: norn_types::knot::Knot = borsh::from_slice(&bytes).map_err(|e| {
-            ErrorObjectOwned::owned(-32602, format!("invalid knot: {}", e), None::<()>)
-        })?;
+        let name_reg: norn_types::weave::NameRegistration =
+            borsh::from_slice(&bytes).map_err(|e| {
+                ErrorObjectOwned::owned(
+                    -32602,
+                    format!("invalid name registration: {}", e),
+                    None::<()>,
+                )
+            })?;
 
-        if knot.signatures.is_empty() || knot.before_states.is_empty() {
-            return Ok(SubmitResult {
-                success: false,
-                reason: Some("knot must have a signature and before_states".to_string()),
-            });
-        }
-
-        // Verify signature.
-        let sender_pubkey = knot.before_states[0].pubkey;
-        if let Err(e) = norn_crypto::keys::verify(&knot.id, &knot.signatures[0], &sender_pubkey) {
-            return Ok(SubmitResult {
-                success: false,
-                reason: Some(format!("invalid signature: {}", e)),
-            });
-        }
-
-        // Verify the signer matches the claimed owner.
-        let signer_address = norn_crypto::address::pubkey_to_address(&sender_pubkey);
+        // Verify the owner matches the claimed owner.
         let owner_address = parse_address_hex(&owner_hex)?;
-        if signer_address != owner_address {
+        if name_reg.owner != owner_address {
             return Ok(SubmitResult {
                 success: false,
-                reason: Some("signer address does not match owner".to_string()),
+                reason: Some("owner address mismatch".to_string()),
             });
         }
 
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        // Verify the name matches.
+        if name_reg.name != name {
+            return Ok(SubmitResult {
+                success: false,
+                reason: Some("name mismatch".to_string()),
+            });
+        }
 
-        let mut sm = self.state_manager.write().await;
-        match sm.register_name(&name, owner_address, now) {
-            Ok(()) => Ok(SubmitResult {
-                success: true,
-                reason: Some(format!("name '{}' registered", name)),
-            }),
+        // Add to WeaveEngine mempool (validates signature, name format, duplicates).
+        let mut engine = self.weave_engine.write().await;
+        match engine.add_name_registration(name_reg.clone()) {
+            Ok(_) => {
+                // Broadcast to P2P network.
+                if let Some(ref handle) = self.relay_handle {
+                    let h = handle.clone();
+                    let msg = NornMessage::NameRegistration(name_reg);
+                    tokio::spawn(async move {
+                        let _ = h.broadcast(msg).await;
+                    });
+                }
+                Ok(SubmitResult {
+                    success: true,
+                    reason: Some(format!(
+                        "name '{}' submitted for registration (will be included in next block)",
+                        name
+                    )),
+                })
+            }
             Err(e) => Ok(SubmitResult {
                 success: false,
                 reason: Some(e.to_string()),

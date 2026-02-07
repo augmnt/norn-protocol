@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use norn_types::fraud::FraudProofSubmission;
 use norn_types::primitives::ThreadId;
-use norn_types::weave::{CommitmentUpdate, LoomAnchor, Registration};
+use norn_types::weave::{CommitmentUpdate, LoomAnchor, NameRegistration, Registration};
 
 use crate::error::WeaveError;
 
@@ -12,6 +12,7 @@ pub struct BlockContents {
     pub commitments: Vec<CommitmentUpdate>,
     pub registrations: Vec<Registration>,
     pub anchors: Vec<LoomAnchor>,
+    pub name_registrations: Vec<NameRegistration>,
     pub fraud_proofs: Vec<FraudProofSubmission>,
 }
 
@@ -23,6 +24,8 @@ pub struct Mempool {
     registrations: Vec<Registration>,
     /// Pending loom anchors.
     anchors: Vec<LoomAnchor>,
+    /// Pending name registrations.
+    name_registrations: Vec<NameRegistration>,
     /// Pending fraud proof submissions.
     fraud_proofs: Vec<FraudProofSubmission>,
     /// Maximum total number of items in the mempool.
@@ -36,6 +39,7 @@ impl Mempool {
             commitments: HashMap::new(),
             registrations: Vec::new(),
             anchors: Vec::new(),
+            name_registrations: Vec::new(),
             fraud_proofs: Vec::new(),
             max_size,
         }
@@ -46,6 +50,7 @@ impl Mempool {
         self.commitments.len()
             + self.registrations.len()
             + self.anchors.len()
+            + self.name_registrations.len()
             + self.fraud_proofs.len()
     }
 
@@ -74,6 +79,15 @@ impl Mempool {
             return Err(WeaveError::MempoolFull);
         }
         self.anchors.push(a);
+        Ok(())
+    }
+
+    /// Add a name registration.
+    pub fn add_name_registration(&mut self, nr: NameRegistration) -> Result<(), WeaveError> {
+        if self.total_size() >= self.max_size {
+            return Err(WeaveError::MempoolFull);
+        }
+        self.name_registrations.push(nr);
         Ok(())
     }
 
@@ -108,12 +122,14 @@ impl Mempool {
 
         let registrations = std::mem::take(&mut self.registrations);
         let anchors = std::mem::take(&mut self.anchors);
+        let name_registrations = std::mem::take(&mut self.name_registrations);
         let fraud_proofs = std::mem::take(&mut self.fraud_proofs);
 
         BlockContents {
             commitments,
             registrations,
             anchors,
+            name_registrations,
             fraud_proofs,
         }
     }
