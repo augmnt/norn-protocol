@@ -71,6 +71,10 @@ impl RelayNode {
             .map_err(|e| RelayError::NetworkError {
                 reason: format!("tcp transport: {}", e),
             })?
+            .with_dns()
+            .map_err(|e| RelayError::NetworkError {
+                reason: format!("dns transport: {}", e),
+            })?
             .with_behaviour(build_behaviour)
             .map_err(|e| RelayError::NetworkError {
                 reason: format!("behaviour: {}", e),

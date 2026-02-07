@@ -62,6 +62,11 @@ pub const DEFAULT_RELAY_PORT: u16 = 9740;
 /// Maximum number of relay connections per spindle.
 pub const MAX_RELAY_CONNECTIONS: usize = 50;
 
+/// Default bootstrap nodes for the public Norn network.
+pub const DEFAULT_BOOT_NODES: &[&str] = &[
+    "/dns4/seed.norn.network/tcp/9740",
+];
+
 // ─── Thread Parameters ───────────────────────────────────────────────────────
 
 /// Maximum number of unconfirmed knots before a commitment is required.

@@ -36,6 +36,9 @@ pub enum Command {
         /// Wipe the data directory before starting (useful after breaking upgrades)
         #[arg(long)]
         reset_state: bool,
+        /// Disable default bootstrap nodes (for isolated local testing)
+        #[arg(long)]
+        no_bootstrap: bool,
         /// Boot node multiaddr to connect to (can be specified multiple times)
         #[arg(long = "boot-node")]
         boot_nodes: Vec<String>,
@@ -77,6 +80,7 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
             storage,
             network,
             reset_state,
+            no_bootstrap,
             boot_nodes,
         } => {
             crate::banner::print_banner();
@@ -106,6 +110,9 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
             }
             if let Some(ref net) = network {
                 config.network_id = net.clone();
+            }
+            if no_bootstrap {
+                config.network.boot_nodes.clear();
             }
             if !boot_nodes.is_empty() {
                 config.network.boot_nodes.extend(boot_nodes);
@@ -157,6 +164,13 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
                     cyan.apply_to(&config.rpc.listen_addr),
                 );
                 println!("  {}  {}", dim.apply_to("Mode    "), cyan.apply_to(mode),);
+                if !config.network.boot_nodes.is_empty() {
+                    println!(
+                        "  {} {}",
+                        dim.apply_to("Peers   "),
+                        cyan.apply_to(format!("{} boot node(s)", config.network.boot_nodes.len())),
+                    );
+                }
                 if dev {
                     let (_, founder_addr) = crate::genesis::devnet_genesis();
                     let green = console::Style::new().green();

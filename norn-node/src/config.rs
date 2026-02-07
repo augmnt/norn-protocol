@@ -76,7 +76,10 @@ impl Default for NodeConfig {
             network_id: default_network_id(),
             network: NetworkConfig {
                 listen_addr: "0.0.0.0:9740".to_string(),
-                boot_nodes: Vec::new(),
+                boot_nodes: norn_types::constants::DEFAULT_BOOT_NODES
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
                 max_connections: 50,
             },
             storage: StorageConfig {
@@ -170,6 +173,13 @@ mod tests {
 
         let contents = std::fs::read_to_string(config_path).unwrap();
         let _config: NodeConfig = toml::from_str(&contents).unwrap();
+    }
+
+    #[test]
+    fn test_default_config_has_boot_nodes() {
+        let config = NodeConfig::default();
+        assert!(!config.network.boot_nodes.is_empty());
+        assert!(config.network.boot_nodes[0].contains("seed.norn.network"));
     }
 
     #[test]

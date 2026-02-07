@@ -840,6 +840,8 @@ mod tests {
         // Disable RPC to avoid port conflicts in tests.
         config.rpc.enabled = false;
         config.validator.enabled = false;
+        // Clear boot nodes to prevent network connections in tests.
+        config.network.boot_nodes.clear();
         config
     }
 
