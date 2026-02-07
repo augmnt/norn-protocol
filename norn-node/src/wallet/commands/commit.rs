@@ -12,7 +12,7 @@ use crate::wallet::keystore::Keystore;
 use crate::wallet::prompt::prompt_password;
 use crate::wallet::rpc_client::RpcClient;
 
-pub async fn run(name: Option<&str>) -> Result<(), WalletError> {
+pub async fn run(name: Option<&str>, rpc_url: Option<&str>) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
     let wallet_name = match name {
         Some(n) => n,
@@ -25,7 +25,8 @@ pub async fn run(name: Option<&str>) -> Result<(), WalletError> {
 
     let address = pubkey_to_address(&keypair.public_key());
 
-    let rpc = RpcClient::new(&config.rpc_url)?;
+    let url = rpc_url.unwrap_or(&config.rpc_url);
+    let rpc = RpcClient::new(url)?;
 
     // Query the node for current thread version and state.
     let thread_id_hex = hex::encode(address);

@@ -12,9 +12,11 @@ pub async fn run(
     address: Option<&str>,
     token: Option<&str>,
     json: bool,
+    rpc_url: Option<&str>,
 ) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
-    let rpc = RpcClient::new(&config.rpc_url)?;
+    let url = rpc_url.unwrap_or(&config.rpc_url);
+    let rpc = RpcClient::new(url)?;
 
     let addr = if let Some(a) = address {
         parse_address(a)?

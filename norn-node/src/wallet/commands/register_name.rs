@@ -11,7 +11,7 @@ use crate::wallet::keystore::Keystore;
 use crate::wallet::prompt::{confirm, prompt_password};
 use crate::wallet::rpc_client::RpcClient;
 
-pub async fn run(name: &str, yes: bool) -> Result<(), WalletError> {
+pub async fn run(name: &str, yes: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     // Validate name format locally first.
     validate_name(name).map_err(|e| WalletError::Other(e.to_string()))?;
 
@@ -19,7 +19,8 @@ pub async fn run(name: &str, yes: bool) -> Result<(), WalletError> {
     let wallet_name = config.active_wallet_name()?;
     let ks = Keystore::load(wallet_name)?;
 
-    let rpc = RpcClient::new(&config.rpc_url)?;
+    let url = rpc_url.unwrap_or(&config.rpc_url);
+    let rpc = RpcClient::new(url)?;
 
     // Check if name is already taken.
     if let Some(resolution) = rpc.resolve_name(name).await? {

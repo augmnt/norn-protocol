@@ -24,6 +24,12 @@ pub enum Command {
         /// Start in dev mode (solo validator, testnet faucet, auto-config)
         #[arg(long)]
         dev: bool,
+        /// Override RPC listen address (e.g., "0.0.0.0:9741" for LAN access)
+        #[arg(long)]
+        rpc_addr: Option<String>,
+        /// Storage backend for dev mode: "memory" (default), "sqlite", "rocksdb"
+        #[arg(long)]
+        storage: Option<String>,
     },
     /// Initialize a new node configuration
     Init {
@@ -55,10 +61,15 @@ pub enum Command {
 
 pub async fn run(cli: Cli) -> Result<(), NodeError> {
     match cli.command {
-        Command::Run { config, dev } => {
+        Command::Run {
+            config,
+            dev,
+            rpc_addr,
+            storage,
+        } => {
             crate::banner::print_banner();
 
-            let config = if dev {
+            let mut config = if dev {
                 let mut cfg = crate::config::NodeConfig::default();
                 cfg.validator.enabled = true;
                 cfg.validator.solo_mode = true;
@@ -71,14 +82,22 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
                 crate::config::NodeConfig::load(&config)?
             };
 
+            // Apply CLI overrides.
+            if let Some(addr) = rpc_addr {
+                config.rpc.listen_addr = addr;
+            }
+            if let Some(db) = storage {
+                config.storage.db_type = db;
+            }
+
             // Print compact startup summary.
             {
                 let dim = console::Style::new().dim();
                 let cyan = console::Style::new().cyan();
                 let mode = if dev {
-                    "dev · solo validator · memory storage"
+                    format!("dev · solo validator · {} storage", config.storage.db_type)
                 } else {
-                    "config"
+                    "config".to_string()
                 };
                 println!(
                     "  {}  {} (P2P) | {} (RPC)",

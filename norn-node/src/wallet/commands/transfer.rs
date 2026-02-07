@@ -16,6 +16,7 @@ pub async fn run(
     token: Option<&str>,
     memo: Option<&str>,
     yes: bool,
+    rpc_url: Option<&str>,
 ) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
     let wallet_name = config.active_wallet_name()?;
@@ -33,7 +34,8 @@ pub async fn run(
         ));
     }
 
-    let rpc = RpcClient::new(&config.rpc_url)?;
+    let url = rpc_url.unwrap_or(&config.rpc_url);
+    let rpc = RpcClient::new(url)?;
 
     // Resolve `to` — try as address first, otherwise resolve as a name.
     let to_addr = if to.starts_with("0x") || (to.len() == 40 && hex::decode(to).is_ok()) {

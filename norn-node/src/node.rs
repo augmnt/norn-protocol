@@ -6,6 +6,7 @@ use norn_crypto::keys::Keypair;
 use norn_relay::config::RelayConfig;
 use norn_relay::relay::{RelayHandle, RelayNode};
 use norn_storage::memory::MemoryStore;
+use norn_storage::traits::KvStore;
 use norn_storage::weave_store::WeaveStore;
 use norn_types::constants::BLOCK_TIME_TARGET;
 use norn_types::network::NornMessage;
@@ -26,10 +27,43 @@ pub struct Node {
     metrics: Arc<NodeMetrics>,
     rpc_handle: Option<jsonrpsee::server::ServerHandle>,
     block_tx: Option<tokio::sync::broadcast::Sender<crate::rpc::types::BlockInfo>>,
-    weave_store: WeaveStore<MemoryStore>,
+    weave_store: WeaveStore<Arc<dyn KvStore>>,
     relay: Option<RelayNode>,
     relay_rx: Option<tokio::sync::broadcast::Receiver<NornMessage>>,
     relay_handle: Option<RelayHandle>,
+}
+
+/// Create a storage backend from the node configuration.
+fn create_store(config: &NodeConfig) -> Result<Arc<dyn KvStore>, NodeError> {
+    match config.storage.db_type.as_str() {
+        "memory" => Ok(Arc::new(MemoryStore::new())),
+        "sqlite" => {
+            let data_dir = std::path::Path::new(&config.storage.data_dir);
+            std::fs::create_dir_all(data_dir)?;
+            let db_path = data_dir.join("norn.db");
+            let store =
+                norn_storage::sqlite::SqliteStore::new(db_path.to_str().unwrap_or("norn.db"))
+                    .map_err(NodeError::StorageError)?;
+            Ok(Arc::new(store))
+        }
+        "rocksdb" => {
+            let data_dir = std::path::Path::new(&config.storage.data_dir);
+            std::fs::create_dir_all(data_dir)?;
+            let db_path = data_dir.join("norn.rocksdb");
+            let store = norn_storage::rocksdb::RocksDbStore::new(
+                db_path.to_str().unwrap_or("norn.rocksdb"),
+                None,
+            )
+            .map_err(NodeError::StorageError)?;
+            Ok(Arc::new(store))
+        }
+        other => Err(NodeError::ConfigError {
+            reason: format!(
+                "unknown storage backend '{}', expected 'memory', 'sqlite', or 'rocksdb'",
+                other
+            ),
+        }),
+    }
 }
 
 impl Node {
@@ -102,17 +136,41 @@ impl Node {
             (validator_set, initial_state)
         };
 
+        // Initialize persistent storage.
+        let store = create_store(&config)?;
+        let weave_store = WeaveStore::new(store.clone());
+
+        // Try to load persisted weave state; fall back to genesis/default.
+        let effective_state = match weave_store.load_weave_state() {
+            Ok(Some(persisted)) => {
+                tracing::info!(
+                    height = persisted.height,
+                    "loaded persisted weave state from disk"
+                );
+                persisted
+            }
+            _ => initial_state,
+        };
+
         let weave_engine = Arc::new(RwLock::new(WeaveEngine::new(
             keypair,
             validator_set,
-            initial_state,
+            effective_state,
         )));
 
         let metrics = Arc::new(NodeMetrics::new());
-        let state_manager = Arc::new(RwLock::new(StateManager::new()));
 
-        // Initialize persistent storage.
-        let weave_store = WeaveStore::new(MemoryStore::new());
+        // Rebuild StateManager from persistent storage.
+        let ss = crate::state_store::StateStore::new(store.clone());
+        let mut sm = match ss.rebuild() {
+            Ok(rebuilt) => rebuilt,
+            Err(e) => {
+                tracing::warn!("Failed to rebuild state from disk, starting fresh: {}", e);
+                StateManager::new()
+            }
+        };
+        sm.set_store(ss);
+        let state_manager = Arc::new(RwLock::new(sm));
 
         // Initialize the relay if networking is configured (before RPC, so handle is available).
         let (relay, relay_rx, relay_handle) =

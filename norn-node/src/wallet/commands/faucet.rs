@@ -4,9 +4,10 @@ use crate::wallet::format::{format_address, parse_address, print_error, print_su
 use crate::wallet::keystore::Keystore;
 use crate::wallet::rpc_client::RpcClient;
 
-pub async fn run(address: Option<&str>) -> Result<(), WalletError> {
+pub async fn run(address: Option<&str>, rpc_url: Option<&str>) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
-    let rpc = RpcClient::new(&config.rpc_url)?;
+    let url = rpc_url.unwrap_or(&config.rpc_url);
+    let rpc = RpcClient::new(url)?;
 
     let addr = if let Some(a) = address {
         parse_address(a)?

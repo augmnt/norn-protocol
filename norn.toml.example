@@ -38,6 +38,7 @@ solo_mode = false
 enabled = true
 
 # Address for the JSON-RPC server.
+# For LAN access, change to "0.0.0.0:9741"
 listen_addr = "127.0.0.1:9741"
 
 # Maximum concurrent RPC connections.

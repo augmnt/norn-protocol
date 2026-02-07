@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use borsh::{BorshDeserialize, BorshSerialize};
+
 use norn_types::constants::ONE_NORN;
 use norn_types::error::NornError;
 use norn_types::primitives::{Address, Amount, Hash, PublicKey, TokenId, NATIVE_TOKEN_ID};
@@ -10,7 +12,7 @@ use norn_types::weave::WeaveBlock;
 pub const NAME_REGISTRATION_FEE: Amount = ONE_NORN;
 
 /// A record of a registered name.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 pub struct NameRecord {
     pub owner: Address,
     pub registered_at: u64,
@@ -42,7 +44,7 @@ pub fn validate_name(name: &str) -> Result<(), NornError> {
 }
 
 /// Metadata tracked per thread beyond its ThreadState.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
 #[allow(dead_code)]
 pub struct ThreadMeta {
     pub owner: PublicKey,
@@ -53,7 +55,7 @@ pub struct ThreadMeta {
 }
 
 /// A record of a token transfer (for history queries).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 pub struct TransferRecord {
     pub knot_id: Hash,
     pub from: Address,
@@ -74,6 +76,7 @@ pub struct StateManager {
     block_archive: Vec<WeaveBlock>,
     name_registry: HashMap<String, NameRecord>,
     address_names: HashMap<Address, Vec<String>>,
+    state_store: Option<crate::state_store::StateStore>,
 }
 
 impl Default for StateManager {
@@ -91,7 +94,47 @@ impl StateManager {
             block_archive: Vec::new(),
             name_registry: HashMap::new(),
             address_names: HashMap::new(),
+            state_store: None,
         }
+    }
+
+    /// Create a new StateManager with an attached persistent store.
+    #[allow(dead_code)]
+    pub fn with_store(store: crate::state_store::StateStore) -> Self {
+        Self {
+            thread_states: HashMap::new(),
+            thread_meta: HashMap::new(),
+            transfer_log: Vec::new(),
+            block_archive: Vec::new(),
+            name_registry: HashMap::new(),
+            address_names: HashMap::new(),
+            state_store: Some(store),
+        }
+    }
+
+    /// Reconstruct a StateManager from pre-loaded data (used by state_store::rebuild).
+    pub fn from_parts(
+        thread_states: HashMap<Address, ThreadState>,
+        thread_meta: HashMap<Address, ThreadMeta>,
+        transfer_log: Vec<TransferRecord>,
+        block_archive: Vec<WeaveBlock>,
+        name_registry: HashMap<String, NameRecord>,
+        address_names: HashMap<Address, Vec<String>>,
+    ) -> Self {
+        Self {
+            thread_states,
+            thread_meta,
+            transfer_log,
+            block_archive,
+            name_registry,
+            address_names,
+            state_store: None,
+        }
+    }
+
+    /// Attach a state store for write-through persistence.
+    pub fn set_store(&mut self, store: crate::state_store::StateStore) {
+        self.state_store = Some(store);
     }
 
     /// Register a thread with its owner public key.
@@ -99,18 +142,35 @@ impl StateManager {
         if self.thread_states.contains_key(&address) {
             return;
         }
-        let state_hash = norn_thread::state::compute_state_hash(&ThreadState::new());
-        self.thread_states.insert(address, ThreadState::new());
-        self.thread_meta.insert(
-            address,
-            ThreadMeta {
-                owner: pubkey,
-                version: 0,
-                nonce: 0,
-                state_hash,
-                last_commit_hash: [0u8; 32],
-            },
-        );
+        let state = ThreadState::new();
+        let state_hash = norn_thread::state::compute_state_hash(&state);
+        let meta = ThreadMeta {
+            owner: pubkey,
+            version: 0,
+            nonce: 0,
+            state_hash,
+            last_commit_hash: [0u8; 32],
+        };
+        self.thread_states.insert(address, state.clone());
+        self.thread_meta.insert(address, meta.clone());
+
+        // Persist
+        if let Some(ref store) = self.state_store {
+            if let Err(e) = store.save_thread_state(&address, &state) {
+                tracing::warn!(
+                    "Failed to persist thread state for {}: {}",
+                    hex::encode(address),
+                    e
+                );
+            }
+            if let Err(e) = store.save_thread_meta(&address, &meta) {
+                tracing::warn!(
+                    "Failed to persist thread meta for {}: {}",
+                    hex::encode(address),
+                    e
+                );
+            }
+        }
     }
 
     /// Check if an address is registered.
@@ -142,6 +202,20 @@ impl StateManager {
         // Update state hash in meta
         if let Some(meta) = self.thread_meta.get_mut(&address) {
             meta.state_hash = norn_thread::state::compute_state_hash(state);
+        }
+
+        // Persist
+        if let Some(ref store) = self.state_store {
+            if let Err(e) =
+                store.save_thread_state(&address, self.thread_states.get(&address).unwrap())
+            {
+                tracing::warn!("Failed to persist thread state: {}", e);
+            }
+            if let Some(meta) = self.thread_meta.get(&address) {
+                if let Err(e) = store.save_thread_meta(&address, meta) {
+                    tracing::warn!("Failed to persist thread meta: {}", e);
+                }
+            }
         }
 
         Ok(())
@@ -197,7 +271,7 @@ impl StateManager {
         }
 
         // Log the transfer
-        self.transfer_log.push(TransferRecord {
+        let record = TransferRecord {
             knot_id,
             from,
             to,
@@ -206,7 +280,31 @@ impl StateManager {
             memo,
             timestamp,
             block_height: None,
-        });
+        };
+        self.transfer_log.push(record.clone());
+
+        // Persist
+        if let Some(ref store) = self.state_store {
+            if let Err(e) = store.save_thread_state(&from, self.thread_states.get(&from).unwrap()) {
+                tracing::warn!("Failed to persist sender state: {}", e);
+            }
+            if let Err(e) = store.save_thread_state(&to, self.thread_states.get(&to).unwrap()) {
+                tracing::warn!("Failed to persist receiver state: {}", e);
+            }
+            if let Some(meta) = self.thread_meta.get(&from) {
+                if let Err(e) = store.save_thread_meta(&from, meta) {
+                    tracing::warn!("Failed to persist sender meta: {}", e);
+                }
+            }
+            if let Some(meta) = self.thread_meta.get(&to) {
+                if let Err(e) = store.save_thread_meta(&to, meta) {
+                    tracing::warn!("Failed to persist receiver meta: {}", e);
+                }
+            }
+            if let Err(e) = store.append_transfer(&record) {
+                tracing::warn!("Failed to persist transfer record: {}", e);
+            }
+        }
 
         Ok(())
     }
@@ -263,6 +361,12 @@ impl StateManager {
 
     /// Archive a produced block.
     pub fn archive_block(&mut self, block: WeaveBlock) {
+        // Persist
+        if let Some(ref store) = self.state_store {
+            if let Err(e) = store.save_block(&block) {
+                tracing::warn!("Failed to persist block {}: {}", block.height, e);
+            }
+        }
         self.block_archive.push(block);
     }
 
@@ -279,7 +383,7 @@ impl StateManager {
 
     /// Log a faucet credit as a transfer record (from zero-address).
     pub fn log_faucet_credit(&mut self, address: Address, amount: Amount, timestamp: u64) {
-        self.transfer_log.push(TransferRecord {
+        let record = TransferRecord {
             knot_id: [0u8; 32],
             from: [0u8; 20], // zero address = faucet
             to: address,
@@ -288,7 +392,23 @@ impl StateManager {
             memo: Some(b"faucet".to_vec()),
             timestamp,
             block_height: None,
-        });
+        };
+        self.transfer_log.push(record.clone());
+
+        // Persist
+        if let Some(ref store) = self.state_store {
+            if let Err(e) = store.save_thread_state(
+                &address,
+                self.thread_states
+                    .get(&address)
+                    .unwrap_or(&ThreadState::new()),
+            ) {
+                tracing::warn!("Failed to persist thread state after faucet: {}", e);
+            }
+            if let Err(e) = store.append_transfer(&record) {
+                tracing::warn!("Failed to persist faucet transfer: {}", e);
+            }
+        }
     }
 
     /// Register a name for an address. Validates the name, checks uniqueness,
@@ -327,7 +447,7 @@ impl StateManager {
         }
 
         // Log the fee burn as a transfer to the zero address.
-        self.transfer_log.push(TransferRecord {
+        let fee_record = TransferRecord {
             knot_id: [0u8; 32],
             from: owner,
             to: [0u8; 20], // burn address
@@ -336,21 +456,51 @@ impl StateManager {
             memo: Some(format!("name registration: {}", name).into_bytes()),
             timestamp,
             block_height: None,
-        });
+        };
+        self.transfer_log.push(fee_record.clone());
 
         // Record the name.
-        self.name_registry.insert(
-            name.to_string(),
-            NameRecord {
-                owner,
-                registered_at: timestamp,
-                fee_paid: NAME_REGISTRATION_FEE,
-            },
-        );
+        let name_record = NameRecord {
+            owner,
+            registered_at: timestamp,
+            fee_paid: NAME_REGISTRATION_FEE,
+        };
+        self.name_registry
+            .insert(name.to_string(), name_record.clone());
         self.address_names
             .entry(owner)
             .or_default()
             .push(name.to_string());
+
+        // Persist
+        if let Some(ref store) = self.state_store {
+            if let Err(e) = store.save_thread_state(&owner, self.thread_states.get(&owner).unwrap())
+            {
+                tracing::warn!(
+                    "Failed to persist thread state after name registration: {}",
+                    e
+                );
+            }
+            if let Some(meta) = self.thread_meta.get(&owner) {
+                if let Err(e) = store.save_thread_meta(&owner, meta) {
+                    tracing::warn!(
+                        "Failed to persist thread meta after name registration: {}",
+                        e
+                    );
+                }
+            }
+            if let Err(e) = store.save_name(name, &name_record) {
+                tracing::warn!("Failed to persist name record: {}", e);
+            }
+            if let Some(names) = self.address_names.get(&owner) {
+                if let Err(e) = store.save_address_names(&owner, names) {
+                    tracing::warn!("Failed to persist address names: {}", e);
+                }
+            }
+            if let Err(e) = store.append_transfer(&fee_record) {
+                tracing::warn!("Failed to persist name registration fee transfer: {}", e);
+            }
+        }
 
         Ok(())
     }

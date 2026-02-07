@@ -3,9 +3,10 @@ use crate::wallet::error::WalletError;
 use crate::wallet::format::{print_error, style_bold, style_info};
 use crate::wallet::rpc_client::RpcClient;
 
-pub async fn run(name: &str, json: bool) -> Result<(), WalletError> {
+pub async fn run(name: &str, json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
-    let rpc = RpcClient::new(&config.rpc_url)?;
+    let url = rpc_url.unwrap_or(&config.rpc_url);
+    let rpc = RpcClient::new(url)?;
 
     match rpc.resolve_name(name).await? {
         Some(resolution) => {

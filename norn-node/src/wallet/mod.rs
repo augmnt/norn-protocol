@@ -40,28 +40,74 @@ pub async fn run(command: WalletCommand) -> Result<(), WalletError> {
             address,
             token,
             json,
-        } => commands::balance::run(address.as_deref(), token.as_deref(), json).await,
+            rpc_url,
+        } => {
+            commands::balance::run(
+                address.as_deref(),
+                token.as_deref(),
+                json,
+                rpc_url.as_deref(),
+            )
+            .await
+        }
         WalletCommand::Transfer {
             to,
             amount,
             token,
             memo,
             yes,
-        } => commands::transfer::run(&to, &amount, token.as_deref(), memo.as_deref(), yes).await,
-        WalletCommand::Register { name } => commands::register::run(name.as_deref()).await,
-        WalletCommand::Commit { name } => commands::commit::run(name.as_deref()).await,
-        WalletCommand::Status { name, json } => commands::status::run(name.as_deref(), json).await,
-        WalletCommand::History { limit, json } => commands::history::run(limit, json).await,
-        WalletCommand::Faucet { address } => commands::faucet::run(address.as_deref()).await,
-        WalletCommand::Block { height, json } => {
-            commands::block::run(height.as_deref(), json).await
+            rpc_url,
+        } => {
+            commands::transfer::run(
+                &to,
+                &amount,
+                token.as_deref(),
+                memo.as_deref(),
+                yes,
+                rpc_url.as_deref(),
+            )
+            .await
         }
-        WalletCommand::WeaveState { json } => commands::weave_state::run(json).await,
+        WalletCommand::Register { name, rpc_url } => {
+            commands::register::run(name.as_deref(), rpc_url.as_deref()).await
+        }
+        WalletCommand::Commit { name, rpc_url } => {
+            commands::commit::run(name.as_deref(), rpc_url.as_deref()).await
+        }
+        WalletCommand::Status {
+            name,
+            json,
+            rpc_url,
+        } => commands::status::run(name.as_deref(), json, rpc_url.as_deref()).await,
+        WalletCommand::History {
+            limit,
+            json,
+            rpc_url,
+        } => commands::history::run(limit, json, rpc_url.as_deref()).await,
+        WalletCommand::Faucet { address, rpc_url } => {
+            commands::faucet::run(address.as_deref(), rpc_url.as_deref()).await
+        }
+        WalletCommand::Block {
+            height,
+            json,
+            rpc_url,
+        } => commands::block::run(height.as_deref(), json, rpc_url.as_deref()).await,
+        WalletCommand::WeaveState { json, rpc_url } => {
+            commands::weave_state::run(json, rpc_url.as_deref()).await
+        }
         WalletCommand::Config { rpc_url, json } => {
             commands::config_cmd::run(rpc_url.as_deref(), json)
         }
-        WalletCommand::RegisterName { name, yes } => commands::register_name::run(&name, yes).await,
-        WalletCommand::Resolve { name, json } => commands::resolve::run(&name, json).await,
-        WalletCommand::Names { json } => commands::names::run(json).await,
+        WalletCommand::RegisterName { name, yes, rpc_url } => {
+            commands::register_name::run(&name, yes, rpc_url.as_deref()).await
+        }
+        WalletCommand::Resolve {
+            name,
+            json,
+            rpc_url,
+        } => commands::resolve::run(&name, json, rpc_url.as_deref()).await,
+        WalletCommand::Names { json, rpc_url } => {
+            commands::names::run(json, rpc_url.as_deref()).await
+        }
     }
 }

@@ -4,7 +4,7 @@ use crate::wallet::format::{format_address, style_bold, style_dim, style_success
 use crate::wallet::keystore::Keystore;
 use crate::wallet::rpc_client::RpcClient;
 
-pub async fn run(name: Option<&str>, json: bool) -> Result<(), WalletError> {
+pub async fn run(name: Option<&str>, json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
     let wallet_name = match name {
         Some(n) => n,
@@ -12,7 +12,8 @@ pub async fn run(name: Option<&str>, json: bool) -> Result<(), WalletError> {
     };
 
     let ks = Keystore::load(wallet_name)?;
-    let rpc = RpcClient::new(&config.rpc_url)?;
+    let url = rpc_url.unwrap_or(&config.rpc_url);
+    let rpc = RpcClient::new(url)?;
 
     let thread_id = hex::encode(ks.address);
     let thread_info = rpc.get_thread(&thread_id).await?;

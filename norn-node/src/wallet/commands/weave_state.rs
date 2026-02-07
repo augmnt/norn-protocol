@@ -3,9 +3,10 @@ use crate::wallet::error::WalletError;
 use crate::wallet::format::style_bold;
 use crate::wallet::rpc_client::RpcClient;
 
-pub async fn run(json: bool) -> Result<(), WalletError> {
+pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
-    let rpc = RpcClient::new(&config.rpc_url)?;
+    let url = rpc_url.unwrap_or(&config.rpc_url);
+    let rpc = RpcClient::new(url)?;
 
     let state = rpc.get_weave_state().await?;
 

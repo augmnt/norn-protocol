@@ -78,6 +78,9 @@ pub enum WalletCommand {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
     },
     /// Transfer tokens to another address
     Transfer {
@@ -96,18 +99,27 @@ pub enum WalletCommand {
         /// Skip confirmation prompt
         #[arg(long)]
         yes: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
     },
     /// Register a thread on the weave
     Register {
         /// Wallet name (defaults to active wallet)
         #[arg(long)]
         name: Option<String>,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
     },
     /// Commit pending thread state to the weave
     Commit {
         /// Wallet name (defaults to active wallet)
         #[arg(long)]
         name: Option<String>,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
     },
     /// Show thread registration and commitment status
     Status {
@@ -117,6 +129,9 @@ pub enum WalletCommand {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
     },
     /// Show transaction history
     History {
@@ -126,12 +141,18 @@ pub enum WalletCommand {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
     },
     /// Request testnet tokens from faucet
     Faucet {
         /// Address to fund (defaults to active wallet)
         #[arg(long)]
         address: Option<String>,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
     },
     /// Query a block by height
     Block {
@@ -140,12 +161,18 @@ pub enum WalletCommand {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
     },
     /// Show current weave state
     WeaveState {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
     },
     /// Get or set wallet configuration
     Config {
@@ -164,6 +191,9 @@ pub enum WalletCommand {
         /// Skip confirmation prompt
         #[arg(long)]
         yes: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
     },
     /// Resolve a name to its owner address
     Resolve {
@@ -173,11 +203,17 @@ pub enum WalletCommand {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
     },
     /// List names owned by the active wallet
     Names {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
     },
 }

@@ -4,12 +4,13 @@ use crate::wallet::format::{format_address, style_bold, style_dim, style_info};
 use crate::wallet::keystore::Keystore;
 use crate::wallet::rpc_client::RpcClient;
 
-pub async fn run(json: bool) -> Result<(), WalletError> {
+pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
     let wallet_name = config.active_wallet_name()?;
     let ks = Keystore::load(wallet_name)?;
 
-    let rpc = RpcClient::new(&config.rpc_url)?;
+    let url = rpc_url.unwrap_or(&config.rpc_url);
+    let rpc = RpcClient::new(url)?;
     let addr_hex = hex::encode(ks.address);
 
     let names = rpc.list_names(&addr_hex).await?;
