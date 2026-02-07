@@ -1,3 +1,7 @@
+/// Wire protocol version. Bump this whenever a breaking change is made to
+/// NornMessage variants or any borsh-serialized P2P type.
+pub const PROTOCOL_VERSION: u8 = 1;
+
 /// Gossipsub topic for general network messages.
 pub const GOSSIP_PROTOCOL: &str = "/norn/gossip/1.0.0";
 

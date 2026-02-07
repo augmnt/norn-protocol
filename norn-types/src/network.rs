@@ -139,6 +139,44 @@ pub struct SpindleAlert {
     pub signature: Signature,
 }
 
+/// Versioned envelope for P2P messages. Wraps borsh-encoded payloads so that
+/// nodes can skip unknown `message_type` values instead of crashing.
+///
+/// Nodes that receive an unknown `message_type` log a debug warning and drop
+/// the message, maintaining forward compatibility when new message types are
+/// added.
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+pub struct MessageEnvelope {
+    /// Envelope version (currently 1).
+    pub version: u8,
+    /// Known message type discriminator. Corresponds to the `NornMessage` enum
+    /// variant index.
+    pub message_type: u8,
+    /// Borsh-encoded inner message payload.
+    pub payload: Vec<u8>,
+}
+
+impl MessageEnvelope {
+    /// Wrap a `NornMessage` into a versioned envelope.
+    pub fn wrap(msg: &NornMessage) -> Result<Self, std::io::Error> {
+        let message_type = msg.discriminant();
+        let payload = borsh::to_vec(msg)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        Ok(Self {
+            version: 1,
+            message_type,
+            payload,
+        })
+    }
+
+    /// Unwrap the envelope back into a `NornMessage`.
+    ///
+    /// Returns `None` if the `message_type` is unknown (forward-compatible skip).
+    pub fn unwrap_message(&self) -> Option<NornMessage> {
+        NornMessage::try_from_slice(&self.payload).ok()
+    }
+}
+
 /// Top-level Norn protocol message envelope.
 #[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 pub enum NornMessage {
@@ -180,4 +218,72 @@ pub enum NornMessage {
         /// Genesis hash for chain identity validation.
         genesis_hash: Hash,
     },
+}
+
+impl NornMessage {
+    /// Returns a stable discriminant byte for this message variant.
+    /// Used by `MessageEnvelope` for forward-compatible type tagging.
+    pub fn discriminant(&self) -> u8 {
+        match self {
+            NornMessage::KnotProposal(_) => 0,
+            NornMessage::KnotResponse(_) => 1,
+            NornMessage::Commitment(_) => 2,
+            NornMessage::Registration(_) => 3,
+            NornMessage::Relay(_) => 4,
+            NornMessage::SpindleReg(_) => 5,
+            NornMessage::SpindleStatus(_) => 6,
+            NornMessage::Alert(_) => 7,
+            NornMessage::FraudProof(_) => 8,
+            NornMessage::Block(_) => 9,
+            NornMessage::Consensus(_) => 10,
+            NornMessage::StateRequest { .. } => 11,
+            NornMessage::StateResponse { .. } => 12,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::weave::Registration;
+
+    fn sample_message() -> NornMessage {
+        NornMessage::Registration(Registration {
+            thread_id: [1u8; 20],
+            owner: [2u8; 32],
+            initial_state_hash: [3u8; 32],
+            timestamp: 1000,
+            signature: [4u8; 64],
+        })
+    }
+
+    #[test]
+    fn test_envelope_roundtrip() {
+        let msg = sample_message();
+        let envelope = MessageEnvelope::wrap(&msg).expect("wrap failed");
+        assert_eq!(envelope.version, 1);
+        assert_eq!(envelope.message_type, 3); // Registration = discriminant 3
+        let unwrapped = envelope.unwrap_message().expect("unwrap failed");
+        assert_eq!(msg, unwrapped);
+    }
+
+    #[test]
+    fn test_envelope_unknown_type_returns_none() {
+        // Simulate an envelope with unknown message type and garbage payload.
+        let envelope = MessageEnvelope {
+            version: 1,
+            message_type: 255, // unknown
+            payload: vec![0xFF, 0xFF, 0xFF],
+        };
+        assert!(envelope.unwrap_message().is_none());
+    }
+
+    #[test]
+    fn test_discriminant_values() {
+        let msg = NornMessage::StateRequest {
+            current_height: 0,
+            genesis_hash: [0u8; 32],
+        };
+        assert_eq!(msg.discriminant(), 11);
+    }
 }

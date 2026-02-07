@@ -30,4 +30,8 @@ pub enum RelayError {
     /// Channel send/receive error.
     #[error("channel error: {reason}")]
     ChannelError { reason: String },
+
+    /// Peer is running an incompatible protocol version.
+    #[error("protocol version mismatch: peer sent v{peer}, we run v{ours}")]
+    VersionMismatch { peer: u8, ours: u8 },
 }

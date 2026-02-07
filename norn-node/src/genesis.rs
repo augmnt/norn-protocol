@@ -26,7 +26,7 @@ pub fn create_genesis_block(config: &GenesisConfig) -> Result<(WeaveBlock, Weave
     };
 
     // Compute the genesis block hash from its fields.
-    block.hash = compute_genesis_hash(&block, &config.chain_id);
+    block.hash = compute_genesis_hash(&block, config);
 
     // Create initial weave state.
     let state = WeaveState {
@@ -44,10 +44,12 @@ pub fn create_genesis_block(config: &GenesisConfig) -> Result<(WeaveBlock, Weave
     Ok((block, state))
 }
 
-/// Compute a deterministic hash for the genesis block, incorporating the chain_id.
-pub fn compute_genesis_hash(block: &WeaveBlock, chain_id: &str) -> [u8; 32] {
+/// Compute a deterministic hash for the genesis block, incorporating the chain_id
+/// and genesis config version for explicit chain identity.
+pub fn compute_genesis_hash(block: &WeaveBlock, config: &GenesisConfig) -> [u8; 32] {
     let mut data = Vec::new();
-    data.extend_from_slice(chain_id.as_bytes());
+    data.extend_from_slice(&config.version.to_le_bytes());
+    data.extend_from_slice(config.chain_id.as_bytes());
     data.extend_from_slice(&block.height.to_le_bytes());
     data.extend_from_slice(&block.prev_hash);
     data.extend_from_slice(&block.commitments_root);
@@ -73,6 +75,7 @@ const DEVNET_FOUNDER: Address = [
 /// Returns `(genesis_config, founder_address)`.
 pub fn devnet_genesis() -> (GenesisConfig, Address) {
     let config = GenesisConfig {
+        version: norn_types::genesis::GENESIS_CONFIG_VERSION,
         chain_id: "norn-dev".to_string(),
         timestamp: 1700000000,
         validators: Vec::new(), // auto-filled by Node::new() when validator.enabled
@@ -158,6 +161,7 @@ mod tests {
 
     fn make_genesis_config() -> GenesisConfig {
         GenesisConfig {
+            version: norn_types::genesis::GENESIS_CONFIG_VERSION,
             chain_id: "norn-testnet-0".to_string(),
             timestamp: 1700000000,
             validators: vec![GenesisValidator {

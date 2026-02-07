@@ -177,6 +177,12 @@ impl Node {
         let store = create_store(&config)?;
         let weave_store = WeaveStore::new(store.clone());
 
+        // Check schema version before reading any persisted data.
+        {
+            let ss = crate::state_store::StateStore::new(store.clone());
+            ss.check_schema_version()?;
+        }
+
         // Try to load persisted weave state; fall back to genesis/default.
         let effective_state = match weave_store.load_weave_state() {
             Ok(Some(persisted)) => {
@@ -212,6 +218,10 @@ impl Node {
                 StateManager::new()
             }
         };
+        // Ensure the schema version is written (stamps fresh stores).
+        if let Err(e) = ss.write_schema_version() {
+            tracing::warn!("Failed to write schema version: {}", e);
+        }
         sm.set_store(ss);
         let state_manager = Arc::new(RwLock::new(sm));
 

@@ -7,8 +7,14 @@ use norn_types::network::NornMessage;
 use std::io;
 
 use crate::error::RelayError;
+use crate::protocol::PROTOCOL_VERSION;
 
 /// Borsh-based length-prefixed codec for NornMessage over libp2p request-response.
+///
+/// Wire format: `[4-byte length][1-byte protocol version][borsh payload]`
+///
+/// The length prefix covers the version byte + payload (i.e. `1 + payload.len()`).
+/// On receive, the version byte is checked; a mismatch produces a clear IO error.
 #[derive(Debug, Clone)]
 pub struct NornCodec;
 
@@ -71,7 +77,9 @@ impl libp2p::request_response::Codec for NornCodec {
     }
 }
 
-/// Read a 4-byte big-endian length prefix, then the body, and borsh-decode it.
+/// Read a versioned, length-prefixed message from an async reader.
+///
+/// Wire format: `[4-byte BE length][1-byte version][borsh payload]`
 async fn read_length_prefixed_message<T>(io: &mut T) -> io::Result<NornMessage>
 where
     T: AsyncRead + Unpin + Send,
@@ -90,13 +98,35 @@ where
         ));
     }
 
+    if len < 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "message too short: missing protocol version byte",
+        ));
+    }
+
     let mut buf = vec![0u8; len];
     io.read_exact(&mut buf).await?;
 
-    NornMessage::try_from_slice(&buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    // First byte is the protocol version.
+    let version = buf[0];
+    if version != PROTOCOL_VERSION {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "protocol version mismatch: peer sent v{}, we run v{} — disconnecting",
+                version, PROTOCOL_VERSION
+            ),
+        ));
+    }
+
+    NornMessage::try_from_slice(&buf[1..])
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
 
-/// Write a 4-byte big-endian length prefix followed by the borsh-encoded body.
+/// Write a versioned, length-prefixed message to an async writer.
+///
+/// Wire format: `[4-byte BE length][1-byte version][borsh payload]`
 async fn write_length_prefixed_message<T>(io: &mut T, msg: &NornMessage) -> io::Result<()>
 where
     T: AsyncWrite + Unpin + Send,
@@ -114,15 +144,19 @@ where
         ));
     }
 
-    let len = (data.len() as u32).to_be_bytes();
+    // Length = 1 (version byte) + payload length.
+    let len = ((1 + data.len()) as u32).to_be_bytes();
     io.write_all(&len).await?;
+    io.write_all(&[PROTOCOL_VERSION]).await?;
     io.write_all(&data).await?;
     Ok(())
 }
 
 // ─── Gossipsub helpers ──────────────────────────────────────────────────────
 
-/// Encode a NornMessage into a length-prefixed borsh byte vector for gossipsub.
+/// Encode a NornMessage into a versioned, length-prefixed byte vector for gossipsub.
+///
+/// Wire format: `[4-byte BE length][1-byte version][borsh payload]`
 pub fn encode_message(msg: &NornMessage) -> Result<Vec<u8>, RelayError> {
     let data = borsh::to_vec(msg).map_err(|e| RelayError::CodecError {
         reason: e.to_string(),
@@ -135,14 +169,16 @@ pub fn encode_message(msg: &NornMessage) -> Result<Vec<u8>, RelayError> {
         });
     }
 
-    let len = (data.len() as u32).to_be_bytes();
-    let mut out = Vec::with_capacity(4 + data.len());
+    // Length = 1 (version byte) + payload length.
+    let len = ((1 + data.len()) as u32).to_be_bytes();
+    let mut out = Vec::with_capacity(4 + 1 + data.len());
     out.extend_from_slice(&len);
+    out.push(PROTOCOL_VERSION);
     out.extend_from_slice(&data);
     Ok(out)
 }
 
-/// Decode a length-prefixed borsh byte slice into a NornMessage (gossipsub helper).
+/// Decode a versioned, length-prefixed byte slice into a NornMessage (gossipsub helper).
 pub fn decode_message(data: &[u8]) -> Result<NornMessage, RelayError> {
     if data.len() < 4 {
         return Err(RelayError::CodecError {
@@ -159,6 +195,12 @@ pub fn decode_message(data: &[u8]) -> Result<NornMessage, RelayError> {
         });
     }
 
+    if len < 1 {
+        return Err(RelayError::CodecError {
+            reason: "message too short: missing protocol version byte".to_string(),
+        });
+    }
+
     if data.len() < 4 + len {
         return Err(RelayError::CodecError {
             reason: format!(
@@ -169,7 +211,16 @@ pub fn decode_message(data: &[u8]) -> Result<NornMessage, RelayError> {
         });
     }
 
-    NornMessage::try_from_slice(&data[4..4 + len]).map_err(|e| RelayError::CodecError {
+    // Check protocol version.
+    let version = data[4];
+    if version != PROTOCOL_VERSION {
+        return Err(RelayError::VersionMismatch {
+            peer: version,
+            ours: PROTOCOL_VERSION,
+        });
+    }
+
+    NornMessage::try_from_slice(&data[5..4 + len]).map_err(|e| RelayError::CodecError {
         reason: e.to_string(),
     })
 }
@@ -206,13 +257,10 @@ mod tests {
 
     #[test]
     fn test_message_too_large_encode() {
-        // Create a relay message with a huge payload to exceed MAX_MESSAGE_SIZE.
-        // We can't easily create a NornMessage that serializes to > 2MB in a unit test,
-        // so instead test the check with the decode path using a crafted header.
         let len = (MAX_MESSAGE_SIZE + 1) as u32;
         let mut data = Vec::new();
         data.extend_from_slice(&len.to_be_bytes());
-        // Append enough dummy bytes.
+        // Append enough dummy bytes (version + payload).
         data.extend_from_slice(&vec![0u8; MAX_MESSAGE_SIZE + 1]);
 
         let result = decode_message(&data);
@@ -227,5 +275,26 @@ mod tests {
         let truncated = &encoded[..encoded.len() - 5];
         let result = decode_message(truncated);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_version_mismatch_detected() {
+        let msg = sample_message();
+        let mut encoded = encode_message(&msg).expect("encode failed");
+        // Corrupt the version byte (byte at index 4).
+        encoded[4] = PROTOCOL_VERSION + 1;
+        let result = decode_message(&encoded);
+        assert!(matches!(result, Err(RelayError::VersionMismatch { .. })));
+    }
+
+    #[test]
+    fn test_encode_includes_version_byte() {
+        let msg = sample_message();
+        let encoded = encode_message(&msg).expect("encode failed");
+        // Byte at index 4 should be the protocol version.
+        assert_eq!(encoded[4], PROTOCOL_VERSION);
+        // Length prefix should account for version byte.
+        let len = u32::from_be_bytes([encoded[0], encoded[1], encoded[2], encoded[3]]) as usize;
+        assert_eq!(len, encoded.len() - 4); // length = everything after the 4-byte prefix
     }
 }

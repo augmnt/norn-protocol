@@ -18,6 +18,11 @@ const TRANSFER_COUNT_KEY: &[u8] = b"state:transfer_count";
 const NAME_PREFIX: &[u8] = b"state:name:";
 const ADDR_NAMES_PREFIX: &[u8] = b"state:addr_names:";
 const BLOCK_PREFIX: &[u8] = b"state:block:";
+const SCHEMA_VERSION_KEY: &[u8] = b"meta:schema_version";
+
+/// Current schema version. Bump this whenever a breaking change is made to any
+/// borsh-serialized type persisted through StateStore.
+pub const SCHEMA_VERSION: u32 = 1;
 
 /// Persistent store for StateManager data backed by a KvStore.
 pub struct StateStore {
@@ -27,6 +32,55 @@ pub struct StateStore {
 impl StateStore {
     pub fn new(store: Arc<dyn KvStore>) -> Self {
         Self { store }
+    }
+
+    // ── Schema Version ─────────────────────────────────────────────────
+
+    /// Check the persisted schema version against the current binary's version.
+    ///
+    /// Returns `Ok(())` if compatible, `Err` with a clear message if not.
+    /// A store with no schema version key is treated as legacy (version 0).
+    pub fn check_schema_version(&self) -> Result<(), StorageError> {
+        let stored = match self.store.get(SCHEMA_VERSION_KEY)? {
+            Some(bytes) => {
+                u32::try_from_slice(&bytes).map_err(|e| StorageError::DeserializationError {
+                    reason: format!("failed to read schema version: {}", e),
+                })?
+            }
+            None => 0, // legacy store without version tag
+        };
+
+        if stored == SCHEMA_VERSION {
+            return Ok(());
+        }
+
+        if stored == 0 {
+            tracing::warn!(
+                "state store has no schema version (legacy data) — \
+                 this binary expects schema v{}; run with --reset-state if you see deserialization errors",
+                SCHEMA_VERSION
+            );
+            // Write the current version to upgrade legacy stores.
+            self.write_schema_version()?;
+            return Ok(());
+        }
+
+        Err(StorageError::DeserializationError {
+            reason: format!(
+                "state store schema version mismatch: store is v{}, binary expects v{} — \
+                 run with --reset-state to wipe and restart",
+                stored, SCHEMA_VERSION
+            ),
+        })
+    }
+
+    /// Write the current schema version to the store.
+    pub fn write_schema_version(&self) -> Result<(), StorageError> {
+        let value =
+            borsh::to_vec(&SCHEMA_VERSION).map_err(|e| StorageError::SerializationError {
+                reason: e.to_string(),
+            })?;
+        self.store.put(SCHEMA_VERSION_KEY, &value)
     }
 
     // ── Thread State ────────────────────────────────────────────────────
@@ -435,5 +489,34 @@ mod tests {
         let store = make_store();
         let sm = store.rebuild().unwrap();
         assert_eq!(sm.latest_block_height(), 0);
+    }
+
+    #[test]
+    fn test_schema_version_fresh_store() {
+        let store = make_store();
+        // Fresh store has no version key — check should succeed (legacy path).
+        assert!(store.check_schema_version().is_ok());
+    }
+
+    #[test]
+    fn test_schema_version_write_and_check() {
+        let store = make_store();
+        store.write_schema_version().unwrap();
+        assert!(store.check_schema_version().is_ok());
+    }
+
+    #[test]
+    fn test_schema_version_mismatch() {
+        let store = make_store();
+        // Write a future version that doesn't match SCHEMA_VERSION.
+        let future_version: u32 = SCHEMA_VERSION + 10;
+        let value = borsh::to_vec(&future_version).unwrap();
+        store.store.put(SCHEMA_VERSION_KEY, &value).unwrap();
+
+        let result = store.check_schema_version();
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("schema version mismatch"));
+        assert!(err_msg.contains("--reset-state"));
     }
 }

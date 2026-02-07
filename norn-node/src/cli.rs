@@ -33,6 +33,9 @@ pub enum Command {
         /// Network: "dev" (default for --dev), "testnet", "mainnet"
         #[arg(long)]
         network: Option<String>,
+        /// Wipe the data directory before starting (useful after breaking upgrades)
+        #[arg(long)]
+        reset_state: bool,
     },
     /// Initialize a new node configuration
     Init {
@@ -70,6 +73,7 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
             rpc_addr,
             storage,
             network,
+            reset_state,
         } => {
             crate::banner::print_banner();
 
@@ -98,6 +102,19 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
             }
             if let Some(ref net) = network {
                 config.network_id = net.clone();
+            }
+
+            // Wipe data directory if requested.
+            if reset_state {
+                let data_dir = &config.storage.data_dir;
+                let path = std::path::Path::new(data_dir);
+                if path.exists() {
+                    tracing::warn!(data_dir = %data_dir, "wiping data directory (--reset-state)");
+                    std::fs::remove_dir_all(path)?;
+                    tracing::info!("data directory removed, starting with fresh state");
+                } else {
+                    tracing::info!(data_dir = %data_dir, "data directory does not exist, nothing to reset");
+                }
             }
 
             // Parse and validate network ID.

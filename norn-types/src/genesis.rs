@@ -3,9 +3,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::primitives::*;
 
+/// Current genesis config version. Bump when making breaking changes to
+/// GenesisConfig or GenesisParameters that would alter the genesis hash.
+pub const GENESIS_CONFIG_VERSION: u32 = 1;
+
 /// Configuration for the genesis block.
 #[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 pub struct GenesisConfig {
+    /// Genesis config version — included in genesis hash for explicit chain identity.
+    #[serde(default = "default_genesis_version")]
+    pub version: u32,
     /// Chain identifier.
     pub chain_id: String,
     /// Genesis timestamp.
@@ -16,6 +23,10 @@ pub struct GenesisConfig {
     pub allocations: Vec<GenesisAllocation>,
     /// Protocol parameters.
     pub parameters: GenesisParameters,
+}
+
+fn default_genesis_version() -> u32 {
+    GENESIS_CONFIG_VERSION
 }
 
 /// A validator in the genesis configuration.
