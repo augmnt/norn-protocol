@@ -327,7 +327,7 @@ NornNames is Norn's native name system, allowing users to register human-readabl
 
 - 3--32 characters long, lowercase alphanumeric with hyphens (no leading/trailing hyphens).
 - Globally unique and first-come, first-served.
-- Resolvable in wallet transfer commands: `norn-node wallet transfer --to alice --amount 10` resolves `alice` to its registered address automatically.
+- Resolvable in wallet transfer commands: `norn wallet transfer --to alice --amount 10` resolves `alice` to its registered address automatically.
 
 This provides a user-friendly identity layer without requiring an external name service or smart contract.
 
@@ -774,7 +774,7 @@ This modular architecture ensures that each component can be tested, audited, an
 
 ### 13.1 Wallet CLI
 
-Norn ships with a full-featured command-line wallet supporting 20 subcommands for complete account management:
+Norn ships with a full-featured command-line wallet supporting 24 subcommands for complete account management:
 
 - **Key management**: Create, import (from seed phrase), list, and delete wallets.
 - **Transfers**: Send NORN to any address or NornName with optional memo.
@@ -835,7 +835,7 @@ The Norn Protocol has completed six development phases, representing a fully fun
 | **Phase 2** | Weave | Complete | HotStuff BFT consensus, block production, Sparse Merkle Tree, commitment processing, fraud proof verification, EIP-1559-style dynamic fees, DPoS staking with bonding periods and slashing |
 | **Phase 3** | Loom Runtime | Complete | wasmtime integration, Wasm execution with fuel metering, host functions (state, transfers, context), Loom lifecycle (deploy, join, execute, anchor, leave), dispute resolution via re-execution |
 | **Phase 4** | Spindle Service | Complete | Weave monitoring, fraud proof construction and submission, rate limiting, service orchestration |
-| **Phase 5** | Node | Complete | Full node binary, JSON-RPC server, wallet CLI (20 subcommands), encrypted keystore (Argon2id + XChaCha20), genesis configuration and bootstrapping, metrics |
+| **Phase 5** | Node | Complete | Full node binary, JSON-RPC server, wallet CLI (24 subcommands), encrypted keystore (Argon2id + XChaCha20), genesis configuration and bootstrapping, metrics |
 | **Phase 6** | Production Readiness | Complete | Comprehensive test suite (476+ tests including end-to-end, wallet, regression, name registry, and consensus/validation tests), code hardening, error handling improvements, Clippy compliance |
 
 ### 14.2 Next Milestones

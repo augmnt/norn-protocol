@@ -155,7 +155,7 @@ cargo run --example demo -p norn-node
 
 ## Wallet CLI
 
-The `norn` binary includes a full-featured wallet CLI with 20 subcommands for key management, transfers, NornNames, Thread inspection, and encrypted keystore backup.
+The `norn` binary includes a full-featured wallet CLI with 24 subcommands for key management, transfers, NornNames, Thread inspection, and encrypted keystore backup.
 
 ```bash
 # Create a new wallet
@@ -169,6 +169,8 @@ norn wallet balance --address <ADDRESS>
 
 # Send tokens (by address or NornName)
 norn wallet transfer --to <ADDRESS_OR_NAME> --amount <AMOUNT>
+# Or use the `send` alias
+norn wallet send --to <ADDRESS_OR_NAME> --amount <AMOUNT>
 
 # Register a NornName (costs 1 NORN, burned)
 norn wallet register-name --name alice
@@ -182,6 +184,18 @@ norn wallet names
 # Configure wallet (network, RPC URL)
 norn wallet config --network testnet
 norn wallet config --rpc-url http://my-node:9741
+
+# Check node connectivity
+norn wallet node-info
+
+# View current fees
+norn wallet fees
+
+# View validator set
+norn wallet validators
+
+# Active wallet dashboard
+norn wallet whoami
 ```
 
 Wallets are stored in `~/.norn/wallets/` with Argon2id key derivation and XChaCha20-Poly1305 authenticated encryption.

@@ -1569,7 +1569,7 @@ Default values:
 The node can be started in dev mode for local development and testing:
 
 ```
-norn-node run --dev
+norn run --dev
 ```
 
 This creates a solo-validator node with:
@@ -1912,12 +1912,12 @@ All errors are defined in a single `NornError` enum using `thiserror`:
 
 ## 27. Wallet CLI
 
-The Norn wallet is a command-line interface integrated into `norn-node`. It provides key management, transaction signing, and RPC interaction.
+The Norn wallet is a command-line interface integrated into the `norn` binary. It provides key management, transaction signing, and RPC interaction.
 
 ### 27.1 Usage
 
 ```
-norn-node wallet <COMMAND>
+norn wallet <COMMAND>
 ```
 
 ### 27.2 Commands
@@ -1932,7 +1932,7 @@ norn-node wallet <COMMAND>
 | `address` | Show the current wallet's address and public key |
 | `balance` | Query balance via RPC (defaults to active wallet, native NORN) |
 | `status` | Show thread registration and commitment status via RPC |
-| `transfer` | Send a transfer (constructs and signs a knot, submits via RPC) |
+| `transfer` | Send a transfer (constructs and signs a knot, submits via RPC). Alias: `send` |
 | `commit` | Commit pending thread state to the Weave via RPC |
 | `register` | Register a thread on the Weave via RPC |
 | `history` | Show transaction history (default: last 20 entries) |
@@ -1944,13 +1944,17 @@ norn-node wallet <COMMAND>
 | `register-name` | Register a NornName for the active wallet (costs 1 NORN, burned) |
 | `resolve` | Resolve a NornName to its owner address |
 | `names` | List NornNames owned by the active wallet |
+| `node-info` | Check node connectivity and chain info via RPC |
+| `fees` | Show current transaction fee estimates via RPC |
+| `validators` | View the validator set (address, stake, active status) via RPC |
+| `whoami` | Dashboard for the active wallet (balance, names, thread status) |
 
 ### 27.3 Command Details
 
 #### create
 
 ```
-norn-node wallet create --name <NAME> [--passphrase <PASSPHRASE>]
+norn wallet create --name <NAME> [--passphrase <PASSPHRASE>]
 ```
 
 - Generates a 24-word BIP-39 mnemonic (256 bits of entropy).
@@ -1962,8 +1966,8 @@ norn-node wallet create --name <NAME> [--passphrase <PASSPHRASE>]
 #### import
 
 ```
-norn-node wallet import --mnemonic --name <NAME> [--passphrase <PASSPHRASE>]
-norn-node wallet import --private-key <HEX> --name <NAME>
+norn wallet import --mnemonic --name <NAME> [--passphrase <PASSPHRASE>]
+norn wallet import --private-key <HEX> --name <NAME>
 ```
 
 - `--mnemonic` prompts for the mnemonic phrase interactively.
@@ -1973,7 +1977,7 @@ norn-node wallet import --private-key <HEX> --name <NAME>
 #### transfer
 
 ```
-norn-node wallet transfer --to <ADDRESS_OR_NAME> --amount <AMOUNT> [--token <TOKEN_ID>] [--memo <MEMO>] [--yes]
+norn wallet transfer --to <ADDRESS_OR_NAME> --amount <AMOUNT> [--token <TOKEN_ID>] [--memo <MEMO>] [--yes]
 ```
 
 - `<AMOUNT>` is human-readable (e.g., `"10.5"` = 10.5 NORN = 10,500,000,000,000 nits).
@@ -1989,29 +1993,61 @@ norn-node wallet transfer --to <ADDRESS_OR_NAME> --amount <AMOUNT> [--token <TOK
 
 ```bash
 # Terminal 1: Start a dev node
-norn-node run --dev
+norn run --dev
 
 # Terminal 2: Create wallets, fund, and transfer
-norn-node wallet create --name alice
-norn-node wallet faucet                          # Alice gets 100 NORN
-norn-node wallet balance                         # Shows 100.000000000000 NORN
-norn-node wallet create --name bob
-norn-node wallet transfer --to 0x<bob_addr> --amount 50 --yes
-norn-node wallet balance                         # Shows 50.000000000000 NORN
-norn-node wallet balance --address 0x<bob_addr>  # Shows 50.000000000000 NORN
-norn-node wallet history                         # Shows transfer records
+norn wallet create --name alice
+norn wallet faucet                          # Alice gets 100 NORN
+norn wallet balance                         # Shows 100.000000000000 NORN
+norn wallet create --name bob
+norn wallet transfer --to 0x<bob_addr> --amount 50 --yes
+norn wallet balance                         # Shows 50.000000000000 NORN
+norn wallet balance --address 0x<bob_addr>  # Shows 50.000000000000 NORN
+norn wallet history                         # Shows transfer records
 ```
 
 #### export
 
 ```
-norn-node wallet export [--name <NAME>] --show-mnemonic
-norn-node wallet export [--name <NAME>] --show-private-key
+norn wallet export [--name <NAME>] --show-mnemonic
+norn wallet export [--name <NAME>] --show-private-key
 ```
 
 - Requires the wallet password to decrypt.
 - `--show-mnemonic` and `--show-private-key` are mutually exclusive.
 - Private-key-only wallets (`has_mnemonic: false`) cannot export a mnemonic.
+
+#### node-info
+
+```
+norn wallet node-info [--json] [--rpc-url <URL>]
+```
+
+Displays node status, version, chain ID, network, block height, validator status, and thread count.
+
+#### fees
+
+```
+norn wallet fees [--json] [--rpc-url <URL>]
+```
+
+Displays the current base fee, fee multiplier, and estimated fee per commitment.
+
+#### validators
+
+```
+norn wallet validators [--json] [--rpc-url <URL>]
+```
+
+Displays all validators with address, stake, active/inactive status, total stake, and epoch.
+
+#### whoami
+
+```
+norn wallet whoami [--json] [--rpc-url <URL>]
+```
+
+Composite dashboard showing wallet name, address, NORN balance, registered names, and thread registration status.
 
 ### 27.4 Keystore Format
 
@@ -2081,7 +2117,7 @@ fn password_to_keypair_for_version(password: &str, version: u32) -> Keypair {
 ### 27.8 Wallet Configuration
 
 ```
-norn-node wallet config [--rpc-url <URL>] [--json]
+norn wallet config [--rpc-url <URL>] [--json]
 ```
 
 Configuration is stored in `~/.norn/wallets/config.json`:
@@ -2134,7 +2170,7 @@ The `wallet transfer --to` argument accepts either:
 - A hex address (with or without `0x` prefix): used directly.
 - A NornName (e.g., `alice`): resolved to the owner's address via `norn_resolveName` before constructing the transfer knot.
 
-This allows commands like: `norn-node wallet transfer --to alice --amount 10`
+This allows commands like: `norn wallet transfer --to alice --amount 10`
 
 ### 28.5 Name Constants
 
@@ -2354,7 +2390,7 @@ This section documents all material changes from the v1.0 specification to v2.0.
 
 | Feature | Description |
 |---------|-------------|
-| Wallet CLI | 20 subcommands integrated in `norn-node wallet` |
+| Wallet CLI | 24 subcommands integrated in `norn wallet` |
 | NornNames | Native name registry with 1 NORN burn fee, name resolution in transfers |
 | State Sync | `StateRequest`/`StateResponse` messages for initial node sync |
 | Relay Handle | Outbound relay channel for broadcasting knots, blocks, and commitments to P2P peers |
