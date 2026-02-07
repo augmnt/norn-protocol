@@ -3,7 +3,7 @@
 [![CI](https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml/badge.svg)](https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org/)
-[![Version](https://img.shields.io/badge/version-0.3.0-green.svg)](https://github.com/augmnt/norn-protocol/releases/tag/v0.3.0)
+[![Version](https://img.shields.io/badge/version-0.4.0-green.svg)](https://github.com/augmnt/norn-protocol/releases/tag/v0.4.0)
 
 **Your thread. Your fate. The chain just watches.**
 
@@ -199,6 +199,58 @@ norn wallet whoami
 ```
 
 Wallets are stored in `~/.norn/wallets/` with Argon2id key derivation and XChaCha20-Poly1305 authenticated encryption.
+
+## NornNames
+
+NornNames is Norn's native name system, mapping human-readable names to owner addresses as a user-friendly alternative to hex addresses.
+
+### Naming Rules
+
+| Rule | Constraint |
+|------|-----------|
+| Length | 3--32 characters |
+| Character set | Lowercase ASCII letters (`a-z`), digits (`0-9`), hyphens (`-`) |
+| Hyphens | Must not start or end with a hyphen |
+| Uniqueness | Globally unique, first-come first-served |
+
+**Valid names:** `alice`, `bob-42`, `my-validator`, `norn-relay-1`
+
+**Invalid names:** `ab` (too short), `-alice` (leading hyphen), `bob-` (trailing hyphen), `Alice` (uppercase), `my name` (spaces)
+
+### Registration Cost
+
+Registering a NornName costs **1 NORN**, which is **permanently burned** (debited from the registrant, not credited to anyone), reducing the circulating supply.
+
+### Wallet CLI Usage
+
+```bash
+# Register a NornName for the active wallet
+norn wallet register-name --name alice
+
+# Resolve a NornName to its owner address
+norn wallet resolve --name alice
+
+# List names owned by the active wallet
+norn wallet names
+```
+
+Names work seamlessly in transfers -- pass a NornName instead of a hex address:
+
+```bash
+norn wallet send --to alice --amount 10
+```
+
+The wallet resolves `alice` to the owner's address via `norn_resolveName` before constructing the transfer.
+
+### RPC Methods
+
+| Method | Parameters | Returns | Auth |
+|--------|-----------|---------|------|
+| `norn_registerName` | `name`, `owner_hex`, `knot_hex` | `SubmitResult` | Yes |
+| `norn_resolveName` | `name` | `Option<NameResolution>` | No |
+| `norn_listNames` | `address` (hex) | `Vec<NameInfo>` | No |
+
+For full technical details, see the [Protocol Specification, Section 28](docs/Norn_Protocol_Specification_v2.0.md#28-nornnames-name-registry).
 
 ## Token Economics
 
