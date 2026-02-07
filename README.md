@@ -202,7 +202,7 @@ Wallets are stored in `~/.norn/wallets/` with Argon2id key derivation and XChaCh
 
 ## NornNames
 
-NornNames is Norn's native name system, mapping human-readable names to owner addresses as a user-friendly alternative to hex addresses.
+NornNames is Norn's native **consensus-level** name system, mapping human-readable names to owner addresses as a user-friendly alternative to hex addresses. Names are included in `WeaveBlock`s and propagate to all nodes via P2P gossip, making them globally visible across the network.
 
 ### Naming Rules
 
@@ -224,7 +224,7 @@ Registering a NornName costs **1 NORN**, which is **permanently burned** (debite
 ### Wallet CLI Usage
 
 ```bash
-# Register a NornName for the active wallet
+# Register a NornName for the active wallet (submitted to mempool, included in next block)
 norn wallet register-name --name alice
 
 # Resolve a NornName to its owner address
@@ -246,9 +246,11 @@ The wallet resolves `alice` to the owner's address via `norn_resolveName` before
 
 | Method | Parameters | Returns | Auth |
 |--------|-----------|---------|------|
-| `norn_registerName` | `name`, `owner_hex`, `knot_hex` | `SubmitResult` | Yes |
+| `norn_registerName` | `name`, `owner_hex`, `knot_hex` (hex-encoded borsh `NameRegistration`) | `SubmitResult` | Yes |
 | `norn_resolveName` | `name` | `Option<NameResolution>` | No |
 | `norn_listNames` | `address` (hex) | `Vec<NameInfo>` | No |
+
+The `knot_hex` parameter carries a wallet-signed `NameRegistration` object (hex-encoded borsh). The registration is added to the WeaveEngine mempool and broadcast via P2P, then included in the next produced block.
 
 For full technical details, see the [Protocol Specification, Section 28](docs/Norn_Protocol_Specification_v2.0.md#28-nornnames-name-registry).
 

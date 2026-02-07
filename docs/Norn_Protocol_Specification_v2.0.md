@@ -2131,9 +2131,9 @@ Configuration is stored in `~/.norn/wallets/config.json`:
 
 ---
 
-## 28. NornNames (Name Registry)
+## 28. NornNames (Consensus-Level Name Registry)
 
-NornNames is Norn's native name system, mapping human-readable names to owner addresses. Names provide a user-friendly alternative to hex addresses for transfers and identity.
+NornNames is Norn's native name system, mapping human-readable names to owner addresses. Names provide a user-friendly alternative to hex addresses for transfers and identity. Names are **consensus-level**: they are included in `WeaveBlock`s and propagate to all nodes via P2P gossip, making them globally visible across the network.
 
 ### 28.1 Name Rules
 
@@ -2144,9 +2144,26 @@ NornNames is Norn's native name system, mapping human-readable names to owner ad
 | Hyphens | Must not start or end with a hyphen |
 | Uniqueness | Names are globally unique; first-come, first-served |
 
-Validation is performed by `validate_name()` in `norn-node/src/state_manager.rs`.
+Validation is performed by `validate_name()` in `norn-types/src/name.rs` (shared across crates).
 
-### 28.2 NameRecord
+### 28.2 Types
+
+**NameRegistration** (consensus object, included in blocks):
+
+```rust
+pub struct NameRegistration {
+    pub name: String,
+    pub owner: Address,
+    pub owner_pubkey: PublicKey,
+    pub timestamp: Timestamp,
+    pub fee_paid: Amount,
+    pub signature: Signature,
+}
+```
+
+The `signature` covers the signing data: `name_bytes || owner_address || timestamp_le_bytes || fee_paid_le_bytes`.
+
+**NameRecord** (state manager storage):
 
 ```rust
 pub struct NameRecord {
@@ -2156,15 +2173,32 @@ pub struct NameRecord {
 }
 ```
 
-### 28.3 Registration Flow
+### 28.3 Registration Flow (Consensus Path)
 
-1. The wallet submits a `norn_registerName` RPC call with the desired name, owner address, and an authorization knot (a self-signed knot proving ownership of the address).
-2. The node validates the name (rules above), checks that the name is not already taken, and verifies that the owner has at least `NAME_REGISTRATION_FEE` (1 NORN) in their native balance.
-3. The registration fee is **burned** (debited from the sender, not credited to anyone), reducing the circulating supply.
-4. A `NameRecord` is stored in the state manager's name registry.
-5. A reverse index (`address -> Vec<name>`) is maintained for `norn_listNames` lookups.
+1. The wallet creates a `NameRegistration` object, signs it with the owner's private key, and submits it via `norn_registerName` RPC (hex-encoded borsh in the `knot_hex` parameter).
+2. The RPC handler deserializes the `NameRegistration`, validates the owner and name fields, then submits it to the `WeaveEngine` mempool.
+3. The `WeaveEngine` validates the registration: name format (via `norn_types::name::validate_name`), duplicate check against `known_names`, signature verification against `owner_pubkey`, and pubkey-to-address match.
+4. On success, the registration is added to the mempool and broadcast to peers via `NornMessage::NameRegistration` (P2P gossip).
+5. At the next block production, the `WeaveEngine` drains name registrations from the mempool into a `WeaveBlock`, computing a `name_registrations_root` Merkle hash.
+6. When a block is applied (solo production, P2P block reception, state sync, or initial sync), the node calls `StateManager::register_name()` for each `NameRegistration` in the block, which burns the fee, stores a `NameRecord`, and updates the reverse index.
+7. Peers receiving the block via P2P also apply name registrations, making names globally consistent.
 
-### 28.4 Name Resolution in Transfers
+### 28.4 WeaveBlock Fields
+
+Two fields on `WeaveBlock` carry name registrations:
+
+```rust
+pub name_registrations: Vec<NameRegistration>,
+pub name_registrations_root: Hash,
+```
+
+The `name_registrations_root` is a Merkle root over the borsh-serialized registrations, verified during block validation (same pattern as `commitments_root`, `registrations_root`, and `anchors_root`).
+
+### 28.5 P2P Gossip
+
+Name registrations are gossiped individually via `NornMessage::NameRegistration(NameRegistration)` (discriminant 13). On receipt, peers validate the registration and add it to their local mempool for inclusion in future blocks. This ensures fast propagation even before block inclusion.
+
+### 28.6 Name Resolution in Transfers
 
 The `wallet transfer --to` argument accepts either:
 - A hex address (with or without `0x` prefix): used directly.
@@ -2172,13 +2206,13 @@ The `wallet transfer --to` argument accepts either:
 
 This allows commands like: `norn wallet transfer --to alice --amount 10`
 
-### 28.5 Name Constants
+### 28.7 Name Constants
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `NAME_REGISTRATION_FEE` | `ONE_NORN` (10^12 nits) | Fee burned on name registration |
-| Min name length | 3 | Minimum characters |
-| Max name length | 32 | Maximum characters |
+| Constant | Value | Location | Description |
+|----------|-------|----------|-------------|
+| `NAME_REGISTRATION_FEE` | `ONE_NORN` (10^12 nits) | `norn-types/src/name.rs` | Fee burned on name registration |
+| Min name length | 3 | `norn-types/src/name.rs` | Minimum characters |
+| Max name length | 32 | `norn-types/src/name.rs` | Maximum characters |
 
 ---
 

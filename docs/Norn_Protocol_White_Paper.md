@@ -321,12 +321,13 @@ Three categories of actors stake NORN to participate in the protocol:
 
 **Spindle Operators** stake NORN to register as watchtowers. This prevents Sybil attacks on the Spindle network and provides economic accountability for Spindle services.
 
-### 5.5 NornNames -- On-Chain Name Registry
+### 5.5 NornNames -- Consensus-Level Name Registry
 
 NornNames is Norn's native name system, allowing users to register human-readable names (e.g., `alice`, `my-wallet`) that map to their address. Name registration costs 1 NORN, which is **burned** (removed from circulation), making it a deflationary mechanism. Names are:
 
 - 3--32 characters long, lowercase alphanumeric with hyphens (no leading/trailing hyphens).
 - Globally unique and first-come, first-served.
+- **Consensus-level**: registrations are included in `WeaveBlock`s with a dedicated Merkle root (`name_registrations_root`), propagated via P2P gossip, and applied to state on every node when blocks are processed. This ensures names are globally consistent across the network without relying on local-only state.
 - Resolvable in wallet transfer commands: `norn wallet transfer --to alice --amount 10` resolves `alice` to its registered address automatically.
 
 This provides a user-friendly identity layer without requiring an external name service or smart contract.
