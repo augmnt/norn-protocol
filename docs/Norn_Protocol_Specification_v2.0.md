@@ -2213,9 +2213,56 @@ All constants are defined in `norn-types/src/constants.rs`.
 
 ---
 
-## 30. Crate Map
+## 30. Token Economics
 
-### 30.1 Implemented Crates
+### 30.1 Supply
+
+The NORN token has a fixed maximum supply of **1,000,000,000 NORN** (1 billion), equivalent to 10^21 nits (base units). This cap is enforced at the protocol level in `StateManager::credit()` — any credit that would push the total circulating supply above `MAX_SUPPLY` is rejected with `NornError::SupplyCapExceeded`.
+
+### 30.2 Distribution
+
+| Category | % | Amount (NORN) | Vesting |
+|---|---|---|---|
+| Founder & Core Team | 15% | 150,000,000 | 4-year linear, 1-year cliff |
+| Ecosystem Development | 20% | 200,000,000 | Controlled release over 5 years |
+| Validator Rewards | 30% | 300,000,000 | Block rewards over 10+ years |
+| Community & Grants | 15% | 150,000,000 | Governance-controlled |
+| Treasury Reserve | 10% | 100,000,000 | DAO-governed after decentralization |
+| Initial Liquidity | 5% | 50,000,000 | Available at launch |
+| Testnet Participants | 5% | 50,000,000 | Airdrop at mainnet launch |
+
+### 30.3 Genesis Allocations
+
+Genesis allocations are defined in the genesis configuration file (`genesis/*.json`) and processed by `Node::new()` when the state is fresh (block height 0). Each `GenesisAllocation` specifies an `address`, `token_id`, and `amount`, which are credited during node startup.
+
+For mainnet, the genesis file encodes the initial distribution:
+- Founder wallet receives 150M NORN (15%)
+- Ecosystem fund address receives 200M NORN (20%)
+- Remaining allocations are released programmatically over time
+
+### 30.4 Deflationary Mechanics
+
+**NornNames burn:** Each NornName registration burns 1 NORN (`NAME_REGISTRATION_FEE`). The fee is debited from the registrant and not credited to any address, permanently reducing the circulating supply.
+
+**Future: Fee burning.** An EIP-1559-style base fee burning mechanism is planned, where a portion of commitment fees is burned rather than distributed to validators.
+
+### 30.5 Network Identity
+
+The protocol supports three network modes, configured via `NetworkId`:
+
+| Network | Chain ID | Faucet | Cooldown |
+|---------|----------|--------|----------|
+| `dev` | `norn-dev` | Enabled | 60 seconds |
+| `testnet` | `norn-testnet-1` | Enabled | 1 hour |
+| `mainnet` | `norn-mainnet` | Disabled | N/A |
+
+The faucet is gated both at compile time (`#[cfg(feature = "testnet")]`) and at runtime (`NetworkId::faucet_enabled()`). Rate limiting enforces per-address cooldown, and a 1000 NORN per-address cap prevents abuse.
+
+---
+
+## 31. Crate Map
+
+### 31.1 Implemented Crates
 
 | Crate | Path | Description |
 |-------|------|-------------|
@@ -2229,7 +2276,7 @@ All constants are defined in `norn-types/src/constants.rs`.
 | `norn-spindle` | `norn-spindle/` | Watchtower service: thread monitoring, spindle registration, rate limiting, alert dispatch |
 | `norn-node` | `norn-node/` | Full node binary: TOML configuration, JSON-RPC server (jsonrpsee), wallet CLI (clap), metrics, genesis loading, node orchestration |
 
-### 30.2 Future Crates `[FUTURE]`
+### 31.2 Future Crates `[FUTURE]`
 
 | Crate | Description |
 |-------|-------------|
@@ -2241,11 +2288,11 @@ All constants are defined in `norn-types/src/constants.rs`.
 
 ---
 
-## 31. Changelog (v1.0 to v2.0)
+## 32. Changelog (v1.0 to v2.0)
 
 This section documents all material changes from the v1.0 specification to v2.0. The codebase is the source of truth; v1.0 contained several inaccuracies and placeholders.
 
-### 31.1 Type System Corrections
+### 32.1 Type System Corrections
 
 | Item | v1.0 (incorrect) | v2.0 (correct) | Reason |
 |------|-------------------|-----------------|--------|
@@ -2264,7 +2311,7 @@ This section documents all material changes from the v1.0 specification to v2.0.
 | `NATIVE_TOKEN_ID` | BLAKE3 hash | `[0u8; 32]` | All-zero sentinel, not a hash |
 | `Timestamp` | Milliseconds | Seconds | Unix seconds, not milliseconds |
 
-### 31.2 Structural Changes
+### 32.2 Structural Changes
 
 | Structure | v1.0 | v2.0 |
 |-----------|------|------|
@@ -2283,7 +2330,7 @@ This section documents all material changes from the v1.0 specification to v2.0.
 | `Participant` | Had `balance_locked` | Simplified: `pubkey, address, joined_at, active` |
 | `LoomInteractionPayload` | Different approach | Enum-based: `loom_id, interaction_type: LoomInteractionType, token_id: Option, amount: Option, data: Vec<u8>` |
 
-### 31.3 Architecture Changes
+### 32.3 Architecture Changes
 
 | Area | v1.0 | v2.0 |
 |------|------|------|
@@ -2296,7 +2343,7 @@ This section documents all material changes from the v1.0 specification to v2.0.
 | `StakeOperation` | Not defined | New type for stake/unstake operations |
 | Wire format | Had type tag | `[4B length BE][NB borsh]` -- no type tag, borsh discriminants suffice |
 
-### 31.4 New Features (not in v1.0)
+### 32.4 New Features (not in v1.0)
 
 | Feature | Description |
 |---------|-------------|
@@ -2316,7 +2363,7 @@ This section documents all material changes from the v1.0 specification to v2.0.
 | Solo mode | Single-validator block production without HotStuff |
 | Node metrics | Prometheus-compatible metrics |
 
-### 31.5 Constant Corrections
+### 32.5 Constant Corrections
 
 | Constant | v1.0 | v2.0 |
 |----------|------|------|

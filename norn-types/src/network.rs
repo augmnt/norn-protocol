@@ -7,6 +7,74 @@ use crate::knot::Knot;
 use crate::primitives::*;
 use crate::weave::{CommitmentUpdate, Registration, WeaveBlock};
 
+/// Network identifier for distinguishing dev, testnet, and mainnet environments.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum NetworkId {
+    Dev,
+    Testnet,
+    Mainnet,
+}
+
+impl NetworkId {
+    /// Returns the chain ID string for this network.
+    pub fn chain_id(&self) -> &'static str {
+        match self {
+            NetworkId::Dev => "norn-dev",
+            NetworkId::Testnet => "norn-testnet-1",
+            NetworkId::Mainnet => "norn-mainnet",
+        }
+    }
+
+    /// Whether the faucet is available on this network.
+    pub fn faucet_enabled(&self) -> bool {
+        matches!(self, NetworkId::Dev | NetworkId::Testnet)
+    }
+
+    /// Human-readable display name.
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            NetworkId::Dev => "Development",
+            NetworkId::Testnet => "Testnet",
+            NetworkId::Mainnet => "Mainnet",
+        }
+    }
+
+    /// Short lowercase identifier (for CLI/config).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            NetworkId::Dev => "dev",
+            NetworkId::Testnet => "testnet",
+            NetworkId::Mainnet => "mainnet",
+        }
+    }
+
+    /// Parse from a string identifier.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "dev" => Some(NetworkId::Dev),
+            "testnet" => Some(NetworkId::Testnet),
+            "mainnet" => Some(NetworkId::Mainnet),
+            _ => None,
+        }
+    }
+
+    /// Default faucet cooldown in seconds for this network.
+    pub fn faucet_cooldown(&self) -> u64 {
+        match self {
+            NetworkId::Dev => 60,
+            NetworkId::Testnet => 3600,
+            NetworkId::Mainnet => 0, // faucet disabled
+        }
+    }
+}
+
+impl std::fmt::Display for NetworkId {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(self.display_name())
+    }
+}
+
 /// A message relayed between spindles.
 #[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 pub struct RelayMessage {

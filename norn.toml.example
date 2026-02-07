@@ -1,6 +1,10 @@
 # Norn Protocol Node Configuration
 # Copy this file to norn.toml and adjust for your setup.
 
+# Network identity: "dev", "testnet", or "mainnet".
+# Controls chain_id, faucet availability, and default behavior.
+network_id = "dev"
+
 [network]
 # Address to listen for P2P connections.
 listen_addr = "0.0.0.0:9740"

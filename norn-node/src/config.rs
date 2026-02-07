@@ -5,6 +5,9 @@ use crate::error::NodeError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeConfig {
+    /// Network identity: "dev", "testnet", or "mainnet".
+    #[serde(default = "default_network_id")]
+    pub network_id: String,
     pub network: NetworkConfig,
     pub storage: StorageConfig,
     pub validator: ValidatorConfig,
@@ -13,6 +16,10 @@ pub struct NodeConfig {
     /// Path to a genesis file. If set, load genesis state from this file.
     #[serde(default)]
     pub genesis_path: Option<String>,
+}
+
+fn default_network_id() -> String {
+    "dev".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,6 +70,7 @@ pub struct LoggingConfig {
 impl Default for NodeConfig {
     fn default() -> Self {
         Self {
+            network_id: default_network_id(),
             network: NetworkConfig {
                 listen_addr: "0.0.0.0:9740".to_string(),
                 boot_nodes: Vec::new(),

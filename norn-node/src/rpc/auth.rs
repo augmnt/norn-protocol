@@ -1,6 +1,8 @@
 /// API key configuration for RPC authentication.
+///
+/// Used by RPC handlers to check bearer tokens on mutation methods.
+/// Currently checked inline in mutation handlers when `api_key` is configured.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct RpcAuthConfig {
     /// If set, mutation methods require this API key via `Authorization: Bearer <key>`.
     pub api_key: Option<String>,

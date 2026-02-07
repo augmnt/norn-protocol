@@ -25,6 +25,30 @@ For complex multi-party logic, off-chain smart contracts called *Looms* provide 
 - **Instant bilateral finality** -- A transaction is final the moment both parties sign. No confirmation time, no block wait.
 - **Fraud-proof security** -- Cheating is detectable and punishable through economic penalties. Honest behavior is the Nash equilibrium.
 
+## Installation
+
+### From Git (latest)
+
+```bash
+cargo install --git https://github.com/augmnt/norn-protocol norn-node
+```
+
+### From Source
+
+```bash
+git clone https://github.com/augmnt/norn-protocol
+cd norn-protocol
+cargo install --path norn-node
+```
+
+After installation, the `norn` command is available:
+
+```bash
+norn --version
+norn wallet create
+norn run --dev
+```
+
 ## Architecture
 
 Norn's architecture consists of six core components:
@@ -60,6 +84,27 @@ flowchart TB
     SP["Spindles<br/>(Watchtower Services)"] --> W
     LM["Looms<br/>(Off-chain Contracts)"] --> W
     RL["Relays<br/>(P2P Message Buffers)"] --> W
+```
+
+## Network Modes
+
+Norn supports three network modes, selectable via `--network` flag or `network_id` in `norn.toml`:
+
+| Mode | Chain ID | Faucet | Use Case |
+|------|----------|--------|----------|
+| `dev` | `norn-dev` | Enabled (60s cooldown) | Local development, solo validator |
+| `testnet` | `norn-testnet-1` | Enabled (1hr cooldown) | Public testing, multi-node |
+| `mainnet` | `norn-mainnet` | Disabled | Production deployment |
+
+```bash
+# Dev mode (default)
+norn run --dev
+
+# Testnet mode
+norn run --dev --network testnet
+
+# Mainnet mode (requires genesis file)
+norn run --network mainnet --genesis genesis/mainnet.json
 ```
 
 ## Repository Structure
@@ -109,32 +154,54 @@ cargo run --example demo -p norn-node
 
 ## Wallet CLI
 
-The `norn-node` binary includes a full-featured wallet CLI with 20 subcommands for key management, transfers, NornNames, Thread inspection, and encrypted keystore backup.
+The `norn` binary includes a full-featured wallet CLI with 20 subcommands for key management, transfers, NornNames, Thread inspection, and encrypted keystore backup.
 
 ```bash
 # Create a new wallet
-cargo run -p norn-node -- wallet create
+norn wallet create --name alice
 
 # List wallets
-cargo run -p norn-node -- wallet list
+norn wallet list
 
 # Check balance
-cargo run -p norn-node -- wallet balance --address <ADDRESS>
+norn wallet balance --address <ADDRESS>
 
 # Send tokens (by address or NornName)
-cargo run -p norn-node -- wallet transfer --to <ADDRESS_OR_NAME> --amount <AMOUNT>
+norn wallet transfer --to <ADDRESS_OR_NAME> --amount <AMOUNT>
 
 # Register a NornName (costs 1 NORN, burned)
-cargo run -p norn-node -- wallet register-name --name alice
+norn wallet register-name --name alice
 
 # Resolve a NornName to its owner address
-cargo run -p norn-node -- wallet resolve --name alice
+norn wallet resolve --name alice
 
 # List names owned by the active wallet
-cargo run -p norn-node -- wallet names
+norn wallet names
+
+# Configure wallet (network, RPC URL)
+norn wallet config --network testnet
+norn wallet config --rpc-url http://my-node:9741
 ```
 
 Wallets are stored in `~/.norn/wallets/` with Argon2id key derivation and XChaCha20-Poly1305 authenticated encryption.
+
+## Token Economics
+
+NORN has a fixed maximum supply of **1,000,000,000 NORN** (1 billion), enforced at the protocol level.
+
+| Category | % | Amount | Vesting |
+|---|---|---|---|
+| Founder & Core Team | 15% | 150,000,000 | 4-year linear, 1-year cliff |
+| Ecosystem Development | 20% | 200,000,000 | Controlled release over 5 years |
+| Validator Rewards | 30% | 300,000,000 | Block rewards over 10+ years |
+| Community & Grants | 15% | 150,000,000 | Governance-controlled |
+| Treasury Reserve | 10% | 100,000,000 | DAO-governed after decentralization |
+| Initial Liquidity | 5% | 50,000,000 | Available at launch |
+| Testnet Participants | 5% | 50,000,000 | Airdrop at mainnet launch |
+
+**Deflationary mechanics:** NornNames registration burns 1 NORN per name. Future fee burning (EIP-1559-style) planned.
+
+For full details, see the [Protocol Specification](docs/Norn_Protocol_Specification_v2.0.md).
 
 ## Documentation
 

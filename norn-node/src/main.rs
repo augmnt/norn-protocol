@@ -11,7 +11,6 @@ mod node;
 mod rpc;
 mod state_manager;
 mod state_store;
-mod tools;
 mod wallet;
 
 fn main() {

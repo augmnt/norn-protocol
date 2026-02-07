@@ -131,6 +131,9 @@ pub struct NornRpcImpl {
     pub metrics: Arc<NodeMetrics>,
     pub block_tx: tokio::sync::broadcast::Sender<BlockInfo>,
     pub relay_handle: Option<norn_relay::relay::RelayHandle>,
+    pub network_id: norn_types::network::NetworkId,
+    pub is_validator: bool,
+    pub faucet_tracker: std::sync::Mutex<std::collections::HashMap<[u8; 20], u64>>,
 }
 
 /// Parse a hex string into a 20-byte address.
@@ -424,7 +427,62 @@ impl NornRpcServer for NornRpcImpl {
         {
             use norn_types::constants::ONE_NORN;
 
+            // Runtime network check: block faucet on mainnet even if compiled with testnet feature.
+            if !self.network_id.faucet_enabled() {
+                return Err(ErrorObjectOwned::owned(
+                    -32601,
+                    format!("faucet is not available on {}", self.network_id.as_str()),
+                    None::<()>,
+                ));
+            }
+
             let address = parse_address_hex(&address_hex)?;
+
+            // Rate limiting: check cooldown per address.
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let cooldown = self.network_id.faucet_cooldown();
+
+            {
+                let mut tracker = self
+                    .faucet_tracker
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                if let Some(&last_request) = tracker.get(&address) {
+                    if now < last_request + cooldown {
+                        let remaining = (last_request + cooldown) - now;
+                        return Ok(SubmitResult {
+                            success: false,
+                            reason: Some(format!(
+                                "rate limited: please wait {} seconds before requesting again",
+                                remaining
+                            )),
+                        });
+                    }
+                }
+                tracker.insert(address, now);
+            }
+
+            // Cap: reject if address already has >= 1000 NORN.
+            let max_faucet_balance: u128 = 1000 * ONE_NORN;
+            {
+                let sm = self.state_manager.read().await;
+                let current = sm.get_balance(&address, &norn_types::primitives::NATIVE_TOKEN_ID);
+                if current >= max_faucet_balance {
+                    return Ok(SubmitResult {
+                        success: false,
+                        reason: Some(format!(
+                            "address already has {} (max faucet balance: 1000 NORN)",
+                            format_amount_with_symbol(
+                                current,
+                                &norn_types::primitives::NATIVE_TOKEN_ID
+                            )
+                        )),
+                    });
+                }
+            }
 
             let faucet_amount: u128 = 100 * ONE_NORN; // 100 NORN per faucet request
 
@@ -436,10 +494,7 @@ impl NornRpcServer for NornRpcImpl {
                         thread_id: address,
                         owner: [0u8; 32],
                         initial_state_hash: [0u8; 32],
-                        timestamp: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs(),
+                        timestamp: now,
                         signature: [0u8; 64],
                     };
                     let _ = engine.add_registration(reg);
@@ -463,10 +518,6 @@ impl NornRpcServer for NornRpcImpl {
                     )
                 })?;
 
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
                 sm.log_faucet_credit(address, faucet_amount, now);
             }
 
@@ -565,9 +616,12 @@ impl NornRpcServer for NornRpcImpl {
 
         Ok(HealthInfo {
             height: state.height,
-            is_validator: true,
+            is_validator: self.is_validator,
             thread_count: state.thread_count,
             status: "ok".to_string(),
+            network: self.network_id.as_str().to_string(),
+            chain_id: self.network_id.chain_id().to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
         })
     }
 

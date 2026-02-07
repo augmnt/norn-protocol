@@ -5,7 +5,7 @@ use crate::wallet::cli::WalletCommand;
 
 #[derive(Parser)]
 #[command(
-    name = "norn-node",
+    name = "norn",
     about = "Norn Protocol Node — Thread-based L1 with off-chain execution",
     version
 )]
@@ -30,6 +30,9 @@ pub enum Command {
         /// Storage backend for dev mode: "memory" (default), "sqlite", "rocksdb"
         #[arg(long)]
         storage: Option<String>,
+        /// Network: "dev" (default for --dev), "testnet", "mainnet"
+        #[arg(long)]
+        network: Option<String>,
     },
     /// Initialize a new node configuration
     Init {
@@ -66,6 +69,7 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
             dev,
             rpc_addr,
             storage,
+            network,
         } => {
             crate::banner::print_banner();
 
@@ -77,6 +81,7 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
                 cfg.rpc.listen_addr = "127.0.0.1:9741".to_string();
                 cfg.storage.db_type = "memory".to_string();
                 cfg.network.listen_addr = "0.0.0.0:9740".to_string();
+                cfg.network_id = "dev".to_string();
                 cfg
             } else {
                 crate::config::NodeConfig::load(&config)?
@@ -89,6 +94,20 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
             if let Some(db) = storage {
                 config.storage.db_type = db;
             }
+            if let Some(ref net) = network {
+                config.network_id = net.clone();
+            }
+
+            // Parse and validate network ID.
+            let network_id =
+                norn_types::network::NetworkId::parse(&config.network_id).ok_or_else(|| {
+                    NodeError::ConfigError {
+                        reason: format!(
+                            "unknown network '{}', expected 'dev', 'testnet', or 'mainnet'",
+                            config.network_id
+                        ),
+                    }
+                })?;
 
             // Print compact startup summary.
             {
@@ -100,12 +119,18 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
                     "config".to_string()
                 };
                 println!(
+                    "  {} {} · {}",
+                    dim.apply_to("Network "),
+                    cyan.apply_to(network_id.as_str()),
+                    cyan.apply_to(network_id.chain_id()),
+                );
+                println!(
                     "  {}  {} (P2P) | {} (RPC)",
-                    dim.apply_to("Network"),
+                    dim.apply_to("Listen  "),
                     cyan.apply_to(&config.network.listen_addr),
                     cyan.apply_to(&config.rpc.listen_addr),
                 );
-                println!("  {}     {}", dim.apply_to("Mode"), cyan.apply_to(mode),);
+                println!("  {}  {}", dim.apply_to("Mode    "), cyan.apply_to(mode),);
                 println!();
             }
 

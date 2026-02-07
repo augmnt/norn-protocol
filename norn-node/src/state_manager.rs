@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 
-use norn_types::constants::ONE_NORN;
+use norn_types::constants::{MAX_SUPPLY, ONE_NORN};
 use norn_types::error::NornError;
 use norn_types::primitives::{Address, Amount, Hash, PublicKey, TokenId, NATIVE_TOKEN_ID};
 use norn_types::thread::ThreadState;
@@ -77,6 +77,8 @@ pub struct StateManager {
     name_registry: HashMap<String, NameRecord>,
     address_names: HashMap<Address, Vec<String>>,
     state_store: Option<crate::state_store::StateStore>,
+    /// Cached total supply of native tokens (updated on credit/debit).
+    total_supply_cache: Amount,
 }
 
 impl Default for StateManager {
@@ -95,6 +97,7 @@ impl StateManager {
             name_registry: HashMap::new(),
             address_names: HashMap::new(),
             state_store: None,
+            total_supply_cache: 0,
         }
     }
 
@@ -109,6 +112,7 @@ impl StateManager {
             name_registry: HashMap::new(),
             address_names: HashMap::new(),
             state_store: Some(store),
+            total_supply_cache: 0,
         }
     }
 
@@ -121,6 +125,11 @@ impl StateManager {
         name_registry: HashMap<String, NameRecord>,
         address_names: HashMap<Address, Vec<String>>,
     ) -> Self {
+        // Compute total supply from loaded state.
+        let total_supply_cache = thread_states
+            .values()
+            .map(|s| s.balance(&NATIVE_TOKEN_ID))
+            .sum();
         Self {
             thread_states,
             thread_meta,
@@ -129,6 +138,7 @@ impl StateManager {
             name_registry,
             address_names,
             state_store: None,
+            total_supply_cache,
         }
     }
 
@@ -186,18 +196,45 @@ impl StateManager {
         }
     }
 
+    /// Get the total circulating supply of native tokens.
+    #[allow(dead_code)]
+    pub fn total_supply(&self) -> Amount {
+        self.total_supply_cache
+    }
+
     /// Credit tokens to an address (e.g., faucet).
+    /// For native tokens, enforces MAX_SUPPLY cap.
     pub fn credit(
         &mut self,
         address: Address,
         token_id: TokenId,
         amount: Amount,
     ) -> Result<(), NornError> {
+        // Enforce MAX_SUPPLY for native token.
+        if token_id == NATIVE_TOKEN_ID {
+            let new_total = self
+                .total_supply_cache
+                .checked_add(amount)
+                .ok_or(NornError::InvalidAmount)?;
+            if new_total > MAX_SUPPLY {
+                return Err(NornError::SupplyCapExceeded {
+                    current: self.total_supply_cache,
+                    requested: amount,
+                    max: MAX_SUPPLY,
+                });
+            }
+        }
+
         let state = self
             .thread_states
             .get_mut(&address)
             .ok_or(NornError::ThreadNotFound(address))?;
         state.credit(token_id, amount)?;
+
+        // Update cached total supply for native token.
+        if token_id == NATIVE_TOKEN_ID {
+            self.total_supply_cache += amount;
+        }
 
         // Update state hash in meta
         if let Some(meta) = self.thread_meta.get_mut(&address) {
@@ -773,5 +810,82 @@ mod tests {
     fn test_resolve_nonexistent_name() {
         let sm = StateManager::new();
         assert!(sm.resolve_name("nonexistent").is_none());
+    }
+
+    // ─── Supply Cap Tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_total_supply_tracking() {
+        let mut sm = StateManager::new();
+        assert_eq!(sm.total_supply(), 0);
+
+        let addr = test_address(1);
+        sm.register_thread(addr, test_pubkey(1));
+        sm.credit(addr, NATIVE_TOKEN_ID, 1000).unwrap();
+        assert_eq!(sm.total_supply(), 1000);
+
+        let addr2 = test_address(2);
+        sm.register_thread(addr2, test_pubkey(2));
+        sm.credit(addr2, NATIVE_TOKEN_ID, 500).unwrap();
+        assert_eq!(sm.total_supply(), 1500);
+    }
+
+    #[test]
+    fn test_supply_cap_enforcement() {
+        let mut sm = StateManager::new();
+        let addr = test_address(1);
+        sm.register_thread(addr, test_pubkey(1));
+
+        // Credit near the cap should succeed.
+        sm.credit(addr, NATIVE_TOKEN_ID, MAX_SUPPLY - 100).unwrap();
+        assert_eq!(sm.total_supply(), MAX_SUPPLY - 100);
+
+        // Credit that would exceed should fail.
+        let result = sm.credit(addr, NATIVE_TOKEN_ID, 200);
+        assert!(matches!(result, Err(NornError::SupplyCapExceeded { .. })));
+
+        // Total supply unchanged after failure.
+        assert_eq!(sm.total_supply(), MAX_SUPPLY - 100);
+
+        // Credit up to exactly MAX_SUPPLY should succeed.
+        sm.credit(addr, NATIVE_TOKEN_ID, 100).unwrap();
+        assert_eq!(sm.total_supply(), MAX_SUPPLY);
+    }
+
+    #[test]
+    fn test_non_native_token_no_supply_cap() {
+        let mut sm = StateManager::new();
+        let addr = test_address(1);
+        sm.register_thread(addr, test_pubkey(1));
+
+        // Non-native tokens are not capped.
+        let custom_token = [42u8; 32];
+        sm.credit(addr, custom_token, u128::MAX / 2).unwrap();
+        assert_eq!(sm.get_balance(&addr, &custom_token), u128::MAX / 2);
+    }
+
+    #[test]
+    fn test_from_parts_computes_total_supply() {
+        let mut states = HashMap::new();
+        let addr1 = test_address(1);
+        let addr2 = test_address(2);
+
+        let mut s1 = ThreadState::new();
+        s1.credit(NATIVE_TOKEN_ID, 500).unwrap();
+        states.insert(addr1, s1);
+
+        let mut s2 = ThreadState::new();
+        s2.credit(NATIVE_TOKEN_ID, 300).unwrap();
+        states.insert(addr2, s2);
+
+        let sm = StateManager::from_parts(
+            states,
+            HashMap::new(),
+            Vec::new(),
+            Vec::new(),
+            HashMap::new(),
+            HashMap::new(),
+        );
+        assert_eq!(sm.total_supply(), 800);
     }
 }

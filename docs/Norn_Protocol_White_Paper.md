@@ -331,6 +331,33 @@ NornNames is Norn's native name system, allowing users to register human-readabl
 
 This provides a user-friendly identity layer without requiring an external name service or smart contract.
 
+### 5.6 Supply Distribution and Vesting
+
+NORN has a fixed maximum supply of **1,000,000,000 NORN** (1 billion), enforced at the protocol level. The `credit()` function in the state manager rejects any operation that would push the total circulating supply above this cap. There is no inflation mechanism -- all NORN in existence is either allocated at genesis or earned from existing fee pools.
+
+The genesis allocation distributes the supply across seven categories, each designed to align long-term incentives:
+
+| Category | Allocation | Amount (NORN) | Vesting |
+|---|---|---|---|
+| Founder & Core Team | 15% | 150,000,000 | 4-year linear, 1-year cliff |
+| Ecosystem Development | 20% | 200,000,000 | Controlled release over 5 years |
+| Validator Rewards | 30% | 300,000,000 | Block rewards over 10+ years |
+| Community & Grants | 15% | 150,000,000 | Governance-controlled |
+| Treasury Reserve | 10% | 100,000,000 | DAO-governed after decentralization |
+| Initial Liquidity | 5% | 50,000,000 | Available at launch |
+| Testnet Participants | 5% | 50,000,000 | Airdrop at mainnet launch |
+
+**Vesting rationale.** The founder allocation's 4-year linear vesting with a 1-year cliff ensures sustained alignment with the protocol's long-term success. No founder tokens are accessible in the first year, and thereafter tokens unlock gradually over the remaining three years. The ecosystem fund releases over five years, providing sustained resources for developer grants, partnerships, and infrastructure without creating sell pressure.
+
+**Deflationary mechanics.** Two mechanisms reduce the circulating supply over time:
+
+1. **NornNames burn.** Each name registration permanently burns 1 NORN, creating deflationary pressure proportional to network adoption.
+2. **Future fee burning.** A planned EIP-1559-style mechanism will burn a portion of commitment fees, further reducing supply as network usage grows.
+
+Because there is no block reward inflation and the supply cap is enforced at the protocol level, NORN's supply can only decrease over time through burn mechanisms. This makes the token model structurally deflationary.
+
+**Genesis allocation processing.** At node startup, if the state is fresh (block height 0) and a genesis configuration file specifies allocations, the node processes each allocation by crediting the specified amount to the target address. This is the only mechanism by which new supply enters circulation -- all subsequent token movement occurs through transfers, staking, and fee distribution within the fixed supply.
+
 ---
 
 ## 6. Consensus -- HotStuff BFT

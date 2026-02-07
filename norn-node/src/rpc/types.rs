@@ -99,6 +99,12 @@ pub struct HealthInfo {
     pub thread_count: u64,
     /// Node uptime status.
     pub status: String,
+    /// Network identifier (e.g., "dev", "testnet", "mainnet").
+    pub network: String,
+    /// Chain ID (e.g., "norn-dev", "norn-testnet-1", "norn-mainnet").
+    pub chain_id: String,
+    /// Node software version.
+    pub version: String,
 }
 
 /// Information about a validator.

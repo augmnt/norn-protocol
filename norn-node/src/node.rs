@@ -9,7 +9,7 @@ use norn_storage::memory::MemoryStore;
 use norn_storage::traits::KvStore;
 use norn_storage::weave_store::WeaveStore;
 use norn_types::constants::BLOCK_TIME_TARGET;
-use norn_types::network::NornMessage;
+use norn_types::network::{NetworkId, NornMessage};
 use norn_types::weave::{FeeState, Validator, ValidatorSet, WeaveBlock, WeaveState};
 use norn_weave::engine::WeaveEngine;
 
@@ -207,6 +207,43 @@ impl Node {
                 (None, None, None)
             };
 
+        // Parse network ID.
+        let network_id = NetworkId::parse(&config.network_id).unwrap_or(NetworkId::Dev);
+
+        // Process genesis allocations for fresh state.
+        {
+            let mut sm = state_manager.write().await;
+            if sm.latest_block_height() == 0 {
+                if let Some(ref genesis_path) = config.genesis_path {
+                    match crate::genesis::load_genesis(genesis_path) {
+                        Ok((genesis_config, _, _)) => {
+                            for alloc in &genesis_config.allocations {
+                                sm.auto_register_if_needed(alloc.address);
+                                if let Err(e) =
+                                    sm.credit(alloc.address, alloc.token_id, alloc.amount)
+                                {
+                                    tracing::warn!(
+                                        "Failed to process genesis allocation for {}: {}",
+                                        hex::encode(alloc.address),
+                                        e
+                                    );
+                                }
+                            }
+                            if !genesis_config.allocations.is_empty() {
+                                tracing::info!(
+                                    count = genesis_config.allocations.len(),
+                                    "processed genesis allocations"
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to load genesis for allocations: {}", e);
+                        }
+                    }
+                }
+            }
+        }
+
         // Start the RPC server if enabled.
         let (rpc_handle, block_tx) = if config.rpc.enabled {
             let (handle, tx) = crate::rpc::server::start_rpc_server(
@@ -215,6 +252,8 @@ impl Node {
                 state_manager.clone(),
                 metrics.clone(),
                 relay_handle.clone(),
+                network_id,
+                config.validator.enabled,
             )
             .await?;
             (Some(handle), Some(tx))

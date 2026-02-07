@@ -1,0 +1,29 @@
+{
+  "config": {
+    "chain_id": "norn-mainnet",
+    "timestamp": 0,
+    "validators": [],
+    "allocations": [
+      {
+        "address": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        "token_id": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        "amount": 150000000000000000000000000
+      },
+      {
+        "address": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
+        "token_id": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        "amount": 200000000000000000000000000
+      }
+    ],
+    "parameters": {
+      "block_time_target": 3,
+      "max_commitments_per_block": 10000,
+      "commitment_finality_depth": 10,
+      "fraud_proof_window": 86400,
+      "min_validator_stake": 1000000000000,
+      "initial_base_fee": 100
+    }
+  },
+  "block": null,
+  "state": null
+}

@@ -95,9 +95,11 @@ pub async fn run(command: WalletCommand) -> Result<(), WalletError> {
         WalletCommand::WeaveState { json, rpc_url } => {
             commands::weave_state::run(json, rpc_url.as_deref()).await
         }
-        WalletCommand::Config { rpc_url, json } => {
-            commands::config_cmd::run(rpc_url.as_deref(), json)
-        }
+        WalletCommand::Config {
+            rpc_url,
+            network,
+            json,
+        } => commands::config_cmd::run(rpc_url.as_deref(), network.as_deref(), json),
         WalletCommand::RegisterName { name, yes, rpc_url } => {
             commands::register_name::run(&name, yes, rpc_url.as_deref()).await
         }

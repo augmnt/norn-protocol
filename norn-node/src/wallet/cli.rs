@@ -179,6 +179,9 @@ pub enum WalletCommand {
         /// Set RPC URL
         #[arg(long)]
         rpc_url: Option<String>,
+        /// Set network: "dev", "testnet", "mainnet"
+        #[arg(long)]
+        network: Option<String>,
         /// Show current config as JSON
         #[arg(long)]
         json: bool,

@@ -120,6 +120,14 @@ pub enum NornError {
     #[error("invalid message format: {reason}")]
     InvalidMessageFormat { reason: String },
 
+    // ─── Supply Errors ──────────────────────────────────────────────────────
+    #[error("supply cap exceeded: current {current} + requested {requested} > max {max}")]
+    SupplyCapExceeded {
+        current: u128,
+        requested: u128,
+        max: u128,
+    },
+
     // ─── Arithmetic Errors ──────────────────────────────────────────────────
     #[error("balance overflow")]
     BalanceOverflow,

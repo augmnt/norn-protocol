@@ -13,8 +13,15 @@ pub struct WalletConfig {
     pub active_wallet: Option<String>,
     /// RPC endpoint URL.
     pub rpc_url: String,
+    /// Network identifier: "dev", "testnet", "mainnet".
+    #[serde(default = "default_network")]
+    pub network: String,
     /// List of known wallet names.
     pub wallets: Vec<String>,
+}
+
+fn default_network() -> String {
+    "dev".to_string()
 }
 
 impl Default for WalletConfig {
@@ -22,6 +29,7 @@ impl Default for WalletConfig {
         Self {
             active_wallet: None,
             rpc_url: DEFAULT_RPC_URL.to_string(),
+            network: default_network(),
             wallets: Vec::new(),
         }
     }

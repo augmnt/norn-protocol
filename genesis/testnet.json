@@ -1,0 +1,18 @@
+{
+  "config": {
+    "chain_id": "norn-testnet-1",
+    "timestamp": 0,
+    "validators": [],
+    "allocations": [],
+    "parameters": {
+      "block_time_target": 3,
+      "max_commitments_per_block": 10000,
+      "commitment_finality_depth": 10,
+      "fraud_proof_window": 86400,
+      "min_validator_stake": 1000000000000,
+      "initial_base_fee": 100
+    }
+  },
+  "block": null,
+  "state": null
+}

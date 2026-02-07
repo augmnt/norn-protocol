@@ -11,18 +11,18 @@ default = ["testnet"]
 testnet = []
 
 [[bin]]
-name = "norn-node"
+name = "norn"
 path = "src/main.rs"
 
 [dependencies]
-norn-types = { path = "../norn-types" }
-norn-crypto = { path = "../norn-crypto" }
-norn-thread = { path = "../norn-thread" }
-norn-storage = { path = "../norn-storage" }
-norn-relay = { path = "../norn-relay" }
-norn-weave = { path = "../norn-weave" }
-norn-loom = { path = "../norn-loom" }
-norn-spindle = { path = "../norn-spindle" }
+norn-types = { path = "../norn-types", version = "0.2.0" }
+norn-crypto = { path = "../norn-crypto", version = "0.2.0" }
+norn-thread = { path = "../norn-thread", version = "0.2.0" }
+norn-storage = { path = "../norn-storage", version = "0.2.0" }
+norn-relay = { path = "../norn-relay", version = "0.2.0" }
+norn-weave = { path = "../norn-weave", version = "0.2.0" }
+norn-loom = { path = "../norn-loom", version = "0.2.0" }
+norn-spindle = { path = "../norn-spindle", version = "0.2.0" }
 borsh = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
