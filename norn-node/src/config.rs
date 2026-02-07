@@ -16,6 +16,9 @@ pub struct NodeConfig {
     /// Path to a genesis file. If set, load genesis state from this file.
     #[serde(default)]
     pub genesis_path: Option<String>,
+    /// Inline genesis config (programmatic only, not serialized to TOML).
+    #[serde(skip)]
+    pub genesis_config: Option<norn_types::genesis::GenesisConfig>,
 }
 
 fn default_network_id() -> String {
@@ -96,6 +99,7 @@ impl Default for NodeConfig {
                 level: "info".to_string(),
             },
             genesis_path: None,
+            genesis_config: None,
         }
     }
 }

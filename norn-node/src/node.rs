@@ -23,6 +23,7 @@ use crate::state_manager::StateManager;
 #[allow(dead_code)] // Fields accessed indirectly via methods, not all read individually
 pub struct Node {
     config: NodeConfig,
+    genesis_hash: [u8; 32],
     weave_engine: Arc<RwLock<WeaveEngine>>,
     state_manager: Arc<RwLock<StateManager>>,
     metrics: Arc<NodeMetrics>,
@@ -88,22 +89,56 @@ impl Node {
             Keypair::generate()
         };
 
-        // Load genesis state if configured, otherwise use defaults.
-        let (validator_set, initial_state) = if let Some(ref genesis_path) = config.genesis_path {
-            let (genesis_config, _genesis_block, genesis_state) =
-                crate::genesis::load_genesis(genesis_path)?;
+        // Resolve genesis config: inline > file > defaults.
+        let genesis_config_opt: Option<norn_types::genesis::GenesisConfig> =
+            if let Some(ref gc) = config.genesis_config {
+                Some(gc.clone())
+            } else if let Some(ref genesis_path) = config.genesis_path {
+                let (gc, _, _) = crate::genesis::load_genesis(genesis_path)?;
+                Some(gc)
+            } else {
+                None
+            };
+
+        // Compute genesis hash for chain identity.
+        let genesis_hash = if let Some(ref gc) = genesis_config_opt {
+            let (genesis_block, _) = crate::genesis::create_genesis_block(gc)?;
+            genesis_block.hash
+        } else {
+            [0u8; 32] // unconfigured chain identity
+        };
+
+        if genesis_hash != [0u8; 32] {
+            tracing::info!(genesis_hash = %hex::encode(genesis_hash), "chain identity");
+        }
+
+        // Build validator set and initial state from genesis config or defaults.
+        let (validator_set, initial_state) = if let Some(ref gc) = genesis_config_opt {
+            let (_, genesis_state) = crate::genesis::create_genesis_block(gc)?;
+            let mut validators: Vec<Validator> = gc
+                .validators
+                .iter()
+                .map(|gv| Validator {
+                    pubkey: gv.pubkey,
+                    address: gv.address,
+                    stake: gv.stake,
+                    active: true,
+                })
+                .collect();
+            // Auto-add our keypair as solo validator if genesis has no validators.
+            if validators.is_empty() && config.validator.enabled {
+                let pubkey = keypair.public_key();
+                validators.push(Validator {
+                    pubkey,
+                    address: pubkey_to_address(&pubkey),
+                    stake: 1_000_000_000_000,
+                    active: true,
+                });
+            }
+            let total_stake: u128 = validators.iter().map(|v| v.stake).sum();
             let vs = ValidatorSet {
-                validators: genesis_config
-                    .validators
-                    .iter()
-                    .map(|gv| Validator {
-                        pubkey: gv.pubkey,
-                        address: gv.address,
-                        stake: gv.stake,
-                        active: true,
-                    })
-                    .collect(),
-                total_stake: genesis_config.validators.iter().map(|v| v.stake).sum(),
+                validators,
+                total_stake,
                 epoch: 0,
             };
             (vs, genesis_state)
@@ -222,31 +257,22 @@ impl Node {
         {
             let mut sm = state_manager.write().await;
             if sm.latest_block_height() == 0 {
-                if let Some(ref genesis_path) = config.genesis_path {
-                    match crate::genesis::load_genesis(genesis_path) {
-                        Ok((genesis_config, _, _)) => {
-                            for alloc in &genesis_config.allocations {
-                                sm.auto_register_if_needed(alloc.address);
-                                if let Err(e) =
-                                    sm.credit(alloc.address, alloc.token_id, alloc.amount)
-                                {
-                                    tracing::warn!(
-                                        "Failed to process genesis allocation for {}: {}",
-                                        hex::encode(alloc.address),
-                                        e
-                                    );
-                                }
-                            }
-                            if !genesis_config.allocations.is_empty() {
-                                tracing::info!(
-                                    count = genesis_config.allocations.len(),
-                                    "processed genesis allocations"
-                                );
-                            }
+                if let Some(ref gc) = genesis_config_opt {
+                    for alloc in &gc.allocations {
+                        sm.auto_register_if_needed(alloc.address);
+                        if let Err(e) = sm.credit(alloc.address, alloc.token_id, alloc.amount) {
+                            tracing::warn!(
+                                "Failed to process genesis allocation for {}: {}",
+                                hex::encode(alloc.address),
+                                e
+                            );
                         }
-                        Err(e) => {
-                            tracing::warn!("Failed to load genesis for allocations: {}", e);
-                        }
+                    }
+                    if !gc.allocations.is_empty() {
+                        tracing::info!(
+                            count = gc.allocations.len(),
+                            "processed genesis allocations"
+                        );
                     }
                 }
             }
@@ -280,6 +306,7 @@ impl Node {
 
         Ok(Self {
             config,
+            genesis_hash,
             weave_engine,
             state_manager,
             metrics,
@@ -302,7 +329,11 @@ impl Node {
 
         tracing::info!("Requesting state sync from peers...");
 
-        let request = NornMessage::StateRequest { current_height: 0 };
+        let our_genesis_hash = self.genesis_hash;
+        let request = NornMessage::StateRequest {
+            current_height: 0,
+            genesis_hash: our_genesis_hash,
+        };
         if handle.broadcast(request).await.is_err() {
             tracing::debug!("Failed to send state sync request");
             return;
@@ -313,7 +344,22 @@ impl Node {
             let timeout = tokio::time::timeout(std::time::Duration::from_secs(10), async {
                 loop {
                     match rx.recv().await {
-                        Ok(NornMessage::StateResponse { blocks, tip_height }) => {
+                        Ok(NornMessage::StateResponse {
+                            blocks,
+                            tip_height,
+                            genesis_hash,
+                        }) => {
+                            if our_genesis_hash != [0u8; 32]
+                                && genesis_hash != [0u8; 32]
+                                && genesis_hash != our_genesis_hash
+                            {
+                                tracing::warn!(
+                                    ours = %hex::encode(our_genesis_hash),
+                                    theirs = %hex::encode(genesis_hash),
+                                    "rejecting state sync response: genesis hash mismatch"
+                                );
+                                continue;
+                            }
                             return Some((blocks, tip_height));
                         }
                         Ok(_) => continue, // ignore other messages during sync
@@ -424,6 +470,18 @@ impl Node {
                             }
                         }
                         NornMessage::Block(block) => {
+                            // Reject genesis blocks with mismatched hash.
+                            if block.height == 0
+                                && self.genesis_hash != [0u8; 32]
+                                && block.hash != self.genesis_hash
+                            {
+                                tracing::warn!(
+                                    ours = %hex::encode(self.genesis_hash),
+                                    theirs = %hex::encode(block.hash),
+                                    "rejecting block: genesis hash mismatch"
+                                );
+                                continue;
+                            }
                             // Apply block contents to StateManager.
                             {
                                 let mut sm = self.state_manager.write().await;
@@ -447,7 +505,22 @@ impl Node {
                             engine.set_timestamp(current_timestamp());
                             let _responses = engine.on_network_message(NornMessage::Block(block));
                         }
-                        NornMessage::StateRequest { current_height } => {
+                        NornMessage::StateRequest {
+                            current_height,
+                            genesis_hash,
+                        } => {
+                            // Reject if genesis hash mismatch.
+                            if self.genesis_hash != [0u8; 32]
+                                && genesis_hash != [0u8; 32]
+                                && genesis_hash != self.genesis_hash
+                            {
+                                tracing::warn!(
+                                    ours = %hex::encode(self.genesis_hash),
+                                    theirs = %hex::encode(genesis_hash),
+                                    "rejecting state request: genesis hash mismatch"
+                                );
+                                continue;
+                            }
                             // Respond with blocks the requester is missing.
                             if let Some(ref handle) = self.relay_handle {
                                 let sm = self.state_manager.read().await;
@@ -466,6 +539,7 @@ impl Node {
                                     let resp = NornMessage::StateResponse {
                                         blocks,
                                         tip_height: tip,
+                                        genesis_hash: self.genesis_hash,
                                     };
                                     tokio::spawn(async move {
                                         let _ = h.broadcast(resp).await;
@@ -473,7 +547,23 @@ impl Node {
                                 }
                             }
                         }
-                        NornMessage::StateResponse { blocks, .. } => {
+                        NornMessage::StateResponse {
+                            blocks,
+                            genesis_hash,
+                            ..
+                        } => {
+                            // Reject if genesis hash mismatch.
+                            if self.genesis_hash != [0u8; 32]
+                                && genesis_hash != [0u8; 32]
+                                && genesis_hash != self.genesis_hash
+                            {
+                                tracing::warn!(
+                                    ours = %hex::encode(self.genesis_hash),
+                                    theirs = %hex::encode(genesis_hash),
+                                    "rejecting state response: genesis hash mismatch"
+                                );
+                                continue;
+                            }
                             // Apply synced blocks.
                             for block in blocks {
                                 {

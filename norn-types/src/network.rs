@@ -168,6 +168,8 @@ pub enum NornMessage {
     StateRequest {
         /// The requester's current block height.
         current_height: u64,
+        /// Genesis hash for chain identity validation.
+        genesis_hash: Hash,
     },
     /// Response with blocks for state sync.
     StateResponse {
@@ -175,5 +177,7 @@ pub enum NornMessage {
         blocks: Vec<WeaveBlock>,
         /// The sender's tip height.
         tip_height: u64,
+        /// Genesis hash for chain identity validation.
+        genesis_hash: Hash,
     },
 }

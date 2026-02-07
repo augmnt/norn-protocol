@@ -1,0 +1,25 @@
+{
+  "config": {
+    "chain_id": "norn-dev",
+    "timestamp": 1700000000,
+    "validators": [],
+    "allocations": [
+      {
+        "address": "fa9018f844109f5f80886170a4f1482c4c2dbe65",
+        "token_id": "0000000000000000000000000000000000000000000000000000000000000000",
+        "amount": 10000000000000000000
+      }
+    ],
+    "parameters": {
+      "block_time_target": 3,
+      "max_commitments_per_block": 10000,
+      "commitment_finality_depth": 10,
+      "fraud_proof_window": 86400,
+      "min_validator_stake": 1000000000000,
+      "initial_base_fee": 100
+    }
+  },
+  "_note": "Reference file. Runtime source is devnet_genesis() in norn-node/src/genesis.rs",
+  "_founder_seed": "blake3(b\"augmnt-devnet-founder\")",
+  "_genesis_hash": "6793f6bfbea003c9ec10f5e96c954fb8a778fc541c20f1229662f02cf1649ac1"
+}
