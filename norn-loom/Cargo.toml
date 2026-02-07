@@ -15,7 +15,7 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-wasmtime = "19"
+wasmtime = "41"
 
 [dev-dependencies]
 proptest = "1"
