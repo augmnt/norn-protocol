@@ -70,11 +70,11 @@ flowchart TB
 | `norn-crypto` | Cryptographic operations (Ed25519 keys, BLAKE3 hashing, Merkle trees, BIP-39 seeds, SLIP-0010 HD derivation, XChaCha20 encryption) |
 | `norn-thread` | Thread management (Thread chain, Knot creation/validation, state management, version tracking) |
 | `norn-storage` | Storage abstraction (KvStore trait with memory, SQLite, and RocksDB backends; Merkle, Thread, and Weave stores) |
-| `norn-relay` | P2P networking (libp2p behaviour, protocol codec, peer discovery, relay service, Spindle registry) |
+| `norn-relay` | P2P networking (libp2p behaviour, protocol codec, peer discovery, relay service, state sync, Spindle registry) |
 | `norn-weave` | Anchor chain (block production, commitment processing, HotStuff consensus, dynamic fees, fraud proof verification, staking) |
 | `norn-loom` | Smart contract runtime (Wasm runtime, host functions, gas metering, Loom lifecycle, dispute resolution) |
 | `norn-spindle` | Watchtower service (Weave monitoring, fraud proof construction, rate limiting, service orchestration) |
-| `norn-node` | Full node binary (CLI, node configuration, genesis handling, JSON-RPC server, wallet CLI, metrics) |
+| `norn-node` | Full node binary (CLI, node configuration, genesis handling, JSON-RPC server, wallet CLI, NornNames, metrics) |
 
 ## Getting Started
 
@@ -109,7 +109,7 @@ cargo run --example demo -p norn-node
 
 ## Wallet CLI
 
-The `norn-node` binary includes a full-featured wallet CLI with 17 subcommands for key management, transfers, Thread inspection, and encrypted keystore backup.
+The `norn-node` binary includes a full-featured wallet CLI with 20 subcommands for key management, transfers, NornNames, Thread inspection, and encrypted keystore backup.
 
 ```bash
 # Create a new wallet
@@ -121,8 +121,17 @@ cargo run -p norn-node -- wallet list
 # Check balance
 cargo run -p norn-node -- wallet balance --address <ADDRESS>
 
-# Send tokens
-cargo run -p norn-node -- wallet send --to <ADDRESS> --amount <AMOUNT>
+# Send tokens (by address or NornName)
+cargo run -p norn-node -- wallet transfer --to <ADDRESS_OR_NAME> --amount <AMOUNT>
+
+# Register a NornName (costs 1 NORN, burned)
+cargo run -p norn-node -- wallet register-name --name alice
+
+# Resolve a NornName to its owner address
+cargo run -p norn-node -- wallet resolve --name alice
+
+# List names owned by the active wallet
+cargo run -p norn-node -- wallet names
 ```
 
 Wallets are stored in `~/.norn/wallets/` with Argon2id key derivation and XChaCha20-Poly1305 authenticated encryption.

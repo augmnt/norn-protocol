@@ -41,9 +41,10 @@
 25. [Genesis Configuration](#25-genesis-configuration)
 26. [Error Taxonomy](#26-error-taxonomy)
 27. [Wallet CLI](#27-wallet-cli)
-28. [Protocol Constants](#28-protocol-constants)
-29. [Crate Map](#29-crate-map)
-30. [Changelog (v1.0 to v2.0)](#30-changelog-v10-to-v20)
+28. [NornNames (Name Registry)](#28-nornnames-name-registry)
+29. [Protocol Constants](#29-protocol-constants)
+30. [Crate Map](#30-crate-map)
+31. [Changelog (v1.0 to v2.0)](#31-changelog-v10-to-v20)
 
 ---
 
@@ -1132,6 +1133,18 @@ pub enum NornMessage {
     Block(Box<WeaveBlock>),
     /// A consensus protocol message.
     Consensus(ConsensusMessage),
+    /// Request state from peers (used for initial sync).
+    StateRequest {
+        /// The requester's current block height.
+        current_height: u64,
+    },
+    /// Response with blocks for state sync.
+    StateResponse {
+        /// Blocks to apply.
+        blocks: Vec<WeaveBlock>,
+        /// The sender's tip height.
+        tip_height: u64,
+    },
 }
 ```
 
@@ -1190,7 +1203,18 @@ The relay layer (`norn-relay`) is built on libp2p, NOT a REST API. It includes:
 | `relay.rs` | Top-level relay service |
 | `spindle_registry.rs` | Registry of known spindles |
 
-### 20.6 Network Constants
+### 20.6 State Sync Protocol
+
+When a node joins the network, it performs a state sync to catch up to the current chain tip:
+
+1. The node broadcasts a `StateRequest` with its current block height (0 for a new node).
+2. Peers respond with a `StateResponse` containing any blocks the requester is missing, up to a batch limit.
+3. The node applies received blocks sequentially.
+4. If the response indicates more blocks are available (`tip_height > last received`), the node repeats the request.
+
+State sync has a 10-second timeout per request. Nodes that fail to respond are skipped. This protocol operates over the same GossipSub/libp2p transport as all other `NornMessage` types.
+
+### 20.7 Network Constants
 
 | Constant | Value |
 |----------|-------|
@@ -1549,6 +1573,7 @@ This creates a solo-validator node with:
 - RPC enabled on `127.0.0.1:9741`
 - Solo block production (no consensus required)
 - Testnet faucet enabled
+- P2P relay enabled (broadcasts knots, blocks, and commitments to peers)
 
 No configuration file is needed in dev mode.
 
@@ -1575,6 +1600,9 @@ The RPC server uses `jsonrpsee` over HTTP. All methods use the `norn_` namespace
 | `norn_getFeeEstimate` | -- | `FeeEstimateInfo` | No |
 | `norn_getCommitmentProof` | `thread_id: String` (hex) | `Option<CommitmentProofInfo>` | No |
 | `norn_getTransactionHistory` | `address: String`, `limit: u64`, `offset: u64` | `Vec<TransactionHistoryEntry>` | No |
+| `norn_registerName` | `name: String`, `owner_hex: String`, `knot_hex: String` | `SubmitResult` | Yes |
+| `norn_resolveName` | `name: String` | `Option<NameResolution>` | No |
+| `norn_listNames` | `address: String` (hex) | `Vec<NameInfo>` | No |
 
 #### WebSocket Subscriptions
 
@@ -1676,6 +1704,18 @@ pub struct TransactionHistoryEntry {
     pub timestamp: u64,
     pub block_height: Option<u64>,
     pub direction: String,  // "sent" or "received"
+}
+
+pub struct NameResolution {
+    pub name: String,
+    pub owner: String,
+    pub registered_at: u64,
+    pub fee_paid: String,
+}
+
+pub struct NameInfo {
+    pub name: String,
+    pub registered_at: u64,
 }
 ```
 
@@ -1846,7 +1886,14 @@ All errors are defined in a single `NornError` enum using `thiserror`:
 | `MessageTooLarge { size, max_size }` | Message exceeds `MAX_MESSAGE_SIZE` |
 | `InvalidMessageFormat { reason }` | Message structure is malformed |
 
-### 26.9 Arithmetic Errors
+### 26.9 Name Errors
+
+| Variant | Description |
+|---------|-------------|
+| `NameAlreadyRegistered(String)` | The requested name is already registered |
+| `InvalidName(String)` | The name does not meet validation rules (length, characters, hyphens) |
+
+### 26.10 Arithmetic Errors
 
 | Variant | Description |
 |---------|-------------|
@@ -1887,6 +1934,9 @@ norn-node wallet <COMMAND>
 | `block` | Get block information by height (or latest) via RPC |
 | `weave-state` | Show the current Weave state via RPC |
 | `faucet` | Request testnet tokens for an address via RPC |
+| `register-name` | Register a NornName for the active wallet (costs 1 NORN, burned) |
+| `resolve` | Resolve a NornName to its owner address |
+| `names` | List NornNames owned by the active wallet |
 
 ### 27.3 Command Details
 
@@ -1916,10 +1966,11 @@ norn-node wallet import --private-key <HEX> --name <NAME>
 #### transfer
 
 ```
-norn-node wallet transfer --to <ADDRESS> --amount <AMOUNT> [--token <TOKEN_ID>] [--memo <MEMO>] [--yes]
+norn-node wallet transfer --to <ADDRESS_OR_NAME> --amount <AMOUNT> [--token <TOKEN_ID>] [--memo <MEMO>] [--yes]
 ```
 
 - `<AMOUNT>` is human-readable (e.g., `"10.5"` = 10.5 NORN = 10,500,000,000,000 nits).
+- The `--to` argument accepts either a hex address (with or without `0x` prefix) or a NornName. If a NornName is provided, it is resolved to the owner's address via `norn_resolveName` before constructing the knot.
 - Pre-checks the sender's balance before prompting for password.
 - Shows current balance in the confirmation summary.
 - Constructs a `Knot` with a `TransferPayload`, signs it, and submits via `norn_submitKnot`.
@@ -2037,11 +2088,62 @@ Configuration is stored in `~/.norn/wallets/config.json`:
 
 ---
 
-## 28. Protocol Constants
+## 28. NornNames (Name Registry)
+
+NornNames is Norn's native name system, mapping human-readable names to owner addresses. Names provide a user-friendly alternative to hex addresses for transfers and identity.
+
+### 28.1 Name Rules
+
+| Rule | Constraint |
+|------|-----------|
+| Length | 3--32 characters |
+| Character set | Lowercase ASCII letters (`a-z`), digits (`0-9`), hyphens (`-`) |
+| Hyphens | Must not start or end with a hyphen |
+| Uniqueness | Names are globally unique; first-come, first-served |
+
+Validation is performed by `validate_name()` in `norn-node/src/state_manager.rs`.
+
+### 28.2 NameRecord
+
+```rust
+pub struct NameRecord {
+    pub owner: Address,
+    pub registered_at: u64,
+    pub fee_paid: Amount,
+}
+```
+
+### 28.3 Registration Flow
+
+1. The wallet submits a `norn_registerName` RPC call with the desired name, owner address, and an authorization knot (a self-signed knot proving ownership of the address).
+2. The node validates the name (rules above), checks that the name is not already taken, and verifies that the owner has at least `NAME_REGISTRATION_FEE` (1 NORN) in their native balance.
+3. The registration fee is **burned** (debited from the sender, not credited to anyone), reducing the circulating supply.
+4. A `NameRecord` is stored in the state manager's name registry.
+5. A reverse index (`address -> Vec<name>`) is maintained for `norn_listNames` lookups.
+
+### 28.4 Name Resolution in Transfers
+
+The `wallet transfer --to` argument accepts either:
+- A hex address (with or without `0x` prefix): used directly.
+- A NornName (e.g., `alice`): resolved to the owner's address via `norn_resolveName` before constructing the transfer knot.
+
+This allows commands like: `norn-node wallet transfer --to alice --amount 10`
+
+### 28.5 Name Constants
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `NAME_REGISTRATION_FEE` | `ONE_NORN` (10^12 nits) | Fee burned on name registration |
+| Min name length | 3 | Minimum characters |
+| Max name length | 32 | Maximum characters |
+
+---
+
+## 29. Protocol Constants
 
 All constants are defined in `norn-types/src/constants.rs`.
 
-### 28.1 Token Parameters
+### 29.1 Token Parameters
 
 | Constant | Type | Value | Description |
 |----------|------|-------|-------------|
@@ -2049,7 +2151,7 @@ All constants are defined in `norn-types/src/constants.rs`.
 | `ONE_NORN` | `Amount` | `1_000_000_000_000` (10^12) | One NORN in base units (nits) |
 | `MAX_SUPPLY` | `Amount` | `1_000_000_000 * ONE_NORN` (10^21) | Maximum supply in nits |
 
-### 28.2 Knot Parameters
+### 29.2 Knot Parameters
 
 | Constant | Type | Value | Description |
 |----------|------|-------|-------------|
@@ -2058,7 +2160,7 @@ All constants are defined in `norn-types/src/constants.rs`.
 | `MAX_TIMESTAMP_DRIFT` | `u64` | `300` | Maximum future timestamp drift (seconds) |
 | `DEFAULT_KNOT_EXPIRY` | `u64` | `3600` | Default knot expiry (1 hour, seconds) |
 
-### 28.3 Weave Parameters
+### 29.3 Weave Parameters
 
 | Constant | Type | Value | Description |
 |----------|------|-------|-------------|
@@ -2067,7 +2169,7 @@ All constants are defined in `norn-types/src/constants.rs`.
 | `COMMITMENT_FINALITY_DEPTH` | `u64` | `10` | Blocks until commitment is final |
 | `MAX_COMMITMENT_AGE` | `u64` | `86_400` | Maximum commitment age (24 hours) |
 
-### 28.4 Loom Parameters
+### 29.4 Loom Parameters
 
 | Constant | Type | Value | Description |
 |----------|------|-------|-------------|
@@ -2075,7 +2177,7 @@ All constants are defined in `norn-types/src/constants.rs`.
 | `MIN_LOOM_PARTICIPANTS` | `usize` | `2` | Minimum loom participants |
 | `MAX_LOOM_STATE_SIZE` | `usize` | `1_048_576` | Maximum loom state (1 MB) |
 
-### 28.5 Network Parameters
+### 29.5 Network Parameters
 
 | Constant | Type | Value | Description |
 |----------|------|-------|-------------|
@@ -2083,27 +2185,27 @@ All constants are defined in `norn-types/src/constants.rs`.
 | `DEFAULT_RELAY_PORT` | `u16` | `9740` | Default P2P relay port |
 | `MAX_RELAY_CONNECTIONS` | `usize` | `50` | Maximum relay connections |
 
-### 28.6 Thread Parameters
+### 29.6 Thread Parameters
 
 | Constant | Type | Value | Description |
 |----------|------|-------|-------------|
 | `MAX_UNCOMMITTED_KNOTS` | `usize` | `1_000` | Max knots before commitment required |
 | `THREAD_HEADER_SIZE` | `usize` | `208` | Fixed thread header size (bytes) |
 
-### 28.7 Fraud Proof Parameters
+### 29.7 Fraud Proof Parameters
 
 | Constant | Type | Value | Description |
 |----------|------|-------|-------------|
 | `FRAUD_PROOF_WINDOW` | `u64` | `86_400` | Challenge window (24 hours) |
 | `FRAUD_PROOF_MIN_STAKE` | `Amount` | `ONE_NORN` | Minimum stake to submit proof (1 NORN) |
 
-### 28.8 Derivation Path
+### 29.8 Derivation Path
 
 | Constant | Type | Value | Description |
 |----------|------|-------|-------------|
 | `NORN_COIN_TYPE` | `u32` | `0x4E4F524E` | SLIP-44 coin type ("NORN" in ASCII hex) |
 
-### 28.9 Epoch Parameters
+### 29.9 Epoch Parameters
 
 | Constant | Type | Value | Description |
 |----------|------|-------|-------------|
@@ -2111,9 +2213,9 @@ All constants are defined in `norn-types/src/constants.rs`.
 
 ---
 
-## 29. Crate Map
+## 30. Crate Map
 
-### 29.1 Implemented Crates
+### 30.1 Implemented Crates
 
 | Crate | Path | Description |
 |-------|------|-------------|
@@ -2127,7 +2229,7 @@ All constants are defined in `norn-types/src/constants.rs`.
 | `norn-spindle` | `norn-spindle/` | Watchtower service: thread monitoring, spindle registration, rate limiting, alert dispatch |
 | `norn-node` | `norn-node/` | Full node binary: TOML configuration, JSON-RPC server (jsonrpsee), wallet CLI (clap), metrics, genesis loading, node orchestration |
 
-### 29.2 Future Crates `[FUTURE]`
+### 30.2 Future Crates `[FUTURE]`
 
 | Crate | Description |
 |-------|-------------|
@@ -2139,11 +2241,11 @@ All constants are defined in `norn-types/src/constants.rs`.
 
 ---
 
-## 30. Changelog (v1.0 to v2.0)
+## 31. Changelog (v1.0 to v2.0)
 
 This section documents all material changes from the v1.0 specification to v2.0. The codebase is the source of truth; v1.0 contained several inaccuracies and placeholders.
 
-### 30.1 Type System Corrections
+### 31.1 Type System Corrections
 
 | Item | v1.0 (incorrect) | v2.0 (correct) | Reason |
 |------|-------------------|-----------------|--------|
@@ -2162,7 +2264,7 @@ This section documents all material changes from the v1.0 specification to v2.0.
 | `NATIVE_TOKEN_ID` | BLAKE3 hash | `[0u8; 32]` | All-zero sentinel, not a hash |
 | `Timestamp` | Milliseconds | Seconds | Unix seconds, not milliseconds |
 
-### 30.2 Structural Changes
+### 31.2 Structural Changes
 
 | Structure | v1.0 | v2.0 |
 |-----------|------|------|
@@ -2181,7 +2283,7 @@ This section documents all material changes from the v1.0 specification to v2.0.
 | `Participant` | Had `balance_locked` | Simplified: `pubkey, address, joined_at, active` |
 | `LoomInteractionPayload` | Different approach | Enum-based: `loom_id, interaction_type: LoomInteractionType, token_id: Option, amount: Option, data: Vec<u8>` |
 
-### 30.3 Architecture Changes
+### 31.3 Architecture Changes
 
 | Area | v1.0 | v2.0 |
 |------|------|------|
@@ -2194,11 +2296,14 @@ This section documents all material changes from the v1.0 specification to v2.0.
 | `StakeOperation` | Not defined | New type for stake/unstake operations |
 | Wire format | Had type tag | `[4B length BE][NB borsh]` -- no type tag, borsh discriminants suffice |
 
-### 30.4 New Features (not in v1.0)
+### 31.4 New Features (not in v1.0)
 
 | Feature | Description |
 |---------|-------------|
-| Wallet CLI | 17 subcommands integrated in `norn-node wallet` |
+| Wallet CLI | 20 subcommands integrated in `norn-node wallet` |
+| NornNames | Native name registry with 1 NORN burn fee, name resolution in transfers |
+| State Sync | `StateRequest`/`StateResponse` messages for initial node sync |
+| Relay Handle | Outbound relay channel for broadcasting knots, blocks, and commitments to P2P peers |
 | Encrypted keystore | Argon2id KDF + XChaCha20-Poly1305 with v1 BLAKE3 fallback |
 | JSON-RPC server | `jsonrpsee`-based with API key authentication |
 | Genesis configuration | Full `GenesisConfig` with parameters |
@@ -2211,7 +2316,7 @@ This section documents all material changes from the v1.0 specification to v2.0.
 | Solo mode | Single-validator block production without HotStuff |
 | Node metrics | Prometheus-compatible metrics |
 
-### 30.5 Constant Corrections
+### 31.5 Constant Corrections
 
 | Constant | v1.0 | v2.0 |
 |----------|------|------|

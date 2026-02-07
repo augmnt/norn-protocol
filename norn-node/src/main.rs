@@ -1,6 +1,7 @@
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
+mod banner;
 mod cli;
 mod config;
 mod error;

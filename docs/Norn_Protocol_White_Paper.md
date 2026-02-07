@@ -256,11 +256,13 @@ Relays handle:
 
 - **Knot proposals and responses**: The bilateral negotiation of state transitions.
 - **Commitment broadcasts**: Propagation of commitment updates to the Weave.
+- **Block propagation**: New Weave blocks are broadcast to all connected peers.
 - **Consensus messages**: HotStuff protocol messages between validators.
 - **Spindle alerts**: Notifications of suspicious activity.
+- **State sync**: New nodes request missing blocks from peers via `StateRequest`/`StateResponse` messages, enabling rapid catch-up to the current chain tip.
 - **Discovery**: Peer discovery via Kademlia DHT, with GossipSub for topic-based message propagation.
 
-The relay layer uses QUIC for transport, providing multiplexed, encrypted connections with low latency and NAT traversal capabilities.
+The relay layer uses QUIC for transport, providing multiplexed, encrypted connections with low latency and NAT traversal capabilities. Nodes interact with the relay through a `RelayHandle` -- a cloneable channel-based interface that allows any component (RPC server, consensus engine, block producer) to broadcast messages to the P2P network without direct access to the libp2p swarm.
 
 ---
 
@@ -318,6 +320,16 @@ Three categories of actors stake NORN to participate in the protocol:
 **Loom Operators** stake NORN as a bond against fraudulent state transitions. If a Loom operator posts an invalid state, their stake is slashed and distributed to the challenger and the affected participants.
 
 **Spindle Operators** stake NORN to register as watchtowers. This prevents Sybil attacks on the Spindle network and provides economic accountability for Spindle services.
+
+### 5.5 NornNames -- On-Chain Name Registry
+
+NornNames is Norn's native name system, allowing users to register human-readable names (e.g., `alice`, `my-wallet`) that map to their address. Name registration costs 1 NORN, which is **burned** (removed from circulation), making it a deflationary mechanism. Names are:
+
+- 3--32 characters long, lowercase alphanumeric with hyphens (no leading/trailing hyphens).
+- Globally unique and first-come, first-served.
+- Resolvable in wallet transfer commands: `norn-node wallet transfer --to alice --amount 10` resolves `alice` to its registered address automatically.
+
+This provides a user-friendly identity layer without requiring an external name service or smart contract.
 
 ---
 
@@ -735,12 +747,13 @@ This modular architecture ensures that each component can be tested, audited, an
 
 ### 13.1 Wallet CLI
 
-Norn ships with a full-featured command-line wallet supporting 17 subcommands for complete account management:
+Norn ships with a full-featured command-line wallet supporting 20 subcommands for complete account management:
 
 - **Key management**: Create, import (from seed phrase), list, and delete wallets.
-- **Transfers**: Send NORN to any address with optional memo.
+- **Transfers**: Send NORN to any address or NornName with optional memo.
 - **Thread management**: View Thread state, version history, and balance.
 - **Weave interaction**: Submit commitments, query block status, view fee state.
+- **NornNames**: Register human-readable names (e.g., `alice`), resolve names to addresses, and list owned names. Names can be used directly in transfer commands instead of hex addresses.
 - **Backup and recovery**: Export seed phrases, encrypted keystore backup.
 
 ### 13.2 Encrypted Keystore
@@ -767,6 +780,7 @@ The node exposes a JSON-RPC API for programmatic interaction, supporting:
 - Block and transaction lookups
 - Fee estimation
 - Network status
+- NornNames registration, resolution, and listing
 - API key authentication for access control
 
 ### 13.5 Planned Developer Tools
@@ -794,8 +808,8 @@ The Norn Protocol has completed six development phases, representing a fully fun
 | **Phase 2** | Weave | Complete | HotStuff BFT consensus, block production, Sparse Merkle Tree, commitment processing, fraud proof verification, EIP-1559-style dynamic fees, DPoS staking with bonding periods and slashing |
 | **Phase 3** | Loom Runtime | Complete | wasmtime integration, Wasm execution with fuel metering, host functions (state, transfers, context), Loom lifecycle (deploy, join, execute, anchor, leave), dispute resolution via re-execution |
 | **Phase 4** | Spindle Service | Complete | Weave monitoring, fraud proof construction and submission, rate limiting, service orchestration |
-| **Phase 5** | Node | Complete | Full node binary, JSON-RPC server, wallet CLI (17 subcommands), encrypted keystore (Argon2id + XChaCha20), genesis configuration and bootstrapping, metrics |
-| **Phase 6** | Production Readiness | Complete | Comprehensive test suite (428+ tests including end-to-end, wallet, regression, and consensus/validation tests), code hardening, error handling improvements, Clippy compliance |
+| **Phase 5** | Node | Complete | Full node binary, JSON-RPC server, wallet CLI (20 subcommands), encrypted keystore (Argon2id + XChaCha20), genesis configuration and bootstrapping, metrics |
+| **Phase 6** | Production Readiness | Complete | Comprehensive test suite (476+ tests including end-to-end, wallet, regression, name registry, and consensus/validation tests), code hardening, error handling improvements, Clippy compliance |
 
 ### 14.2 Next Milestones
 
