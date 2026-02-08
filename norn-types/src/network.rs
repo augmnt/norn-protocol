@@ -139,6 +139,17 @@ pub struct SpindleAlert {
     pub signature: Signature,
 }
 
+/// Upgrade notice broadcast when a peer running a newer protocol version is detected.
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+pub struct UpgradeNotice {
+    /// The newer protocol version that was observed.
+    pub protocol_version: u8,
+    /// Human-readable message about the upgrade.
+    pub message: String,
+    /// When this notice was created.
+    pub timestamp: u64,
+}
+
 /// Versioned envelope for P2P messages. Wraps borsh-encoded payloads so that
 /// nodes can skip unknown `message_type` values instead of crashing.
 ///
@@ -149,6 +160,8 @@ pub struct SpindleAlert {
 pub struct MessageEnvelope {
     /// Envelope version (currently 1).
     pub version: u8,
+    /// The protocol version of the sender.
+    pub protocol_version: u8,
     /// Known message type discriminator. Corresponds to the `NornMessage` enum
     /// variant index.
     pub message_type: u8,
@@ -158,12 +171,13 @@ pub struct MessageEnvelope {
 
 impl MessageEnvelope {
     /// Wrap a `NornMessage` into a versioned envelope.
-    pub fn wrap(msg: &NornMessage) -> Result<Self, std::io::Error> {
+    pub fn wrap(msg: &NornMessage, protocol_version: u8) -> Result<Self, std::io::Error> {
         let message_type = msg.discriminant();
         let payload = borsh::to_vec(msg)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         Ok(Self {
             version: 1,
+            protocol_version,
             message_type,
             payload,
         })
@@ -220,6 +234,8 @@ pub enum NornMessage {
     },
     /// A name registration.
     NameRegistration(NameRegistration),
+    /// An upgrade notice from a peer that detected a newer protocol version.
+    UpgradeNotice(UpgradeNotice),
 }
 
 impl NornMessage {
@@ -241,6 +257,7 @@ impl NornMessage {
             NornMessage::StateRequest { .. } => 11,
             NornMessage::StateResponse { .. } => 12,
             NornMessage::NameRegistration(_) => 13,
+            NornMessage::UpgradeNotice(_) => 14,
         }
     }
 }
@@ -263,8 +280,9 @@ mod tests {
     #[test]
     fn test_envelope_roundtrip() {
         let msg = sample_message();
-        let envelope = MessageEnvelope::wrap(&msg).expect("wrap failed");
+        let envelope = MessageEnvelope::wrap(&msg, 4).expect("wrap failed");
         assert_eq!(envelope.version, 1);
+        assert_eq!(envelope.protocol_version, 4);
         assert_eq!(envelope.message_type, 3); // Registration = discriminant 3
         let unwrapped = envelope.unwrap_message().expect("unwrap failed");
         assert_eq!(msg, unwrapped);
@@ -275,6 +293,7 @@ mod tests {
         // Simulate an envelope with unknown message type and garbage payload.
         let envelope = MessageEnvelope {
             version: 1,
+            protocol_version: 99,
             message_type: 255, // unknown
             payload: vec![0xFF, 0xFF, 0xFF],
         };

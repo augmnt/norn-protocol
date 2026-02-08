@@ -25,8 +25,12 @@ pub struct NornBehaviour {
 ///
 /// Returns `Result<NornBehaviour, Box<dyn Error + Send + Sync>>` to conform
 /// to the `TryIntoBehaviour` trait expected by `SwarmBuilder::with_behaviour`.
+///
+/// The `protocol_version` is advertised via the identify protocol's agent version
+/// string as `"norn/{version}"`, allowing peers to detect version mismatches.
 pub fn build_behaviour(
     keypair: &Keypair,
+    protocol_version: u8,
 ) -> Result<NornBehaviour, Box<dyn std::error::Error + Send + Sync>> {
     // --- Gossipsub ---
     let message_id_fn = |message: &gossipsub::Message| {
@@ -59,10 +63,10 @@ pub fn build_behaviour(
     );
 
     // --- Identify ---
-    let identify = libp2p::identify::Behaviour::new(libp2p::identify::Config::new(
-        "/norn/1.0.0".to_string(),
-        keypair.public(),
-    ));
+    let identify_config =
+        libp2p::identify::Config::new("/norn/1.0.0".to_string(), keypair.public())
+            .with_agent_version(format!("norn/{}", protocol_version));
+    let identify = libp2p::identify::Behaviour::new(identify_config);
 
     // --- mDNS ---
     let mdns = libp2p::mdns::tokio::Behaviour::new(

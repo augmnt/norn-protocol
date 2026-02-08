@@ -8,6 +8,8 @@ pub struct PeerInfo {
     pub peer_id: PeerId,
     /// Optional Norn address (set after registration).
     pub address: Option<Address>,
+    /// The peer's protocol version (set via identify).
+    pub protocol_version: Option<u8>,
     /// When this peer connected.
     pub connected_at: std::time::Instant,
 }
@@ -37,6 +39,7 @@ impl PeerManager {
         self.peers.entry(peer_id).or_insert_with(|| PeerInfo {
             peer_id,
             address: None,
+            protocol_version: None,
             connected_at: std::time::Instant::now(),
         });
         true
@@ -84,6 +87,29 @@ impl PeerManager {
     /// Iterator over the peer IDs of all connected peers.
     pub fn connected_peers(&self) -> impl Iterator<Item = &PeerId> {
         self.peers.keys()
+    }
+
+    /// Set the protocol version for a peer (usually from identify).
+    pub fn set_peer_version(&mut self, peer_id: &PeerId, version: u8) {
+        if let Some(info) = self.peers.get_mut(peer_id) {
+            info.protocol_version = Some(version);
+        }
+    }
+
+    /// Get the protocol version of a specific peer.
+    pub fn peer_version(&self, peer_id: &PeerId) -> Option<u8> {
+        self.peers
+            .get(peer_id)
+            .and_then(|info| info.protocol_version)
+    }
+
+    /// Return the highest protocol version seen among all connected peers,
+    /// or `None` if no peer has reported its version yet.
+    pub fn highest_peer_version(&self) -> Option<u8> {
+        self.peers
+            .values()
+            .filter_map(|info| info.protocol_version)
+            .max()
     }
 }
 
@@ -172,5 +198,41 @@ mod tests {
         // Old address mapping should be removed.
         assert_eq!(pm.peer_for_address(&addr1), None);
         assert_eq!(pm.peer_for_address(&addr2), Some(&peer));
+    }
+
+    #[test]
+    fn test_set_and_get_peer_version() {
+        let mut pm = PeerManager::new(10);
+        let peer = make_peer_id();
+        pm.add_peer(peer);
+        assert_eq!(pm.peer_version(&peer), None);
+        pm.set_peer_version(&peer, 4);
+        assert_eq!(pm.peer_version(&peer), Some(4));
+    }
+
+    #[test]
+    fn test_highest_peer_version() {
+        let mut pm = PeerManager::new(10);
+        let p1 = make_peer_id();
+        let p2 = make_peer_id();
+        let p3 = make_peer_id();
+        pm.add_peer(p1);
+        pm.add_peer(p2);
+        pm.add_peer(p3);
+        // No versions set yet.
+        assert_eq!(pm.highest_peer_version(), None);
+        pm.set_peer_version(&p1, 3);
+        pm.set_peer_version(&p2, 5);
+        // p3 has no version.
+        assert_eq!(pm.highest_peer_version(), Some(5));
+    }
+
+    #[test]
+    fn test_set_version_unknown_peer_is_noop() {
+        let mut pm = PeerManager::new(10);
+        let peer = make_peer_id();
+        // Peer not added — set_peer_version should be a no-op.
+        pm.set_peer_version(&peer, 4);
+        assert_eq!(pm.peer_version(&peer), None);
     }
 }

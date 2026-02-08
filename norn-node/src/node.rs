@@ -722,6 +722,13 @@ impl Node {
                                     engine.on_network_message(NornMessage::Block(Box::new(block)));
                             }
                         }
+                        NornMessage::UpgradeNotice(notice) => {
+                            tracing::warn!(
+                                detected_version = notice.protocol_version,
+                                message = %notice.message,
+                                "upgrade notice: newer protocol version detected on the network"
+                            );
+                        }
                         other => {
                             // Forward all other messages to WeaveEngine.
                             let mut engine = self.weave_engine.write().await;

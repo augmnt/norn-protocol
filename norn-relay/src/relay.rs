@@ -1,20 +1,25 @@
+use std::collections::HashSet;
+
 use futures::StreamExt;
 use libp2p::gossipsub::{self, IdentTopic};
 use libp2p::request_response;
 use libp2p::swarm::SwarmEvent;
 use libp2p::{Multiaddr, PeerId, Swarm, SwarmBuilder};
-use norn_types::network::NornMessage;
+use norn_types::network::{NornMessage, UpgradeNotice};
 use norn_types::primitives::Address;
 use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, info, warn};
 
 use crate::behaviour::{build_behaviour, NornBehaviour, NornBehaviourEvent};
-use crate::codec;
+use crate::codec::{self, DecodedMessage};
 use crate::config::RelayConfig;
 use crate::discovery::Discovery;
 use crate::error::RelayError;
 use crate::peer_manager::PeerManager;
-use crate::protocol::{BLOCKS_TOPIC, COMMITMENTS_TOPIC, FRAUD_PROOFS_TOPIC, GENERAL_TOPIC};
+use crate::protocol::{
+    versioned_topic, BLOCKS_TOPIC, COMMITMENTS_TOPIC, FRAUD_PROOFS_TOPIC, GENERAL_TOPIC,
+    PROTOCOL_VERSION,
+};
 use crate::spindle_registry::SpindleRegistry;
 
 /// A cloneable handle for sending messages through the relay after `run()` is spawned.
@@ -45,6 +50,8 @@ pub struct RelayNode {
     message_tx: broadcast::Sender<NornMessage>,
     outbound_tx: mpsc::Sender<NornMessage>,
     outbound_rx: Option<mpsc::Receiver<NornMessage>>,
+    /// Protocol versions for which we've already broadcast an upgrade notice.
+    notified_versions: HashSet<u8>,
 }
 
 impl RelayNode {
@@ -75,7 +82,7 @@ impl RelayNode {
             .map_err(|e| RelayError::NetworkError {
                 reason: format!("dns transport: {}", e),
             })?
-            .with_behaviour(build_behaviour)
+            .with_behaviour(|kp| build_behaviour(kp, PROTOCOL_VERSION))
             .map_err(|e| RelayError::NetworkError {
                 reason: format!("behaviour: {}", e),
             })?
@@ -84,14 +91,14 @@ impl RelayNode {
             })
             .build();
 
-        // Subscribe to gossipsub topics.
-        let topics = [
+        // Subscribe to both legacy (unversioned) and versioned gossipsub topics.
+        let legacy_topics = [
             BLOCKS_TOPIC,
             COMMITMENTS_TOPIC,
             FRAUD_PROOFS_TOPIC,
             GENERAL_TOPIC,
         ];
-        for topic_name in &topics {
+        for topic_name in &legacy_topics {
             let topic = IdentTopic::new(*topic_name);
             swarm
                 .behaviour_mut()
@@ -99,6 +106,19 @@ impl RelayNode {
                 .subscribe(&topic)
                 .map_err(|e| RelayError::ProtocolError {
                     reason: format!("subscribe to {}: {}", topic_name, e),
+                })?;
+        }
+
+        // Versioned topics (e.g. "norn/blocks/v4").
+        for base in &legacy_topics {
+            let v_topic_name = versioned_topic(base, PROTOCOL_VERSION);
+            let topic = IdentTopic::new(&v_topic_name);
+            swarm
+                .behaviour_mut()
+                .gossipsub
+                .subscribe(&topic)
+                .map_err(|e| RelayError::ProtocolError {
+                    reason: format!("subscribe to {}: {}", v_topic_name, e),
                 })?;
         }
 
@@ -137,6 +157,7 @@ impl RelayNode {
         info!(
             peer_id = %swarm.local_peer_id(),
             listen = %config.listen_addr,
+            protocol_version = PROTOCOL_VERSION,
             "relay node started"
         );
 
@@ -149,6 +170,7 @@ impl RelayNode {
             message_tx,
             outbound_tx,
             outbound_rx: Some(outbound_rx),
+            notified_versions: HashSet::new(),
         })
     }
 
@@ -190,15 +212,13 @@ impl RelayNode {
 
     /// Broadcast a message to all peers via gossipsub.
     ///
-    /// Routes the message to the appropriate topic based on its type:
-    /// - `Block` -> `BLOCKS_TOPIC`
-    /// - `Commitment` -> `COMMITMENTS_TOPIC`
-    /// - `FraudProof` -> `FRAUD_PROOFS_TOPIC`
-    /// - All other messages -> `GENERAL_TOPIC`
+    /// Dual-publishes: envelope format on the versioned topic, and legacy format
+    /// on the unversioned topic (for backward compatibility during rolling upgrades).
     pub async fn broadcast(&mut self, msg: NornMessage) -> Result<(), RelayError> {
-        let topic_name = topic_for_message(&msg);
+        // Publish on versioned topic with envelope format.
+        let v_topic_name = versioned_topic_for_message(&msg);
         let data = codec::encode_message(&msg)?;
-        let topic = IdentTopic::new(topic_name);
+        let topic = IdentTopic::new(&v_topic_name);
 
         self.swarm
             .behaviour_mut()
@@ -207,6 +227,9 @@ impl RelayNode {
             .map_err(|e| RelayError::NetworkError {
                 reason: format!("publish: {}", e),
             })?;
+
+        // Also publish on legacy topic (best-effort, non-fatal).
+        self.publish_legacy(&msg);
 
         Ok(())
     }
@@ -229,6 +252,23 @@ impl RelayNode {
             })?;
 
         Ok(())
+    }
+
+    /// Best-effort publish on the legacy (unversioned) topic for backward compatibility.
+    fn publish_legacy(&mut self, msg: &NornMessage) {
+        let legacy_topic_name = legacy_topic_for_message(msg);
+        match codec::encode_message_legacy(msg) {
+            Ok(data) => {
+                let topic = IdentTopic::new(legacy_topic_name);
+                if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(topic, data) {
+                    debug!("legacy publish failed (non-fatal): {}", e);
+                }
+            }
+            Err(e) => {
+                // Expected for new message types (discriminant > 13).
+                debug!("legacy encode skipped: {}", e);
+            }
+        }
     }
 
     /// Main event loop. Processes swarm events and outbound messages.
@@ -278,10 +318,11 @@ impl RelayNode {
                     }
                 }
                 Some(msg) = outbound_rx.recv() => {
-                    let topic_name = topic_for_message(&msg);
+                    // Dual-publish: envelope on versioned topic, legacy on unversioned.
+                    let v_topic_name = versioned_topic_for_message(&msg);
                     match codec::encode_message(&msg) {
                         Ok(data) => {
-                            let topic = IdentTopic::new(topic_name);
+                            let topic = IdentTopic::new(&v_topic_name);
                             if let Err(e) = self.swarm
                                 .behaviour_mut()
                                 .gossipsub
@@ -294,6 +335,8 @@ impl RelayNode {
                             warn!("failed to encode outbound message: {}", e);
                         }
                     }
+                    // Legacy publish (best-effort).
+                    self.publish_legacy(&msg);
                 }
             }
         }
@@ -312,8 +355,20 @@ impl RelayNode {
                     "received gossipsub message"
                 );
                 match codec::decode_message(&message.data) {
-                    Ok(msg) => {
-                        let _ = self.message_tx.send(msg);
+                    Ok(DecodedMessage::Known(msg)) => {
+                        let _ = self.message_tx.send(*msg);
+                    }
+                    Ok(DecodedMessage::Unknown {
+                        protocol_version,
+                        message_type,
+                    }) => {
+                        debug!(
+                            protocol_version,
+                            message_type, "received unknown message type (newer protocol version)"
+                        );
+                        if protocol_version > PROTOCOL_VERSION {
+                            self.maybe_broadcast_upgrade_notice(protocol_version);
+                        }
                     }
                     Err(e) => {
                         warn!("failed to decode gossipsub message: {}", e);
@@ -352,6 +407,19 @@ impl RelayNode {
                     agent = %info.agent_version,
                     "identified peer"
                 );
+                // Parse protocol version from agent_version "norn/{version}".
+                if let Some(version) = parse_agent_version(&info.agent_version) {
+                    self.peer_manager.set_peer_version(&peer_id, version);
+                    if version > PROTOCOL_VERSION {
+                        warn!(
+                            %peer_id,
+                            peer_version = version,
+                            our_version = PROTOCOL_VERSION,
+                            "peer running newer protocol version — upgrade recommended"
+                        );
+                        self.maybe_broadcast_upgrade_notice(version);
+                    }
+                }
             }
             NornBehaviourEvent::Mdns(libp2p::mdns::Event::Discovered(peers)) => {
                 for (peer_id, addr) in peers {
@@ -375,6 +443,25 @@ impl RelayNode {
         }
     }
 
+    /// Rate-limited upgrade notice: broadcast once per observed version.
+    fn maybe_broadcast_upgrade_notice(&mut self, detected_version: u8) {
+        if !self.notified_versions.insert(detected_version) {
+            return; // Already notified for this version.
+        }
+        let notice = NornMessage::UpgradeNotice(UpgradeNotice {
+            protocol_version: detected_version,
+            message: format!(
+                "detected peer running protocol v{}, we are on v{} — upgrade recommended",
+                detected_version, PROTOCOL_VERSION
+            ),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+        });
+        let _ = self.message_tx.send(notice);
+    }
+
     /// Get a reference to the relay config.
     pub fn config(&self) -> &RelayConfig {
         &self.config
@@ -391,14 +478,29 @@ impl RelayNode {
     }
 }
 
-/// Returns the gossipsub topic name for the given message type.
-pub fn topic_for_message(msg: &NornMessage) -> &'static str {
+/// Returns the versioned gossipsub topic name for the given message type.
+pub fn versioned_topic_for_message(msg: &NornMessage) -> String {
+    versioned_topic(legacy_topic_for_message(msg), PROTOCOL_VERSION)
+}
+
+/// Returns the legacy (unversioned) gossipsub topic name for the given message type.
+pub fn legacy_topic_for_message(msg: &NornMessage) -> &'static str {
     match msg {
         NornMessage::Block(_) => BLOCKS_TOPIC,
         NornMessage::Commitment(_) => COMMITMENTS_TOPIC,
         NornMessage::FraudProof(_) => FRAUD_PROOFS_TOPIC,
         _ => GENERAL_TOPIC,
     }
+}
+
+/// Kept for backward compatibility — callers that only need the legacy topic name.
+pub fn topic_for_message(msg: &NornMessage) -> &'static str {
+    legacy_topic_for_message(msg)
+}
+
+/// Parse `"norn/{version}"` from an identify agent_version string.
+fn parse_agent_version(agent: &str) -> Option<u8> {
+    agent.strip_prefix("norn/")?.parse().ok()
 }
 
 /// Simple hex encoder to avoid adding a dependency.
@@ -485,7 +587,11 @@ mod tests {
             proposer: [0u8; 32],
             validator_signatures: vec![],
         }));
-        assert_eq!(topic_for_message(&block), BLOCKS_TOPIC);
+        assert_eq!(legacy_topic_for_message(&block), BLOCKS_TOPIC);
+        assert_eq!(
+            versioned_topic_for_message(&block),
+            format!("{}/v{}", BLOCKS_TOPIC, PROTOCOL_VERSION)
+        );
     }
 
     #[test]
@@ -500,7 +606,7 @@ mod tests {
             timestamp: 1000,
             signature: [4u8; 64],
         });
-        assert_eq!(topic_for_message(&commitment), COMMITMENTS_TOPIC);
+        assert_eq!(legacy_topic_for_message(&commitment), COMMITMENTS_TOPIC);
     }
 
     #[test]
@@ -534,7 +640,7 @@ mod tests {
             timestamp: 2000,
             signature: [6u8; 64],
         }));
-        assert_eq!(topic_for_message(&fraud), FRAUD_PROOFS_TOPIC);
+        assert_eq!(legacy_topic_for_message(&fraud), FRAUD_PROOFS_TOPIC);
     }
 
     #[test]
@@ -546,7 +652,7 @@ mod tests {
             timestamp: 1000,
             signature: [4u8; 64],
         });
-        assert_eq!(topic_for_message(&reg), GENERAL_TOPIC);
+        assert_eq!(legacy_topic_for_message(&reg), GENERAL_TOPIC);
     }
 
     #[test]
@@ -558,7 +664,17 @@ mod tests {
             timestamp: 1000,
             signature: [4u8; 64],
         });
-        assert_eq!(topic_for_message(&relay), GENERAL_TOPIC);
+        assert_eq!(legacy_topic_for_message(&relay), GENERAL_TOPIC);
+    }
+
+    #[test]
+    fn test_parse_agent_version() {
+        assert_eq!(parse_agent_version("norn/4"), Some(4));
+        assert_eq!(parse_agent_version("norn/3"), Some(3));
+        assert_eq!(parse_agent_version("norn/255"), Some(255));
+        assert_eq!(parse_agent_version("other/1"), None);
+        assert_eq!(parse_agent_version("norn/"), None);
+        assert_eq!(parse_agent_version("norn/abc"), None);
     }
 
     /// Verify that relay nodes can be created with Strict validation mode.
