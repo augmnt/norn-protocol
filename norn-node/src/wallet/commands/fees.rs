@@ -4,6 +4,7 @@ use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
 use crate::wallet::format::{format_amount_with_symbol, style_bold};
 use crate::wallet::rpc_client::RpcClient;
+use crate::wallet::ui::{info_table, print_table};
 
 pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
@@ -33,18 +34,21 @@ pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
 
     println!();
     println!("  {}", style_bold().apply_to("Fee Estimate"));
-    println!(
-        "  Base fee:           {}",
-        format_amount_with_symbol(base_fee, &NATIVE_TOKEN_ID)
-    );
-    println!(
-        "  Fee multiplier:     {}x",
-        info.fee_multiplier as f64 / 1000.0
-    );
-    println!(
-        "  Per commitment:     {}",
-        format_amount_with_symbol(fee_per_commitment, &NATIVE_TOKEN_ID)
-    );
+
+    let multiplier_str = format!("{}x", info.fee_multiplier as f64 / 1000.0);
+
+    let mut table = info_table();
+    table.add_row(vec![
+        "Base fee",
+        &format_amount_with_symbol(base_fee, &NATIVE_TOKEN_ID),
+    ]);
+    table.add_row(vec!["Fee multiplier", &multiplier_str]);
+    table.add_row(vec![
+        "Per commitment",
+        &format_amount_with_symbol(fee_per_commitment, &NATIVE_TOKEN_ID),
+    ]);
+
+    print_table(&table);
     println!();
 
     Ok(())

@@ -170,6 +170,26 @@ fn truncate_hex(hex: &str, len: usize) -> String {
     }
 }
 
+/// Truncate a hex string (with or without 0x prefix) to show first/last `half_len` chars.
+/// E.g. `truncate_hex_string("0xabcdef123456", 5)` => `"0xabcde...23456"`
+pub fn truncate_hex_string(s: &str, half_len: usize) -> String {
+    let (prefix, hex) = if let Some(stripped) = s.strip_prefix("0x") {
+        ("0x", stripped)
+    } else {
+        ("", s)
+    };
+    if hex.len() <= half_len * 2 {
+        s.to_string()
+    } else {
+        format!(
+            "{}{}...{}",
+            prefix,
+            &hex[..half_len],
+            &hex[hex.len() - half_len..]
+        )
+    }
+}
+
 // ── Display helpers ─────────────────────────────────────────────────────────
 
 /// Print a success message.

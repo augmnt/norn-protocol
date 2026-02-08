@@ -2,6 +2,7 @@ use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
 use crate::wallet::format::{format_address, style_bold, style_dim, style_success};
 use crate::wallet::keystore::Keystore;
+use crate::wallet::ui::{data_table, print_table};
 
 pub fn run(json: bool) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
@@ -41,35 +42,36 @@ pub fn run(json: bool) -> Result<(), WalletError> {
 
     println!();
     println!("  {}", style_bold().apply_to("Wallets"));
-    println!(
-        "  {}",
-        style_dim().apply_to("────────────────────────────────────────────────────")
-    );
+
+    let mut table = data_table(&["Name", "Address", "Status"]);
 
     for name in &names {
         let active = config.active_wallet.as_deref() == Some(name.as_str());
-        let marker = if active {
-            style_success().apply_to("▸ ").to_string()
-        } else {
-            "  ".to_string()
-        };
 
         match Keystore::load(name) {
             Ok(ks) => {
-                let active_label = if active { " (active)" } else { "" };
-                println!(
-                    "  {}{:<16} {}{}",
-                    marker,
-                    style_bold().apply_to(name),
-                    format_address(&ks.address),
-                    style_dim().apply_to(active_label)
-                );
+                let status = if active {
+                    format!("{} active", style_success().apply_to("\u{25cf}"))
+                } else {
+                    String::new()
+                };
+                table.add_row(vec![
+                    comfy_table::Cell::new(name),
+                    comfy_table::Cell::new(format_address(&ks.address)),
+                    comfy_table::Cell::new(status),
+                ]);
             }
             Err(_) => {
-                println!("  {}{:<16} (error loading)", marker, name);
+                table.add_row(vec![
+                    comfy_table::Cell::new(name),
+                    comfy_table::Cell::new("(error loading)"),
+                    comfy_table::Cell::new(""),
+                ]);
             }
         }
     }
+
+    print_table(&table);
     println!();
 
     Ok(())

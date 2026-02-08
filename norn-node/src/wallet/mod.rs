@@ -6,6 +6,7 @@ pub mod format;
 pub mod keystore;
 pub mod prompt;
 pub mod rpc_client;
+pub mod ui;
 
 use cli::WalletCommand;
 use error::WalletError;

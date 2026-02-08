@@ -1,8 +1,11 @@
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
-use crate::wallet::format::{style_bold, style_dim, style_info, style_success, style_warn};
+use crate::wallet::format::{
+    style_bold, style_dim, style_success, style_warn, truncate_hex_string,
+};
 use crate::wallet::keystore::Keystore;
 use crate::wallet::rpc_client::RpcClient;
+use crate::wallet::ui::{data_table, print_table};
 
 pub async fn run(limit: usize, json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
@@ -44,35 +47,16 @@ pub async fn run(limit: usize, json: bool, rpc_url: Option<&str>) -> Result<(), 
         style_bold().apply_to("Transaction History"),
         entries.len()
     );
-    println!(
-        "  {}",
-        style_dim().apply_to("────────────────────────────────────────────────────────────────")
-    );
+
+    let mut table = data_table(&["Time", "Dir", "Amount", "Counterparty", "Memo"]);
 
     for entry in &entries {
-        let direction_style = if entry.direction == "sent" {
-            style_warn()
-        } else {
-            style_success()
-        };
-        let arrow = if entry.direction == "sent" {
-            "->"
-        } else {
-            "<-"
-        };
-
-        // Format timestamp as relative or absolute.
         let time_str = format_timestamp(entry.timestamp);
 
-        // Truncate knot_id for display.
-        let knot_short = if entry.knot_id.len() > 16 {
-            format!(
-                "{}...{}",
-                &entry.knot_id[..8],
-                &entry.knot_id[entry.knot_id.len() - 8..]
-            )
+        let dir_label = if entry.direction == "sent" {
+            style_warn().apply_to("SENT").to_string()
         } else {
-            entry.knot_id.clone()
+            style_success().apply_to("RCVD").to_string()
         };
 
         let counterparty = if entry.direction == "sent" {
@@ -81,25 +65,22 @@ pub async fn run(limit: usize, json: bool, rpc_url: Option<&str>) -> Result<(), 
             &entry.from
         };
 
-        println!(
-            "  {} {} {} {} {}",
-            style_dim().apply_to(&time_str),
-            direction_style.apply_to(format!("{:>8}", entry.direction.to_uppercase())),
-            style_bold().apply_to(&entry.human_readable),
-            arrow,
-            style_info().apply_to(counterparty)
-        );
+        let memo = entry
+            .memo
+            .as_deref()
+            .unwrap_or("\u{2014}") // em dash
+            .to_string();
 
-        if let Some(ref memo) = entry.memo {
-            println!("           {} \"{}\"", style_dim().apply_to("memo:"), memo);
-        }
-        println!(
-            "           {} {}",
-            style_dim().apply_to("knot:"),
-            style_dim().apply_to(&knot_short)
-        );
+        table.add_row(vec![
+            comfy_table::Cell::new(&time_str),
+            comfy_table::Cell::new(dir_label),
+            comfy_table::Cell::new(&entry.human_readable),
+            comfy_table::Cell::new(truncate_hex_string(counterparty, 6)),
+            comfy_table::Cell::new(memo),
+        ]);
     }
 
+    print_table(&table);
     println!();
 
     Ok(())
@@ -110,7 +91,6 @@ fn format_timestamp(ts: u64) -> String {
     if ts == 0 {
         return "pending".to_string();
     }
-    // Use chrono for formatting if available.
     let dt = chrono::DateTime::from_timestamp(ts as i64, 0);
     match dt {
         Some(d) => d.format("%Y-%m-%d %H:%M").to_string(),

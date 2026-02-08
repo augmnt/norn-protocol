@@ -3,10 +3,11 @@ use norn_types::primitives::NATIVE_TOKEN_ID;
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
 use crate::wallet::format::{
-    format_address, format_amount, format_amount_with_symbol, style_bold, style_dim, style_info,
+    format_address, format_amount, format_amount_with_symbol, style_bold, style_dim,
 };
 use crate::wallet::keystore::Keystore;
 use crate::wallet::rpc_client::RpcClient;
+use crate::wallet::ui::{cell_right, data_table, print_table};
 
 pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
@@ -73,29 +74,34 @@ pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
         return Ok(());
     }
 
+    let height_suffix = block_height
+        .map(|h| format!(" (at block #{})", h))
+        .unwrap_or_default();
     println!();
     println!(
-        "  {} — {}",
+        "  {} — {}{}",
         style_bold().apply_to("Token Balances"),
-        format_address(&ks.address)
+        format_address(&ks.address),
+        style_dim().apply_to(&height_suffix),
     );
-    if let Some(h) = block_height {
-        println!("  {}", style_dim().apply_to(format!("(at block #{})", h)));
-    }
-    crate::wallet::format::print_divider();
+
+    let mut table = data_table(&["Token", "Balance"]);
 
     // NORN first.
-    println!(
-        "  {} {}",
-        style_bold().apply_to(format!("{:>30}", format_amount(native_bal))),
-        style_info().apply_to("NORN")
-    );
+    table.add_row(vec![
+        comfy_table::Cell::new("NORN"),
+        cell_right(format!("{} NORN", format_amount(native_bal))),
+    ]);
 
     // Custom tokens.
     for (sym, _tid, bal) in &holdings {
-        let formatted = format!("{:>30}", format_amount(*bal));
-        println!("  {} {}", formatted, style_info().apply_to(sym));
+        table.add_row(vec![
+            comfy_table::Cell::new(sym),
+            cell_right(format!("{} {}", format_amount(*bal), sym)),
+        ]);
     }
+
+    print_table(&table);
 
     if holdings.is_empty() {
         println!("  {}", style_dim().apply_to("No custom token holdings."));

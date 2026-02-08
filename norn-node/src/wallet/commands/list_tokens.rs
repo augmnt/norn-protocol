@@ -1,7 +1,8 @@
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
-use crate::wallet::format::{print_divider, style_bold, style_dim};
+use crate::wallet::format::{style_bold, style_dim, truncate_hex_string};
 use crate::wallet::rpc_client::RpcClient;
+use crate::wallet::ui::{cell_right, data_table, print_table};
 
 pub async fn run(limit: u64, json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
@@ -21,7 +22,15 @@ pub async fn run(limit: u64, json: bool, rpc_url: Option<&str>) -> Result<(), Wa
     } else {
         println!();
         println!("  {}", style_bold().apply_to("Registered Tokens"));
-        print_divider();
+
+        let mut table = data_table(&[
+            "Symbol",
+            "Name",
+            "Supply",
+            "Max Supply",
+            "Decimals",
+            "Creator",
+        ]);
 
         for token in &tokens {
             let max_str = if token.max_supply == "0" {
@@ -29,24 +38,17 @@ pub async fn run(limit: u64, json: bool, rpc_url: Option<&str>) -> Result<(), Wa
             } else {
                 token.max_supply.clone()
             };
-            println!(
-                "  {} {}",
-                style_bold().apply_to(format!("{:<12}", token.symbol)),
-                token.name,
-            );
-            println!(
-                "    {}",
-                style_dim().apply_to(format!(
-                    "supply: {} / {}  |  decimals: {}  |  creator: {}",
-                    token.current_supply, max_str, token.decimals, token.creator
-                ))
-            );
-            println!(
-                "    {}",
-                style_dim().apply_to(format!("id: {}", token.token_id))
-            );
+            table.add_row(vec![
+                comfy_table::Cell::new(&token.symbol),
+                comfy_table::Cell::new(&token.name),
+                cell_right(&token.current_supply),
+                cell_right(&max_str),
+                cell_right(token.decimals),
+                comfy_table::Cell::new(truncate_hex_string(&token.creator, 6)),
+            ]);
         }
-        println!();
+
+        print_table(&table);
         println!(
             "  {}",
             style_dim().apply_to(format!("{} token(s) found", tokens.len()))

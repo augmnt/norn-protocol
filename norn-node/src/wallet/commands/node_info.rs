@@ -2,6 +2,7 @@ use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
 use crate::wallet::format::{style_bold, style_dim, style_info, style_success, style_warn};
 use crate::wallet::rpc_client::RpcClient;
+use crate::wallet::ui::{info_table, print_table};
 
 pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
@@ -32,13 +33,20 @@ pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
 
     println!();
     println!("  {}", style_bold().apply_to("Node Info"));
-    println!("  Status:       {}", status_styled);
-    println!("  Version:      {}", style_info().apply_to(&info.version));
-    println!("  Chain ID:     {}", info.chain_id);
-    println!("  Network:      {}", info.network);
-    println!("  Block height: {}", info.height);
-    println!("  Validator:    {}", validator_styled);
-    println!("  Threads:      {}", info.thread_count);
+
+    let mut table = info_table();
+    table.add_row(vec!["Status", &status_styled]);
+    table.add_row(vec![
+        "Version",
+        &style_info().apply_to(&info.version).to_string(),
+    ]);
+    table.add_row(vec!["Chain ID", &info.chain_id]);
+    table.add_row(vec!["Network", &info.network]);
+    table.add_row(vec!["Block height", &info.height.to_string()]);
+    table.add_row(vec!["Validator", &validator_styled]);
+    table.add_row(vec!["Threads", &info.thread_count.to_string()]);
+
+    print_table(&table);
     println!();
 
     Ok(())

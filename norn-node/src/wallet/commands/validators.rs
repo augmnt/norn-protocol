@@ -4,8 +4,10 @@ use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
 use crate::wallet::format::{
     format_amount_with_symbol, style_bold, style_dim, style_success, style_warn,
+    truncate_hex_string,
 };
 use crate::wallet::rpc_client::RpcClient;
+use crate::wallet::ui::{data_table, print_table};
 
 pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
@@ -23,42 +25,37 @@ pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     }
 
     println!();
-    println!("  {}", style_bold().apply_to("Validator Set"));
-    println!("  Epoch: {}", info.epoch);
-    println!();
+    println!(
+        "  {} — Epoch {}",
+        style_bold().apply_to("Validator Set"),
+        info.epoch
+    );
 
     if info.validators.is_empty() {
         println!("  {}", style_dim().apply_to("No validators registered."));
     } else {
-        for v in &info.validators {
-            let addr_display = if v.address.len() > 16 {
-                format!(
-                    "0x{}...{}",
-                    &v.address[..6],
-                    &v.address[v.address.len() - 4..]
-                )
-            } else {
-                format!("0x{}", v.address)
-            };
+        let mut table = data_table(&["Address", "Stake", "Status"]);
 
+        for v in &info.validators {
+            let addr_display = truncate_hex_string(&format!("0x{}", v.address), 6);
             let stake: u128 = v.stake.parse().unwrap_or(0);
             let status = if v.active {
-                style_success().apply_to("active").to_string()
+                format!("{} active", style_success().apply_to("\u{25cf}"))
             } else {
-                style_warn().apply_to("inactive").to_string()
+                format!("{} inactive", style_warn().apply_to("\u{25cf}"))
             };
 
-            println!(
-                "  {}  {}  {}",
-                addr_display,
-                format_amount_with_symbol(stake, &NATIVE_TOKEN_ID),
-                status,
-            );
+            table.add_row(vec![
+                comfy_table::Cell::new(addr_display),
+                comfy_table::Cell::new(format_amount_with_symbol(stake, &NATIVE_TOKEN_ID)),
+                comfy_table::Cell::new(status),
+            ]);
         }
+
+        print_table(&table);
     }
 
     let total: u128 = info.total_stake.parse().unwrap_or(0);
-    println!();
     println!(
         "  Total stake: {}",
         format_amount_with_symbol(total, &NATIVE_TOKEN_ID)

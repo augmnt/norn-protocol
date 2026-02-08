@@ -3,10 +3,9 @@ use norn_types::constants::MAX_SUPPLY;
 use crate::rpc::types::TokenInfo;
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
-use crate::wallet::format::{
-    format_amount, print_divider, print_error, style_bold, style_dim, style_info,
-};
+use crate::wallet::format::{format_amount, print_error, style_bold, style_dim};
 use crate::wallet::rpc_client::RpcClient;
+use crate::wallet::ui::{info_table, print_table};
 
 pub async fn run(token: &str, json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
@@ -53,42 +52,43 @@ pub async fn run(token: &str, json: bool, rpc_url: Option<&str>) -> Result<(), W
     } else {
         println!();
         println!("  {}", style_bold().apply_to("Token Info"));
-        print_divider();
-        println!(
-            "  Name:           {}",
-            style_info().apply_to(&token_info.name)
-        );
-        println!(
-            "  Symbol:         {}",
-            style_bold().apply_to(&token_info.symbol)
-        );
-        println!("  Decimals:       {}", token_info.decimals);
-        println!(
-            "  Max Supply:     {}",
-            if token_info.max_supply == "0" {
-                "unlimited".to_string()
-            } else if is_native {
-                format_amount(MAX_SUPPLY)
-            } else {
-                token_info.max_supply.clone()
-            }
-        );
-        println!("  Current Supply: {}", token_info.current_supply);
-        println!("  Creator:        {}", token_info.creator);
+
+        let mut table = info_table();
+
+        table.add_row(vec!["Name", &token_info.name]);
+        table.add_row(vec![
+            "Symbol",
+            &style_bold().apply_to(&token_info.symbol).to_string(),
+        ]);
+        table.add_row(vec!["Decimals", &token_info.decimals.to_string()]);
+
+        let max_display = if token_info.max_supply == "0" {
+            "unlimited".to_string()
+        } else if is_native {
+            format_amount(MAX_SUPPLY)
+        } else {
+            token_info.max_supply.clone()
+        };
+        table.add_row(vec!["Max Supply", &max_display]);
+        table.add_row(vec!["Current Supply", &token_info.current_supply]);
+        table.add_row(vec!["Creator", &token_info.creator]);
+
         if !is_native {
-            println!(
-                "  Created At:     {}",
-                style_dim().apply_to(format_timestamp(token_info.created_at))
-            );
+            let ts_str = format_timestamp(token_info.created_at);
+            table.add_row(vec!["Created At", &ts_str]);
         }
-        println!(
-            "  Token ID:       {}",
-            style_dim().apply_to(if is_native {
-                "native (0x0000...0000)".to_string()
-            } else {
-                token_info.token_id.clone()
-            })
-        );
+
+        let id_display = if is_native {
+            "native (0x0000...0000)".to_string()
+        } else {
+            token_info.token_id.clone()
+        };
+        table.add_row(vec![
+            "Token ID",
+            &style_dim().apply_to(&id_display).to_string(),
+        ]);
+
+        print_table(&table);
         println!();
     }
 
@@ -96,12 +96,10 @@ pub async fn run(token: &str, json: bool, rpc_url: Option<&str>) -> Result<(), W
 }
 
 fn format_timestamp(ts: u64) -> String {
-    // Simple human-readable timestamp.
-    let secs = ts;
-    let days = secs / 86400;
-    if days > 365 {
-        format!("{} ({}d ago)", ts, days)
-    } else {
-        ts.to_string()
+    if ts == 0 {
+        return "genesis".to_string();
     }
+    chrono::DateTime::from_timestamp(ts as i64, 0)
+        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+        .unwrap_or_else(|| ts.to_string())
 }
