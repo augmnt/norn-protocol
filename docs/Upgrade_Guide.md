@@ -8,6 +8,7 @@
 | v0.4.1      | v0.5.x     | No             | No               | `--reset-state`, re-register names |
 | v0.5.0      | v0.5.1+    | Yes*           | Yes*             | Restart node |
 | v0.7.x      | v0.8.0     | No             | No               | `--reset-state` (PROTOCOL_VERSION 4→5, SCHEMA_VERSION 3→4) |
+| v0.8.0      | v0.8.1     | Yes            | Yes              | Restart node (CLI-only changes, no protocol/schema bump) |
 
 \* Within a minor version line, compatibility depends on whether PROTOCOL_VERSION or SCHEMA_VERSION was bumped. Check the release notes.
 
@@ -194,3 +195,26 @@ Six new RPC methods: `norn_createToken`, `norn_mintToken`, `norn_burnToken`, `no
 ### New Wallet Commands
 
 Five new wallet subcommands: `create-token`, `mint-token`, `burn-token`, `token-info`, `list-tokens`.
+
+### Upgrading from v0.8.0 to v0.8.1
+
+This is a **non-breaking upgrade**. No protocol or schema changes.
+
+1. **Build the new version:**
+   ```bash
+   cargo install --path norn-node
+   ```
+
+2. **Restart the node** (no `--reset-state` needed):
+   ```bash
+   norn run --dev
+   ```
+
+### v0.8.1 Changelog
+
+- **`--token` flag fix:** `balance` and `transfer` now accept token symbols (e.g., `MTK`) via RPC symbol lookup, not just 64-char hex IDs.
+- **Token display fix:** Custom token amounts now show their symbol name instead of truncated hex.
+- **`token-info NORN`:** Native NORN is handled locally, displaying protocol-level metadata.
+- **`whoami` enhancements:** Shows custom token balances (non-zero) and current block height.
+- **`balance` block height:** Displays the current block height for timing context.
+- **New `token-balances` command:** Lists all non-zero token holdings (NORN + custom tokens) for the active wallet. Supports `--json` and `--rpc-url`.

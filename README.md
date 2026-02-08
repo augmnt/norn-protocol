@@ -6,7 +6,7 @@
   <a href="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml"><img src="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-stable-orange.svg" alt="Rust"></a>
-  <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.8.0"><img src="https://img.shields.io/badge/version-0.8.0-green.svg" alt="Version"></a>
+  <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.8.1"><img src="https://img.shields.io/badge/version-0.8.1-green.svg" alt="Version"></a>
 </p>
 
 ---
@@ -157,7 +157,7 @@ cargo run --example demo -p norn-node
 
 ## Wallet CLI
 
-The `norn` binary includes a full-featured wallet CLI with 32 subcommands for key management, transfers, NornNames, custom tokens, Thread inspection, and encrypted keystore backup.
+The `norn` binary includes a full-featured wallet CLI with 33 subcommands for key management, transfers, NornNames, custom tokens, Thread inspection, and encrypted keystore backup.
 
 ```bash
 # Create a new wallet
@@ -166,11 +166,13 @@ norn wallet create --name alice
 # List wallets
 norn wallet list
 
-# Check balance
+# Check balance (native NORN or custom token by symbol)
 norn wallet balance --address <ADDRESS>
+norn wallet balance --token MTK
 
 # Send tokens (by address or NornName)
 norn wallet transfer --to <ADDRESS_OR_NAME> --amount <AMOUNT>
+norn wallet transfer --to <ADDRESS_OR_NAME> --amount 100 --token MTK
 # Or use the `send` alias
 norn wallet send --to <ADDRESS_OR_NAME> --amount <AMOUNT>
 
@@ -217,7 +219,12 @@ norn wallet token-info MTK
 
 # List all registered tokens
 norn wallet list-tokens
+
+# View all token balances for the active wallet
+norn wallet token-balances
 ```
+
+The `--token` flag on `balance` and `transfer` accepts token symbols (e.g., `MTK`), `NORN`/`native` for the native token, or a 64-character hex token ID.
 
 Wallets are stored in `~/.norn/wallets/` with Argon2id key derivation and XChaCha20-Poly1305 authenticated encryption.
 
@@ -310,6 +317,9 @@ norn wallet token-info WBTC
 
 # List all tokens on the network
 norn wallet list-tokens
+
+# View all non-zero token holdings for the active wallet
+norn wallet token-balances
 ```
 
 ### RPC Methods

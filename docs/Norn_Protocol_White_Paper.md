@@ -342,7 +342,7 @@ Norn supports protocol-level custom fungible tokens via the **NT-1** standard. A
 
 Token definitions, mints, and burns are included in `WeaveBlock`s with dedicated Merkle roots, propagated via P2P gossip, and applied to state on every node. This ensures token state is globally consistent without relying on smart contracts.
 
-The wallet CLI supports token operations: `create-token`, `mint-token`, `burn-token`, `token-info`, `list-tokens`. Tokens can be referenced by symbol (e.g., `WBTC`) or hex token ID. Custom tokens work seamlessly with existing transfer commands via the `--token` flag.
+The wallet CLI supports token operations: `create-token`, `mint-token`, `burn-token`, `token-info`, `list-tokens`, `token-balances`. Tokens can be referenced by symbol (e.g., `WBTC`) or hex token ID. Custom tokens work seamlessly with existing `balance` and `transfer` commands via the `--token` flag, which accepts symbols, `NORN`/`native`, or hex IDs.
 
 ### 5.6 Supply Distribution and Vesting
 

@@ -2086,7 +2086,7 @@ norn wallet <COMMAND>
 | `use` | Switch the active wallet |
 | `delete` | Delete a wallet (with confirmation prompt unless `--force`) |
 | `address` | Show the current wallet's address and public key |
-| `balance` | Query balance via RPC (defaults to active wallet, native NORN) |
+| `balance` | Query balance via RPC (defaults to active wallet, native NORN). `--token` accepts symbols, `NORN`/`native`, or hex ID |
 | `status` | Show thread registration and commitment status via RPC |
 | `transfer` | Send a transfer (constructs and signs a knot, submits via RPC). Alias: `send` |
 | `commit` | Commit pending thread state to the Weave via RPC |
@@ -2112,6 +2112,7 @@ norn wallet <COMMAND>
 | `burn-token` | Burn tokens from the active wallet's balance |
 | `token-info` | Query token metadata by symbol or hex token ID |
 | `list-tokens` | List all registered tokens on the network |
+| `token-balances` | Show all non-zero token holdings for the active wallet |
 
 ### 27.3 Command Details
 
@@ -2141,7 +2142,7 @@ norn wallet import --private-key <HEX> --name <NAME>
 #### transfer
 
 ```
-norn wallet transfer --to <ADDRESS_OR_NAME> --amount <AMOUNT> [--token <TOKEN_ID>] [--memo <MEMO>] [--yes]
+norn wallet transfer --to <ADDRESS_OR_NAME> --amount <AMOUNT> [--token <SYMBOL_OR_HEX>] [--memo <MEMO>] [--yes]
 ```
 
 - `<AMOUNT>` is human-readable (e.g., `"10.5"` = 10.5 NORN = 10,500,000,000,000 nits).
@@ -2211,7 +2212,7 @@ Displays all validators with address, stake, active/inactive status, total stake
 norn wallet whoami [--json] [--rpc-url <URL>]
 ```
 
-Composite dashboard showing wallet name, address, NORN balance, registered names, and thread registration status.
+Composite dashboard showing wallet name, address, NORN balance, custom token balances (non-zero), block height, registered names, and thread registration status.
 
 ### 27.4 Keystore Format
 
@@ -2785,7 +2786,7 @@ This section documents all material changes from the v1.0 specification to v2.0.
 
 | Feature | Description |
 |---------|-------------|
-| Wallet CLI | 32 subcommands integrated in `norn wallet` |
+| Wallet CLI | 33 subcommands integrated in `norn wallet` |
 | NornNames | Native name registry with 1 NORN burn fee, name resolution in transfers |
 | State Sync | `StateRequest`/`StateResponse` messages for initial node sync |
 | Relay Handle | Outbound relay channel for broadcasting knots, blocks, and commitments to P2P peers |
@@ -2846,10 +2847,25 @@ Protocol version 0.8.0 introduced the NT-1 fungible token standard for protocol-
 | `NornMessage::TokenBurn` | New message variant (discriminant 17) |
 | `WeaveBlock` fields | 6 new fields: `token_definitions`, `token_definitions_root`, `token_mints`, `token_mints_root`, `token_burns`, `token_burns_root` |
 | RPC endpoints | 6 new: `norn_createToken`, `norn_mintToken`, `norn_burnToken`, `norn_getTokenInfo`, `norn_getTokenBySymbol`, `norn_listTokens` |
-| Wallet commands | 5 new: `create-token`, `mint-token`, `burn-token`, `token-info`, `list-tokens` |
+| Wallet commands | 5 new: `create-token`, `mint-token`, `burn-token`, `token-info`, `list-tokens` (6th, `token-balances`, added in v0.8.1) |
 | Protocol constants | `PROTOCOL_VERSION=5`, `SCHEMA_VERSION=4` |
 | Validation module | `norn-weave/src/token.rs` — signature verification, supply cap checks, symbol uniqueness |
 | State persistence | `state:token:` key prefix in state store |
+
+### 32.8 v0.8.1 Updates (Token CLI Fixes)
+
+Version 0.8.1 is a non-breaking patch release fixing wallet CLI usability issues introduced in v0.8.0:
+
+| Fix | Description |
+|-----|-------------|
+| `--token` flag resolution | `balance` and `transfer` now accept token symbols (e.g., `MTK`) via RPC-based symbol lookup, not just hex token IDs |
+| Token amount display | Custom tokens now show their symbol name (e.g., `100 MTK`) instead of truncated hex IDs |
+| `token-info NORN` | Native NORN is handled locally without RPC lookup, displaying protocol-level metadata |
+| `whoami` enhancements | Shows custom token balances (non-zero) and current block height |
+| `balance` block height | Displays the current block height alongside the balance for timing context |
+| New `token-balances` command | Lists all non-zero token holdings (NORN + custom tokens) for the active wallet |
+
+No protocol or schema changes — PROTOCOL_VERSION remains 5, SCHEMA_VERSION remains 4. Nodes can upgrade without `--reset-state`.
 
 ---
 
