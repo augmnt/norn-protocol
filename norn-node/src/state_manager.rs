@@ -321,6 +321,73 @@ impl StateManager {
         Ok(())
     }
 
+    /// Apply a transfer received from a peer block or P2P gossip.
+    /// Only credits the recipient — the debit was already handled on the
+    /// originating node. This is necessary because the sender may not have
+    /// sufficient balance locally (e.g., after a state reset or when syncing
+    /// from blocks without full state history).
+    #[allow(clippy::too_many_arguments)]
+    pub fn apply_peer_transfer(
+        &mut self,
+        from: Address,
+        to: Address,
+        token_id: TokenId,
+        amount: Amount,
+        knot_id: Hash,
+        memo: Option<Vec<u8>>,
+        timestamp: u64,
+    ) -> Result<(), NornError> {
+        if amount == 0 {
+            return Err(NornError::InvalidAmount);
+        }
+
+        // Credit receiver only (debit already happened on originating node).
+        let receiver_state = self
+            .thread_states
+            .get_mut(&to)
+            .ok_or(NornError::ThreadNotFound(to))?;
+        receiver_state.credit(token_id, amount)?;
+
+        // Update receiver state hash.
+        if let Some(meta) = self.thread_meta.get_mut(&to) {
+            meta.state_hash =
+                norn_thread::state::compute_state_hash(self.thread_states.get(&to).unwrap());
+        }
+
+        // Track knot_id for dedup.
+        self.known_knot_ids.insert(knot_id);
+
+        // Log the transfer.
+        let record = TransferRecord {
+            knot_id,
+            from,
+            to,
+            token_id,
+            amount,
+            memo,
+            timestamp,
+            block_height: None,
+        };
+        self.transfer_log.push(record.clone());
+
+        // Persist
+        if let Some(ref store) = self.state_store {
+            if let Err(e) = store.save_thread_state(&to, self.thread_states.get(&to).unwrap()) {
+                tracing::warn!("Failed to persist receiver state: {}", e);
+            }
+            if let Some(meta) = self.thread_meta.get(&to) {
+                if let Err(e) = store.save_thread_meta(&to, meta) {
+                    tracing::warn!("Failed to persist receiver meta: {}", e);
+                }
+            }
+            if let Err(e) = store.append_transfer(&record) {
+                tracing::warn!("Failed to persist transfer record: {}", e);
+            }
+        }
+
+        Ok(())
+    }
+
     /// Get balance for an address and token.
     pub fn get_balance(&self, address: &Address, token_id: &TokenId) -> Amount {
         self.thread_states

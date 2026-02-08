@@ -403,7 +403,7 @@ impl Node {
                                 if !sm.has_transfer(&bt.knot_id) {
                                     sm.auto_register_if_needed(bt.from);
                                     sm.auto_register_if_needed(bt.to);
-                                    if let Err(e) = sm.apply_transfer(
+                                    if let Err(e) = sm.apply_peer_transfer(
                                         bt.from,
                                         bt.to,
                                         bt.token_id,
@@ -412,7 +412,7 @@ impl Node {
                                         bt.memo.clone(),
                                         bt.timestamp,
                                     ) {
-                                        tracing::debug!("block transfer failed: {}", e);
+                                        tracing::debug!("peer block transfer failed: {}", e);
                                     }
                                 }
                             }
@@ -514,7 +514,7 @@ impl Node {
                                         sm.auto_register_if_needed(transfer.from);
                                         sm.auto_register_if_needed(transfer.to);
                                         let applied = sm
-                                            .apply_transfer(
+                                            .apply_peer_transfer(
                                                 transfer.from,
                                                 transfer.to,
                                                 transfer.token_id,
@@ -775,13 +775,15 @@ impl Node {
                                         self.spindle.watch_thread(reg.thread_id);
                                     }
                                     // Apply name registrations (solo — deduct fee locally).
+                                    // May fail with "already registered" in multi-validator
+                                    // setups where a peer block already applied the name.
                                     for name_reg in &block.name_registrations {
                                         if let Err(e) = sm.register_name(
                                             &name_reg.name,
                                             name_reg.owner,
                                             name_reg.timestamp,
                                         ) {
-                                            tracing::warn!("name registration failed: {}", e);
+                                            tracing::debug!("solo name registration skipped: {}", e);
                                         }
                                     }
                                     // Note: transfers are NOT re-applied here — they were
