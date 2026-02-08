@@ -403,7 +403,7 @@ impl Node {
                                 if !sm.has_transfer(&bt.knot_id) {
                                     sm.auto_register_if_needed(bt.from);
                                     sm.auto_register_if_needed(bt.to);
-                                    let _ = sm.apply_transfer(
+                                    if let Err(e) = sm.apply_transfer(
                                         bt.from,
                                         bt.to,
                                         bt.token_id,
@@ -411,7 +411,9 @@ impl Node {
                                         bt.knot_id,
                                         bt.memo.clone(),
                                         bt.timestamp,
-                                    );
+                                    ) {
+                                        tracing::debug!("block transfer failed: {}", e);
+                                    }
                                 }
                             }
                             for commit in &block.commitments {
@@ -504,6 +506,11 @@ impl Node {
                                     .is_ok()
                                     {
                                         let mut sm = self.state_manager.write().await;
+                                        // Dedup: skip if already applied (via RPC or prior gossip).
+                                        if sm.has_transfer(&knot.id) {
+                                            drop(sm);
+                                            continue;
+                                        }
                                         sm.auto_register_if_needed(transfer.from);
                                         sm.auto_register_if_needed(transfer.to);
                                         let applied = sm
@@ -572,7 +579,7 @@ impl Node {
                                     if !sm.has_transfer(&bt.knot_id) {
                                         sm.auto_register_if_needed(bt.from);
                                         sm.auto_register_if_needed(bt.to);
-                                        let _ = sm.apply_transfer(
+                                        if let Err(e) = sm.apply_transfer(
                                             bt.from,
                                             bt.to,
                                             bt.token_id,
@@ -580,7 +587,9 @@ impl Node {
                                             bt.knot_id,
                                             bt.memo.clone(),
                                             bt.timestamp,
-                                        );
+                                        ) {
+                                            tracing::debug!("block transfer failed: {}", e);
+                                        }
                                     }
                                 }
                                 for commit in &block.commitments {
@@ -680,7 +689,7 @@ impl Node {
                                         if !sm.has_transfer(&bt.knot_id) {
                                             sm.auto_register_if_needed(bt.from);
                                             sm.auto_register_if_needed(bt.to);
-                                            let _ = sm.apply_transfer(
+                                            if let Err(e) = sm.apply_transfer(
                                                 bt.from,
                                                 bt.to,
                                                 bt.token_id,
@@ -688,7 +697,9 @@ impl Node {
                                                 bt.knot_id,
                                                 bt.memo.clone(),
                                                 bt.timestamp,
-                                            );
+                                            ) {
+                                                tracing::debug!("block transfer failed: {}", e);
+                                            }
                                         }
                                     }
                                     for commit in &block.commitments {

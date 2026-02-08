@@ -598,11 +598,30 @@ impl NornRpcServer for NornRpcImpl {
 
         // Apply transfer via StateManager.
         let mut sm = self.state_manager.write().await;
+        sm.auto_register_if_needed(from);
         sm.auto_register_if_needed(to);
 
-        match sm.apply_transfer(from, to, token_id, amount, knot.id, memo, knot.timestamp) {
+        let knot_id = knot.id;
+        let timestamp = knot.timestamp;
+        match sm.apply_transfer(from, to, token_id, amount, knot_id, memo.clone(), timestamp) {
             Ok(()) => {
+                drop(sm);
                 self.metrics.knots_validated.inc();
+
+                // Queue BlockTransfer so solo-mode blocks include this transfer.
+                let bt = norn_types::weave::BlockTransfer {
+                    from,
+                    to,
+                    token_id,
+                    amount,
+                    memo,
+                    knot_id,
+                    timestamp,
+                };
+                let mut engine = self.weave_engine.write().await;
+                let _ = engine.add_transfer(bt);
+                drop(engine);
+
                 if let Some(ref handle) = self.relay_handle {
                     let h = handle.clone();
                     let msg = NornMessage::KnotProposal(Box::new(knot));
