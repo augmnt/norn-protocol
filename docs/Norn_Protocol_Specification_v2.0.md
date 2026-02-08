@@ -7,7 +7,7 @@
 | Version      | 2.0                           |
 | Status       | Living Document               |
 | Date         | 2026-02-08                    |
-| Code Version | 0.8.0                         |
+| Code Version | 0.9.0                         |
 | Supersedes   | v1.0                          |
 | Authors      | Norn Protocol Contributors    |
 
@@ -629,6 +629,10 @@ pub struct WeaveBlock {
     pub token_burns: Vec<TokenBurn>,
     /// Merkle root of all token burns in this block.
     pub token_burns_root: Hash,
+    /// Loom deployments in this block.
+    pub loom_deploys: Vec<LoomRegistration>,
+    /// Merkle root of all loom deployments in this block.
+    pub loom_deploys_root: Hash,
     /// Block timestamp.
     pub timestamp: Timestamp,
     /// Block proposer's public key.
@@ -1184,6 +1188,10 @@ pub enum NornMessage {
     TokenMint(TokenMint),
     /// A token burn operation (NT-1, discriminant 17).
     TokenBurn(TokenBurn),
+    /// A loom deployment (discriminant 18).
+    LoomDeploy(Box<LoomRegistration>),
+    /// A loom execution result (discriminant 19).
+    LoomExecution(Box<LoomStateTransition>),
 }
 ```
 
@@ -1210,7 +1218,7 @@ pub struct MessageEnvelope {
 }
 ```
 
-Each `NornMessage` variant has a stable discriminant (0-14), obtained via `NornMessage::discriminant()`. This allows peers to identify message types without fully deserializing unknown protocol versions.
+Each `NornMessage` variant has a stable discriminant (0-19), obtained via `NornMessage::discriminant()`. This allows peers to identify message types without fully deserializing unknown protocol versions.
 
 #### 20.2.2 Legacy Wire Format (Protocol v3)
 
@@ -1226,12 +1234,12 @@ The codec performs **dual-decode**: it inspects byte 4 (after length prefix) and
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `PROTOCOL_VERSION` | 4 | Current protocol version (envelope format) |
+| `PROTOCOL_VERSION` | 6 | Current protocol version (envelope format) |
 | `ENVELOPE_VERSION` | 1 | Envelope wire format version |
 | `LEGACY_PROTOCOL_VERSION` | 3 | Previous protocol version (direct borsh) |
 | `MAX_MESSAGE_SIZE` | 2,097,152 bytes (2 MB) | Maximum message size |
 
-New message types (discriminant > 13) cannot be encoded in legacy format and will error if a peer requests backward compatibility.
+New message types (discriminant > 17) cannot be encoded in legacy format and will error if a peer requests backward compatibility.
 
 ### 20.3 GossipSub Topics
 
@@ -1736,6 +1744,9 @@ The RPC server uses `jsonrpsee` over HTTP. All methods use the `norn_` namespace
 | `norn_getTokenInfo` | `token_id: String` (hex) | `Option<TokenInfo>` | No |
 | `norn_getTokenBySymbol` | `symbol: String` | `Option<TokenInfo>` | No |
 | `norn_listTokens` | `limit: u64`, `offset: u64` | `Vec<TokenInfo>` | No |
+| `norn_deployLoom` | `hex: String` (hex borsh `LoomRegistration`) | `SubmitResult` | Yes |
+| `norn_getLoomInfo` | `loom_id: String` (hex) | `Option<LoomInfo>` | No |
+| `norn_listLooms` | `limit: u64`, `offset: u64` | `Vec<LoomInfo>` | No |
 
 #### WebSocket Subscriptions
 
@@ -1768,6 +1779,7 @@ pub struct BlockInfo {
     pub token_definition_count: usize,
     pub token_mint_count: usize,
     pub token_burn_count: usize,
+    pub loom_deploy_count: usize,
 }
 
 pub struct WeaveStateInfo {
@@ -1866,6 +1878,14 @@ pub struct TokenInfo {
     pub creator: String,
     pub created_at: u64,
 }
+
+pub struct LoomInfo {
+    pub loom_id: String,
+    pub name: String,
+    pub operator: String,
+    pub active: bool,
+    pub deployed_at: u64,
+}
 ```
 
 All byte arrays (hashes, addresses, public keys) are hex-encoded in RPC responses.
@@ -1886,8 +1906,9 @@ When `api_key` is set, mutation requests must include the header `Authorization:
 
 The following methods are planned but not yet implemented:
 
-- `norn_submitLoomAnchor` -- Submit a loom anchor
-- `norn_getLoom` / `norn_getLoomState` / `norn_listLooms` -- Loom queries
+- `norn_submitLoomAnchor` -- Submit a loom state anchor
+- `norn_executeLoom` -- Execute a loom state transition
+- `norn_queryLoom` -- Read-only loom query
 - `norn_subscribeCommitments` -- WebSocket subscription for commitment updates
 
 ---
@@ -2113,6 +2134,9 @@ norn wallet <COMMAND>
 | `token-info` | Query token metadata by symbol or hex token ID |
 | `list-tokens` | List all registered tokens on the network |
 | `token-balances` | Show all non-zero token holdings for the active wallet |
+| `deploy-loom` | Deploy a loom smart contract (costs 50 NORN, burned) |
+| `loom-info` | Query loom metadata by hex loom ID |
+| `list-looms` | List all deployed looms on the network |
 
 ### 27.3 Command Details
 
@@ -2613,6 +2637,7 @@ All constants are defined in `norn-types/src/constants.rs`.
 | `MAX_LOOM_PARTICIPANTS` | `usize` | `1_000` | Maximum loom participants |
 | `MIN_LOOM_PARTICIPANTS` | `usize` | `2` | Minimum loom participants |
 | `MAX_LOOM_STATE_SIZE` | `usize` | `1_048_576` | Maximum loom state (1 MB) |
+| `LOOM_DEPLOY_FEE` | `Amount` | `50 * ONE_NORN` | Deploy fee (50 NORN, burned) |
 
 ### 29.5 Network Parameters
 
@@ -2866,6 +2891,25 @@ Version 0.8.1 is a non-breaking patch release fixing wallet CLI usability issues
 | New `token-balances` command | Lists all non-zero token holdings (NORN + custom tokens) for the active wallet |
 
 No protocol or schema changes — PROTOCOL_VERSION remains 5, SCHEMA_VERSION remains 4. Nodes can upgrade without `--reset-state`.
+
+### 32.9 v0.9.0 Updates (Loom Smart Contracts Phase 1)
+
+Protocol version 0.9.0 introduced Loom smart contracts Phase 1 — consensus-level loom deployment and registration:
+
+| Feature | Description |
+|---------|-------------|
+| `LoomRegistration` type | Consensus-level loom deployment with name, operator, config, and signature |
+| `LoomConfig` type | Loom configuration with accepted tokens, participant limits, and config data |
+| Loom ID | Deterministic `BLAKE3(name ++ operator ++ timestamp)` |
+| Loom deploy fee | 50 NORN burned per deployment (`LOOM_DEPLOY_FEE`) |
+| `NornMessage::LoomDeploy` | New message variant (discriminant 18) |
+| `NornMessage::LoomExecution` | New message variant (discriminant 19) |
+| `WeaveBlock` fields | 2 new fields: `loom_deploys`, `loom_deploys_root` |
+| RPC endpoints | 3 new: `norn_deployLoom`, `norn_getLoomInfo`, `norn_listLooms` |
+| Wallet commands | 3 new: `deploy-loom`, `loom-info`, `list-looms` (36 total) |
+| Protocol constants | `PROTOCOL_VERSION=6`, `SCHEMA_VERSION=5` |
+| Validation module | `norn-weave/src/loom.rs` — signature verification, name validation, duplicate detection |
+| State persistence | `state:loom:` key prefix in state store |
 
 ---
 

@@ -6,7 +6,7 @@
   <a href="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml"><img src="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-stable-orange.svg" alt="Rust"></a>
-  <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.8.1"><img src="https://img.shields.io/badge/version-0.8.1-green.svg" alt="Version"></a>
+  <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.9.0"><img src="https://img.shields.io/badge/version-0.9.0-green.svg" alt="Version"></a>
 </p>
 
 ---
@@ -122,7 +122,7 @@ norn run --network mainnet --genesis genesis/mainnet.json
 | `norn-weave` | Anchor chain (block production, commitment processing, HotStuff consensus, dynamic fees, fraud proof verification, staking) |
 | `norn-loom` | Smart contract runtime (Wasm runtime, host functions, gas metering, Loom lifecycle, dispute resolution) |
 | `norn-spindle` | Watchtower service (Weave monitoring, fraud proof construction, rate limiting, service orchestration) |
-| `norn-node` | Full node binary (CLI, node configuration, genesis handling, JSON-RPC server with API key auth, wallet CLI, NornNames, NT-1 tokens, Prometheus metrics endpoint, fraud proof submission, spindle watchtower integration) |
+| `norn-node` | Full node binary (CLI, node configuration, genesis handling, JSON-RPC server with API key auth, wallet CLI, NornNames, NT-1 tokens, Loom smart contracts, Prometheus metrics endpoint, fraud proof submission, spindle watchtower integration) |
 
 ## Getting Started
 
@@ -157,7 +157,7 @@ cargo run --example demo -p norn-node
 
 ## Wallet CLI
 
-The `norn` binary includes a full-featured wallet CLI with 33 subcommands for key management, transfers, NornNames, custom tokens, Thread inspection, and encrypted keystore backup.
+The `norn` binary includes a full-featured wallet CLI with 36 subcommands for key management, transfers, NornNames, custom tokens, Loom smart contracts, Thread inspection, and encrypted keystore backup.
 
 ```bash
 # Create a new wallet
@@ -335,6 +335,49 @@ norn wallet token-balances
 
 For full technical details, see the [Protocol Specification, Section 28b](docs/Norn_Protocol_Specification_v2.0.md#28b-nt-1-fungible-token-standard).
 
+## Loom Smart Contracts
+
+Norn supports **off-chain smart contracts** called Looms -- WebAssembly programs that execute off-chain with on-chain fraud proof guarantees. Loom deployments are consensus-level: registrations are included in `WeaveBlock`s and propagate to all nodes via P2P gossip.
+
+### Loom Operations
+
+| Operation | Who | Fee | Effect |
+|-----------|-----|-----|--------|
+| **Deploy** | Anyone | 50 NORN (burned) | Registers a new loom with metadata on the network |
+
+**Loom ID** is deterministic: `BLAKE3(name ++ operator ++ timestamp)`.
+
+### Naming Rules
+
+| Rule | Constraint |
+|------|-----------|
+| Length | 3--64 characters |
+| Character set | Lowercase ASCII letters (`a-z`), digits (`0-9`), hyphens (`-`) |
+| Hyphens | Must not start or end with a hyphen |
+
+### Wallet CLI Usage
+
+```bash
+# Deploy a loom (costs 50 NORN, burned)
+norn wallet deploy-loom --name my-contract
+
+# Query loom metadata
+norn wallet loom-info <LOOM_ID>
+
+# List all deployed looms
+norn wallet list-looms
+```
+
+### RPC Methods
+
+| Method | Parameters | Returns | Auth |
+|--------|-----------|---------|------|
+| `norn_deployLoom` | `hex` (hex-encoded borsh `LoomRegistration`) | `SubmitResult` | Yes |
+| `norn_getLoomInfo` | `loom_id` (hex) | `Option<LoomInfo>` | No |
+| `norn_listLooms` | `limit`, `offset` | `Vec<LoomInfo>` | No |
+
+For full technical details, see the [Protocol Specification](docs/Norn_Protocol_Specification_v2.0.md).
+
 ## Token Economics
 
 NORN has a fixed maximum supply of **1,000,000,000 NORN** (1 billion), enforced at the protocol level.
@@ -349,7 +392,7 @@ NORN has a fixed maximum supply of **1,000,000,000 NORN** (1 billion), enforced 
 | Initial Liquidity | 5% | 50,000,000 | Available at launch |
 | Testnet Participants | 5% | 50,000,000 | Airdrop at mainnet launch |
 
-**Deflationary mechanics:** NornNames registration burns 1 NORN per name. NT-1 token creation burns 10 NORN per token. Future fee burning (EIP-1559-style) planned.
+**Deflationary mechanics:** NornNames registration burns 1 NORN per name. NT-1 token creation burns 10 NORN per token. Loom deployment burns 50 NORN per contract. Future fee burning (EIP-1559-style) planned.
 
 For full details, see the [Protocol Specification](docs/Norn_Protocol_Specification_v2.0.md).
 

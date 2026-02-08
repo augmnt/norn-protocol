@@ -9,6 +9,7 @@
 | v0.5.0      | v0.5.1+    | Yes*           | Yes*             | Restart node |
 | v0.7.x      | v0.8.0     | No             | No               | `--reset-state` (PROTOCOL_VERSION 4→5, SCHEMA_VERSION 3→4) |
 | v0.8.0      | v0.8.1     | Yes            | Yes              | Restart node (CLI-only changes, no protocol/schema bump) |
+| v0.8.x      | v0.9.0     | No             | No               | `--reset-state` (PROTOCOL_VERSION 5→6, SCHEMA_VERSION 4→5) |
 
 \* Within a minor version line, compatibility depends on whether PROTOCOL_VERSION or SCHEMA_VERSION was bumped. Check the release notes.
 
@@ -81,6 +82,7 @@ This is a **breaking upgrade**. PROTOCOL_VERSION changed from 4 to 5, and SCHEMA
 - Account balances (re-funded via genesis allocations or faucet)
 - NornNames (must re-register)
 - Custom tokens (must re-create)
+- Deployed looms (must re-deploy)
 - Commitment history
 
 ## Version Constants
@@ -89,8 +91,8 @@ The protocol uses three version constants to detect incompatibilities:
 
 | Constant | Location | Current | Purpose |
 |----------|----------|---------|---------|
-| `PROTOCOL_VERSION` | `norn-relay/src/protocol.rs` | 5 | P2P wire format version. Mismatch = messages rejected. |
-| `SCHEMA_VERSION` | `norn-node/src/state_store.rs` | 4 | Borsh state schema version. Mismatch = node refuses to start (suggests `--reset-state`). |
+| `PROTOCOL_VERSION` | `norn-relay/src/protocol.rs` | 6 | P2P wire format version. Mismatch = messages rejected. |
+| `SCHEMA_VERSION` | `norn-node/src/state_store.rs` | 5 | Borsh state schema version. Mismatch = node refuses to start (suggests `--reset-state`). |
 | `GENESIS_CONFIG_VERSION` | `norn-types/src/genesis.rs` | 1 | Genesis config format version. Included in genesis hash computation. |
 
 ## Multi-Node P2P Requirements
@@ -218,3 +220,59 @@ This is a **non-breaking upgrade**. No protocol or schema changes.
 - **`whoami` enhancements:** Shows custom token balances (non-zero) and current block height.
 - **`balance` block height:** Displays the current block height for timing context.
 - **New `token-balances` command:** Lists all non-zero token holdings (NORN + custom tokens) for the active wallet. Supports `--json` and `--rpc-url`.
+
+## Changelog: v0.9.0 Breaking Changes (Loom Smart Contracts)
+
+### Upgrading from v0.8.x to v0.9.0
+
+This is a **breaking upgrade**. PROTOCOL_VERSION changed from 5 to 6, and SCHEMA_VERSION changed from 4 to 5.
+
+1. **Stop the node.**
+
+2. **Build the new version:**
+   ```bash
+   cargo install --path norn-node
+   ```
+
+3. **Start with `--reset-state`:**
+   ```bash
+   norn run --dev --reset-state
+   ```
+
+4. **Re-register NornNames, re-create tokens, and re-deploy looms:**
+   Names, custom tokens, and looms are lost on state reset. After the node is running and your account is funded:
+   ```bash
+   norn wallet register-name --name your-name
+   norn wallet create-token --name "My Token" --symbol MTK --decimals 8 --max-supply 1000000 --initial-supply 1000
+   norn wallet deploy-loom --name my-contract
+   ```
+
+5. **All peers must be running v0.9.0.** The new `NornMessage` variants (discriminants 18-19) are not supported by older nodes.
+
+### WeaveBlock Schema Change
+
+Two new fields added to `WeaveBlock`:
+- `loom_deploys: Vec<LoomRegistration>`
+- `loom_deploys_root: Hash`
+
+This changes the borsh serialization layout, hence SCHEMA_VERSION bump from 4 to 5.
+
+### P2P Protocol Change
+
+Two new `NornMessage` variants change the borsh enum layout:
+- `LoomDeploy(Box<LoomRegistration>)` — discriminant 18
+- `LoomExecution(Box<LoomStateTransition>)` — discriminant 19
+
+These are only supported over the v6+ envelope protocol. The legacy codec rejects discriminants > 17. PROTOCOL_VERSION bumped from 5 to 6.
+
+### State Store Change
+
+New key prefix `state:loom:` for loom persistence. Additional prefixes `state:loom_bytecode:` and `state:loom_state:` are reserved for Phase 2 execution. Combined with the schema version mismatch, `--reset-state` is required.
+
+### New RPC Endpoints
+
+Three new RPC methods: `norn_deployLoom`, `norn_getLoomInfo`, `norn_listLooms`. The two read-only methods (`getLoomInfo`, `listLooms`) are added to the unauthenticated whitelist.
+
+### New Wallet Commands
+
+Three new wallet subcommands: `deploy-loom`, `loom-info`, `list-looms` (36 total).
