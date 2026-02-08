@@ -23,6 +23,7 @@ pub mod rename;
 pub mod resolve;
 pub mod sign_message;
 pub mod status;
+pub mod token_balances;
 pub mod token_info;
 pub mod transfer;
 pub mod use_wallet;

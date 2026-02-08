@@ -58,6 +58,11 @@ pub fn format_amount_with_symbol(amount: Amount, token_id: &TokenId) -> String {
     }
 }
 
+/// Format amount with a known token symbol name.
+pub fn format_amount_with_token_name(amount: Amount, symbol: &str) -> String {
+    format!("{} {}", format_amount(amount), symbol)
+}
+
 /// Parse a human-readable amount string (e.g. "10.5") into an Amount.
 pub fn parse_amount(s: &str) -> Result<Amount, WalletError> {
     let s = s.replace(',', "");
@@ -130,6 +135,8 @@ pub fn parse_address(s: &str) -> Result<Address, WalletError> {
 }
 
 /// Parse a hex token ID string into a TokenId.
+/// Note: For commands that need symbol-based resolution, use `resolve_token()` instead.
+#[allow(dead_code)]
 pub fn parse_token_id(s: &str) -> Result<TokenId, WalletError> {
     let hex_str = s.strip_prefix("0x").unwrap_or(s);
     if hex_str == "NORN" || hex_str == "norn" || hex_str == "native" {

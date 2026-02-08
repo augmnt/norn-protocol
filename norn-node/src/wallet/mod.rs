@@ -175,5 +175,8 @@ pub async fn run(command: WalletCommand) -> Result<(), WalletError> {
             json,
             rpc_url,
         } => commands::list_tokens::run(limit, json, rpc_url.as_deref()).await,
+        WalletCommand::TokenBalances { json, rpc_url } => {
+            commands::token_balances::run(json, rpc_url.as_deref()).await
+        }
     }
 }

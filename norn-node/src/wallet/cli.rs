@@ -366,4 +366,13 @@ pub enum WalletCommand {
         #[arg(long)]
         rpc_url: Option<String>,
     },
+    /// Show all token balances for the active wallet
+    TokenBalances {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
 }

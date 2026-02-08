@@ -1,6 +1,11 @@
+use norn_types::constants::MAX_SUPPLY;
+
+use crate::rpc::types::TokenInfo;
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
-use crate::wallet::format::{print_divider, print_error, style_bold, style_dim, style_info};
+use crate::wallet::format::{
+    format_amount, print_divider, print_error, style_bold, style_dim, style_info,
+};
 use crate::wallet::rpc_client::RpcClient;
 
 pub async fn run(token: &str, json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
@@ -8,12 +13,36 @@ pub async fn run(token: &str, json: bool, rpc_url: Option<&str>) -> Result<(), W
     let url = rpc_url.unwrap_or(&config.rpc_url);
     let rpc = RpcClient::new(url)?;
 
-    // Resolve token (by symbol or hex ID).
-    let token_info = match super::mint_token::resolve_token(&rpc, token).await {
-        Ok(info) => info,
-        Err(_) => {
-            print_error(&format!("token '{}' not found", token), None);
-            return Ok(());
+    // Handle native NORN without RPC lookup.
+    let is_native = token.eq_ignore_ascii_case("norn") || token == "native";
+
+    let token_info = if is_native {
+        // Native NORN supply isn't tracked in the NT-1 registry.
+        // Show max supply as reference since per-token supply tracking is for custom tokens.
+        let current_supply = if rpc.get_weave_state().await?.is_some() {
+            format_amount(MAX_SUPPLY)
+        } else {
+            "N/A".to_string()
+        };
+
+        TokenInfo {
+            token_id: hex::encode([0u8; 32]),
+            name: "Norn".to_string(),
+            symbol: "NORN".to_string(),
+            decimals: 12,
+            max_supply: MAX_SUPPLY.to_string(),
+            current_supply,
+            creator: "protocol (native)".to_string(),
+            created_at: 0,
+        }
+    } else {
+        // Resolve custom token (by symbol or hex ID).
+        match super::mint_token::resolve_token(&rpc, token).await {
+            Ok(info) => info,
+            Err(_) => {
+                print_error(&format!("token '{}' not found", token), None);
+                return Ok(());
+            }
         }
     };
 
@@ -38,19 +67,27 @@ pub async fn run(token: &str, json: bool, rpc_url: Option<&str>) -> Result<(), W
             "  Max Supply:     {}",
             if token_info.max_supply == "0" {
                 "unlimited".to_string()
+            } else if is_native {
+                format_amount(MAX_SUPPLY)
             } else {
                 token_info.max_supply.clone()
             }
         );
         println!("  Current Supply: {}", token_info.current_supply);
         println!("  Creator:        {}", token_info.creator);
-        println!(
-            "  Created At:     {}",
-            style_dim().apply_to(format_timestamp(token_info.created_at))
-        );
+        if !is_native {
+            println!(
+                "  Created At:     {}",
+                style_dim().apply_to(format_timestamp(token_info.created_at))
+            );
+        }
         println!(
             "  Token ID:       {}",
-            style_dim().apply_to(&token_info.token_id)
+            style_dim().apply_to(if is_native {
+                "native (0x0000...0000)".to_string()
+            } else {
+                token_info.token_id.clone()
+            })
         );
         println!();
     }

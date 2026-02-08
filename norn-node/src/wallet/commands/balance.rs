@@ -3,7 +3,7 @@ use norn_types::primitives::NATIVE_TOKEN_ID;
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
 use crate::wallet::format::{
-    format_address, format_amount_with_symbol, parse_address, parse_token_id, style_bold,
+    format_address, format_amount_with_token_name, parse_address, style_bold, style_dim,
 };
 use crate::wallet::keystore::Keystore;
 use crate::wallet::rpc_client::RpcClient;
@@ -26,9 +26,17 @@ pub async fn run(
         ks.address
     };
 
-    let token_id = match token {
-        Some(t) => parse_token_id(t)?,
-        None => NATIVE_TOKEN_ID,
+    // Resolve token: handle native shortcuts locally, else RPC symbol lookup.
+    let (token_id, token_symbol) = match token {
+        Some(t) if t.eq_ignore_ascii_case("norn") || t == "native" => {
+            (NATIVE_TOKEN_ID, "NORN".to_string())
+        }
+        Some(t) => {
+            let info = super::mint_token::resolve_token(&rpc, t).await?;
+            let id = super::mint_token::hex_to_token_id(&info.token_id)?;
+            (id, info.symbol)
+        }
+        None => (NATIVE_TOKEN_ID, "NORN".to_string()),
     };
 
     let addr_hex = hex::encode(addr);
@@ -39,13 +47,25 @@ pub async fn run(
         .parse()
         .map_err(|_| WalletError::RpcError(format!("invalid balance: {}", balance_str)))?;
 
+    // Fetch block height for context.
+    let block_height = rpc
+        .get_latest_block()
+        .await
+        .ok()
+        .flatten()
+        .map(|b| b.height);
+
     if json {
-        let info = serde_json::json!({
+        let mut info = serde_json::json!({
             "address": format_address(&addr),
             "token_id": hex::encode(token_id),
+            "token_symbol": token_symbol,
             "balance": balance_str,
-            "human_readable": format_amount_with_symbol(balance, &token_id),
+            "human_readable": format_amount_with_token_name(balance, &token_symbol),
         });
+        if let Some(h) = block_height {
+            info["block_height"] = serde_json::json!(h);
+        }
         println!(
             "{}",
             serde_json::to_string_pretty(&info).unwrap_or_default()
@@ -62,8 +82,15 @@ pub async fn run(
     println!(
         "  {}: {}",
         style_bold().apply_to("Balance"),
-        format_amount_with_symbol(balance, &token_id)
+        format_amount_with_token_name(balance, &token_symbol)
     );
+    if let Some(h) = block_height {
+        println!(
+            "  {}: {}",
+            style_bold().apply_to("Block"),
+            style_dim().apply_to(format!("#{}", h))
+        );
+    }
     if balance == 0 {
         println!(
             "  {}",
