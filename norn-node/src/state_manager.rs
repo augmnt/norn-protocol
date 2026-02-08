@@ -472,7 +472,6 @@ impl StateManager {
     /// Register a name for an address. Validates the name, checks uniqueness,
     /// deducts the registration fee (burned), and records the name.
     /// Used for local name registrations where the fee should be deducted.
-    #[allow(dead_code)] // Used in tests; peer blocks use apply_peer_name_registration()
     pub fn register_name(
         &mut self,
         name: &str,

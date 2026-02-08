@@ -759,14 +759,12 @@ impl Node {
                                         // Watch new threads in spindle for fraud detection.
                                         self.spindle.watch_thread(reg.thread_id);
                                     }
-                                    // Apply name registrations.
+                                    // Apply name registrations (solo — deduct fee locally).
                                     for name_reg in &block.name_registrations {
-                                        if let Err(e) = sm.apply_peer_name_registration(
+                                        if let Err(e) = sm.register_name(
                                             &name_reg.name,
                                             name_reg.owner,
-                                            name_reg.owner_pubkey,
                                             name_reg.timestamp,
-                                            name_reg.fee_paid,
                                         ) {
                                             tracing::warn!("name registration failed: {}", e);
                                         }
