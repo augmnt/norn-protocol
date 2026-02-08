@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 use norn_types::fraud::FraudProofSubmission;
 use norn_types::primitives::ThreadId;
-use norn_types::weave::{CommitmentUpdate, LoomAnchor, NameRegistration, Registration};
+use norn_types::weave::{
+    BlockTransfer, CommitmentUpdate, LoomAnchor, NameRegistration, Registration,
+};
 
 use crate::error::WeaveError;
 
@@ -14,6 +16,7 @@ pub struct BlockContents {
     pub anchors: Vec<LoomAnchor>,
     pub name_registrations: Vec<NameRegistration>,
     pub fraud_proofs: Vec<FraudProofSubmission>,
+    pub transfers: Vec<BlockTransfer>,
 }
 
 /// Transaction mempool for pending weave transactions.
@@ -28,6 +31,8 @@ pub struct Mempool {
     name_registrations: Vec<NameRegistration>,
     /// Pending fraud proof submissions.
     fraud_proofs: Vec<FraudProofSubmission>,
+    /// Pending transfers (from verified knots, for inclusion in blocks).
+    transfers: Vec<BlockTransfer>,
     /// Maximum total number of items in the mempool.
     max_size: usize,
 }
@@ -41,6 +46,7 @@ impl Mempool {
             anchors: Vec::new(),
             name_registrations: Vec::new(),
             fraud_proofs: Vec::new(),
+            transfers: Vec::new(),
             max_size,
         }
     }
@@ -52,6 +58,7 @@ impl Mempool {
             + self.anchors.len()
             + self.name_registrations.len()
             + self.fraud_proofs.len()
+            + self.transfers.len()
     }
 
     /// Add a commitment update (deduplicates by thread_id; latest wins).
@@ -100,6 +107,15 @@ impl Mempool {
         Ok(())
     }
 
+    /// Add a transfer for block inclusion.
+    pub fn add_transfer(&mut self, t: BlockTransfer) -> Result<(), WeaveError> {
+        if self.total_size() >= self.max_size {
+            return Err(WeaveError::MempoolFull);
+        }
+        self.transfers.push(t);
+        Ok(())
+    }
+
     /// Drain items from the mempool for block building.
     /// Takes up to `max_commitments` commitment updates, and all registrations,
     /// anchors, and fraud proofs.
@@ -124,6 +140,7 @@ impl Mempool {
         let anchors = std::mem::take(&mut self.anchors);
         let name_registrations = std::mem::take(&mut self.name_registrations);
         let fraud_proofs = std::mem::take(&mut self.fraud_proofs);
+        let transfers = std::mem::take(&mut self.transfers);
 
         BlockContents {
             commitments,
@@ -131,6 +148,7 @@ impl Mempool {
             anchors,
             name_registrations,
             fraud_proofs,
+            transfers,
         }
     }
 

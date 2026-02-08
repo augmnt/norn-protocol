@@ -6,7 +6,8 @@ use norn_types::constants::MAX_COMMITMENTS_PER_BLOCK;
 use norn_types::network::NornMessage;
 use norn_types::primitives::*;
 use norn_types::weave::{
-    CommitmentUpdate, NameRegistration, Registration, ValidatorSet, WeaveBlock, WeaveState,
+    BlockTransfer, CommitmentUpdate, NameRegistration, Registration, ValidatorSet, WeaveBlock,
+    WeaveState,
 };
 use rayon::prelude::*;
 
@@ -298,6 +299,15 @@ impl WeaveEngine {
     ) -> Result<bool, crate::error::WeaveError> {
         crate::name::validate_name_registration(&nr, &self.known_names)?;
         self.mempool.add_name_registration(nr)?;
+        Ok(true)
+    }
+
+    /// Add a verified transfer to the mempool for block inclusion.
+    pub fn add_transfer(
+        &mut self,
+        transfer: BlockTransfer,
+    ) -> Result<bool, crate::error::WeaveError> {
+        self.mempool.add_transfer(transfer)?;
         Ok(true)
     }
 

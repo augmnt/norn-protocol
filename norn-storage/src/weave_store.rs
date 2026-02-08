@@ -139,6 +139,8 @@ mod tests {
             name_registrations_root: [0u8; 32],
             fraud_proofs: vec![],
             fraud_proofs_root: [0u8; 32],
+            transfers: vec![],
+            transfers_root: [0u8; 32],
             timestamp: 1000 + height,
             proposer: [4u8; 32],
             validator_signatures: vec![],

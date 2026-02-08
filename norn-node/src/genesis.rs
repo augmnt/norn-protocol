@@ -22,6 +22,8 @@ pub fn create_genesis_block(config: &GenesisConfig) -> Result<(WeaveBlock, Weave
         name_registrations_root: [0u8; 32],
         fraud_proofs: Vec::new(),
         fraud_proofs_root: [0u8; 32],
+        transfers: Vec::new(),
+        transfers_root: [0u8; 32],
         timestamp: config.timestamp,
         proposer: [0u8; 32],
         validator_signatures: Vec::new(),

@@ -11,7 +11,7 @@ use norn_storage::traits::KvStore;
 use norn_storage::weave_store::WeaveStore;
 use norn_types::constants::BLOCK_TIME_TARGET;
 use norn_types::network::{NetworkId, NornMessage};
-use norn_types::weave::{FeeState, Validator, ValidatorSet, WeaveBlock, WeaveState};
+use norn_types::weave::{BlockTransfer, FeeState, Validator, ValidatorSet, WeaveBlock, WeaveState};
 use norn_weave::engine::WeaveEngine;
 
 use crate::config::NodeConfig;
@@ -389,12 +389,29 @@ impl Node {
                                 sm.register_thread(reg.thread_id, reg.owner);
                             }
                             for name_reg in &block.name_registrations {
-                                if let Err(e) = sm.register_name(
+                                if let Err(e) = sm.apply_peer_name_registration(
                                     &name_reg.name,
                                     name_reg.owner,
+                                    name_reg.owner_pubkey,
                                     name_reg.timestamp,
+                                    name_reg.fee_paid,
                                 ) {
                                     tracing::warn!("name registration failed: {}", e);
+                                }
+                            }
+                            for bt in &block.transfers {
+                                if !sm.has_transfer(&bt.knot_id) {
+                                    sm.auto_register_if_needed(bt.from);
+                                    sm.auto_register_if_needed(bt.to);
+                                    let _ = sm.apply_transfer(
+                                        bt.from,
+                                        bt.to,
+                                        bt.token_id,
+                                        bt.amount,
+                                        bt.knot_id,
+                                        bt.memo.clone(),
+                                        bt.timestamp,
+                                    );
                                 }
                             }
                             for commit in &block.commitments {
@@ -447,7 +464,9 @@ impl Node {
             engine.weave_state().height == 0
         };
         let mut sync_retry = if needs_sync_retry {
-            Some(Box::pin(tokio::time::sleep(std::time::Duration::from_secs(15))))
+            Some(Box::pin(tokio::time::sleep(
+                std::time::Duration::from_secs(15),
+            )))
         } else {
             None
         };
@@ -486,15 +505,33 @@ impl Node {
                                     {
                                         let mut sm = self.state_manager.write().await;
                                         sm.auto_register_if_needed(transfer.to);
-                                        let _ = sm.apply_transfer(
-                                            transfer.from,
-                                            transfer.to,
-                                            transfer.token_id,
-                                            transfer.amount,
-                                            knot.id,
-                                            transfer.memo.clone(),
-                                            knot.timestamp,
-                                        );
+                                        let applied = sm
+                                            .apply_transfer(
+                                                transfer.from,
+                                                transfer.to,
+                                                transfer.token_id,
+                                                transfer.amount,
+                                                knot.id,
+                                                transfer.memo.clone(),
+                                                knot.timestamp,
+                                            )
+                                            .is_ok();
+                                        drop(sm);
+
+                                        // Queue for block inclusion so peers can sync.
+                                        if applied {
+                                            let bt = BlockTransfer {
+                                                from: transfer.from,
+                                                to: transfer.to,
+                                                token_id: transfer.token_id,
+                                                amount: transfer.amount,
+                                                memo: transfer.memo.clone(),
+                                                knot_id: knot.id,
+                                                timestamp: knot.timestamp,
+                                            };
+                                            let mut engine = self.weave_engine.write().await;
+                                            let _ = engine.add_transfer(bt);
+                                        }
                                     }
                                 }
                             }
@@ -520,12 +557,29 @@ impl Node {
                                     self.spindle.watch_thread(reg.thread_id);
                                 }
                                 for name_reg in &block.name_registrations {
-                                    if let Err(e) = sm.register_name(
+                                    if let Err(e) = sm.apply_peer_name_registration(
                                         &name_reg.name,
                                         name_reg.owner,
+                                        name_reg.owner_pubkey,
                                         name_reg.timestamp,
+                                        name_reg.fee_paid,
                                     ) {
                                         tracing::warn!("name registration failed: {}", e);
+                                    }
+                                }
+                                for bt in &block.transfers {
+                                    if !sm.has_transfer(&bt.knot_id) {
+                                        sm.auto_register_if_needed(bt.from);
+                                        sm.auto_register_if_needed(bt.to);
+                                        let _ = sm.apply_transfer(
+                                            bt.from,
+                                            bt.to,
+                                            bt.token_id,
+                                            bt.amount,
+                                            bt.knot_id,
+                                            bt.memo.clone(),
+                                            bt.timestamp,
+                                        );
                                     }
                                 }
                                 for commit in &block.commitments {
@@ -611,12 +665,29 @@ impl Node {
                                         sm.register_thread(reg.thread_id, reg.owner);
                                     }
                                     for name_reg in &block.name_registrations {
-                                        if let Err(e) = sm.register_name(
+                                        if let Err(e) = sm.apply_peer_name_registration(
                                             &name_reg.name,
                                             name_reg.owner,
+                                            name_reg.owner_pubkey,
                                             name_reg.timestamp,
+                                            name_reg.fee_paid,
                                         ) {
                                             tracing::warn!("name registration failed: {}", e);
+                                        }
+                                    }
+                                    for bt in &block.transfers {
+                                        if !sm.has_transfer(&bt.knot_id) {
+                                            sm.auto_register_if_needed(bt.from);
+                                            sm.auto_register_if_needed(bt.to);
+                                            let _ = sm.apply_transfer(
+                                                bt.from,
+                                                bt.to,
+                                                bt.token_id,
+                                                bt.amount,
+                                                bt.knot_id,
+                                                bt.memo.clone(),
+                                                bt.timestamp,
+                                            );
                                         }
                                     }
                                     for commit in &block.commitments {
@@ -672,6 +743,7 @@ impl Node {
                                     commitments = block.commitments.len(),
                                     registrations = block.registrations.len(),
                                     name_registrations = block.name_registrations.len(),
+                                    transfers = block.transfers.len(),
                                     "produced block (solo mode)"
                                 );
                                 self.metrics.blocks_produced.inc();
@@ -689,14 +761,18 @@ impl Node {
                                     }
                                     // Apply name registrations.
                                     for name_reg in &block.name_registrations {
-                                        if let Err(e) = sm.register_name(
+                                        if let Err(e) = sm.apply_peer_name_registration(
                                             &name_reg.name,
                                             name_reg.owner,
+                                            name_reg.owner_pubkey,
                                             name_reg.timestamp,
+                                            name_reg.fee_paid,
                                         ) {
                                             tracing::warn!("name registration failed: {}", e);
                                         }
                                     }
+                                    // Note: transfers are NOT re-applied here — they were
+                                    // already applied by the KnotProposal handler above.
                                     // Deduct commitment fees from committers.
                                     let fee_per = norn_weave::fees::compute_fee(
                                         &engine.weave_state().fee_state,

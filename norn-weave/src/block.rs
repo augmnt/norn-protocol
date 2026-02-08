@@ -26,6 +26,7 @@ pub fn build_block(
     let anchors_root = compute_merkle_root_borsh(&contents.anchors);
     let name_registrations_root = compute_merkle_root_borsh(&contents.name_registrations);
     let fraud_proofs_root = compute_merkle_root_borsh(&contents.fraud_proofs);
+    let transfers_root = compute_merkle_root_borsh(&contents.transfers);
 
     let mut block = WeaveBlock {
         height: prev_height + 1,
@@ -41,6 +42,8 @@ pub fn build_block(
         name_registrations_root,
         fraud_proofs: contents.fraud_proofs,
         fraud_proofs_root,
+        transfers: contents.transfers,
+        transfers_root,
         timestamp,
         proposer: proposer_keypair.public_key(),
         validator_signatures: Vec::new(),
@@ -69,6 +72,7 @@ pub fn compute_block_hash(block: &WeaveBlock) -> Hash {
     data.extend_from_slice(&block.anchors_root);
     data.extend_from_slice(&block.name_registrations_root);
     data.extend_from_slice(&block.fraud_proofs_root);
+    data.extend_from_slice(&block.transfers_root);
     data.extend_from_slice(&block.timestamp.to_le_bytes());
     data.extend_from_slice(&block.proposer);
 
@@ -87,6 +91,9 @@ pub fn compute_block_hash(block: &WeaveBlock) -> Hash {
     }
     if let Ok(f_bytes) = borsh::to_vec(&block.fraud_proofs) {
         data.extend_from_slice(&blake3_hash(&f_bytes));
+    }
+    if let Ok(t_bytes) = borsh::to_vec(&block.transfers) {
+        data.extend_from_slice(&blake3_hash(&t_bytes));
     }
 
     blake3_hash(&data)
@@ -153,6 +160,13 @@ pub fn verify_block(block: &WeaveBlock, validator_set: &ValidatorSet) -> Result<
     if block.fraud_proofs_root != expected_fraud_proofs_root {
         return Err(WeaveError::InvalidBlock {
             reason: "fraud proofs merkle root mismatch".to_string(),
+        });
+    }
+
+    let expected_transfers_root = compute_merkle_root_borsh(&block.transfers);
+    if block.transfers_root != expected_transfers_root {
+        return Err(WeaveError::InvalidBlock {
+            reason: "transfers merkle root mismatch".to_string(),
         });
     }
 
@@ -234,6 +248,7 @@ mod tests {
             anchors: vec![],
             name_registrations: vec![],
             fraud_proofs: vec![],
+            transfers: vec![],
         };
 
         let block = build_block([0u8; 32], 0, contents, &kp, 1000);
@@ -256,6 +271,7 @@ mod tests {
             anchors: vec![],
             name_registrations: vec![],
             fraud_proofs: vec![],
+            transfers: vec![],
         };
         let block = build_block([0u8; 32], 0, contents, &kp, 1000);
 
@@ -273,6 +289,7 @@ mod tests {
             anchors: vec![],
             name_registrations: vec![],
             fraud_proofs: vec![],
+            transfers: vec![],
         };
         let mut block = build_block([0u8; 32], 0, contents, &kp, 1000);
         block.hash[0] ^= 0xff;
@@ -291,6 +308,7 @@ mod tests {
             anchors: vec![],
             name_registrations: vec![],
             fraud_proofs: vec![],
+            transfers: vec![],
         };
         let block = build_block([0u8; 32], 0, contents, &kp, 1000);
 
@@ -319,6 +337,7 @@ mod tests {
             anchors: vec![],
             name_registrations: vec![],
             fraud_proofs: vec![],
+            transfers: vec![],
         };
         let block = build_block([0u8; 32], 0, contents, &kp, 1000);
 
@@ -336,6 +355,7 @@ mod tests {
             anchors: vec![],
             name_registrations: vec![],
             fraud_proofs: vec![],
+            transfers: vec![],
         };
         let mut block = build_block([0u8; 32], 0, contents, &kp, 1000);
         let vs = make_validator_set(&[&kp]);

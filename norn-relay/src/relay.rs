@@ -250,7 +250,7 @@ impl RelayNode {
                         Some(SwarmEvent::ConnectionEstablished {
                             peer_id, endpoint, ..
                         }) => {
-                            debug!(%peer_id, ?endpoint, "connection established");
+                            info!(%peer_id, ?endpoint, "peer connected");
                             if !self.peer_manager.add_peer(peer_id) {
                                 warn!(
                                     %peer_id,
@@ -260,8 +260,8 @@ impl RelayNode {
                                 let _ = self.swarm.disconnect_peer_id(peer_id);
                             }
                         }
-                        Some(SwarmEvent::ConnectionClosed { peer_id, cause, .. }) => {
-                            debug!(%peer_id, ?cause, "connection closed");
+                        Some(SwarmEvent::ConnectionClosed { peer_id, .. }) => {
+                            info!(%peer_id, "peer disconnected");
                             self.peer_manager.remove_peer(&peer_id);
                         }
                         Some(SwarmEvent::NewListenAddr { address, .. }) => {
@@ -479,6 +479,8 @@ mod tests {
             name_registrations_root: [0u8; 32],
             fraud_proofs: vec![],
             fraud_proofs_root: [0u8; 32],
+            transfers: vec![],
+            transfers_root: [0u8; 32],
             timestamp: 1000,
             proposer: [0u8; 32],
             validator_signatures: vec![],

@@ -76,6 +76,18 @@ pub struct NameRegistration {
     pub signature: Signature,
 }
 
+/// A transfer record included in a weave block for cross-node balance sync.
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+pub struct BlockTransfer {
+    pub from: Address,
+    pub to: Address,
+    pub token_id: TokenId,
+    pub amount: Amount,
+    pub memo: Option<Vec<u8>>,
+    pub knot_id: Hash,
+    pub timestamp: u64,
+}
+
 /// A validator's signature on a weave block.
 #[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 pub struct ValidatorSignature {
@@ -128,6 +140,10 @@ pub struct WeaveBlock {
     pub fraud_proofs: Vec<FraudProofSubmission>,
     /// Merkle root of all fraud proofs in this block.
     pub fraud_proofs_root: Hash,
+    /// Transfers included in this block (for cross-node balance sync).
+    pub transfers: Vec<BlockTransfer>,
+    /// Merkle root of all transfers in this block.
+    pub transfers_root: Hash,
     /// Block timestamp.
     pub timestamp: Timestamp,
     /// Block proposer's public key.

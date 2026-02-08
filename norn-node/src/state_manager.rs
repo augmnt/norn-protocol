@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 
@@ -54,6 +54,8 @@ pub struct StateManager {
     name_registry: HashMap<String, NameRecord>,
     address_names: HashMap<Address, Vec<String>>,
     state_store: Option<crate::state_store::StateStore>,
+    /// Known knot IDs for transfer dedup (prevents double-applying from gossip + block).
+    known_knot_ids: HashSet<Hash>,
     /// Cached total supply of native tokens (updated on credit/debit).
     total_supply_cache: Amount,
 }
@@ -74,6 +76,7 @@ impl StateManager {
             name_registry: HashMap::new(),
             address_names: HashMap::new(),
             state_store: None,
+            known_knot_ids: HashSet::new(),
             total_supply_cache: 0,
         }
     }
@@ -92,6 +95,7 @@ impl StateManager {
             .values()
             .map(|s| s.balance(&NATIVE_TOKEN_ID))
             .sum();
+        let known_knot_ids = transfer_log.iter().map(|r| r.knot_id).collect();
         Self {
             thread_states,
             thread_meta,
@@ -100,6 +104,7 @@ impl StateManager {
             name_registry,
             address_names,
             state_store: None,
+            known_knot_ids,
             total_supply_cache,
         }
     }
@@ -156,6 +161,11 @@ impl StateManager {
         if !self.is_registered(&address) {
             self.register_thread(address, [0u8; 32]);
         }
+    }
+
+    /// Check if a transfer with the given knot_id has already been applied.
+    pub fn has_transfer(&self, knot_id: &Hash) -> bool {
+        self.known_knot_ids.contains(knot_id)
     }
 
     /// Get the total circulating supply of native tokens.
@@ -268,6 +278,9 @@ impl StateManager {
             meta.state_hash =
                 norn_thread::state::compute_state_hash(self.thread_states.get(&to).unwrap());
         }
+
+        // Track knot_id for dedup.
+        self.known_knot_ids.insert(knot_id);
 
         // Log the transfer
         let record = TransferRecord {
@@ -458,6 +471,8 @@ impl StateManager {
 
     /// Register a name for an address. Validates the name, checks uniqueness,
     /// deducts the registration fee (burned), and records the name.
+    /// Used for local name registrations where the fee should be deducted.
+    #[allow(dead_code)] // Used in tests; peer blocks use apply_peer_name_registration()
     pub fn register_name(
         &mut self,
         name: &str,
@@ -544,6 +559,56 @@ impl StateManager {
             }
             if let Err(e) = store.append_transfer(&fee_record) {
                 tracing::warn!("Failed to persist name registration fee transfer: {}", e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Apply a name registration received from a peer block.
+    /// Unlike `register_name()`, this skips fee deduction (already burned on the
+    /// originating node) and auto-registers the owner thread if needed.
+    pub fn apply_peer_name_registration(
+        &mut self,
+        name: &str,
+        owner: Address,
+        owner_pubkey: PublicKey,
+        timestamp: u64,
+        fee_paid: Amount,
+    ) -> Result<(), NornError> {
+        validate_name(name)?;
+
+        if self.name_registry.contains_key(name) {
+            return Err(NornError::NameAlreadyRegistered(name.to_string()));
+        }
+
+        // Auto-register the owner thread with their real pubkey.
+        if !self.is_registered(&owner) {
+            self.register_thread(owner, owner_pubkey);
+        }
+
+        // Record the name (no fee deduction — already burned on originating node).
+        let name_record = NameRecord {
+            owner,
+            registered_at: timestamp,
+            fee_paid,
+        };
+        self.name_registry
+            .insert(name.to_string(), name_record.clone());
+        self.address_names
+            .entry(owner)
+            .or_default()
+            .push(name.to_string());
+
+        // Persist
+        if let Some(ref store) = self.state_store {
+            if let Err(e) = store.save_name(name, &name_record) {
+                tracing::warn!("Failed to persist name record: {}", e);
+            }
+            if let Some(names) = self.address_names.get(&owner) {
+                if let Err(e) = store.save_address_names(&owner, names) {
+                    tracing::warn!("Failed to persist address names: {}", e);
+                }
             }
         }
 
@@ -706,6 +771,8 @@ mod tests {
             name_registrations_root: [0u8; 32],
             fraud_proofs: vec![],
             fraud_proofs_root: [0u8; 32],
+            transfers: vec![],
+            transfers_root: [0u8; 32],
             timestamp: 1000,
             proposer: [0u8; 32],
             validator_signatures: vec![],

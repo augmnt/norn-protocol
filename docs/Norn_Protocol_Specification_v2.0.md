@@ -609,6 +609,10 @@ pub struct WeaveBlock {
     pub fraud_proofs: Vec<FraudProofSubmission>,
     /// Merkle root of all fraud proofs in this block.
     pub fraud_proofs_root: Hash,
+    /// Transfers included in this block (for cross-node balance sync).
+    pub transfers: Vec<BlockTransfer>,
+    /// Merkle root of all transfers in this block.
+    pub transfers_root: Hash,
     /// Block timestamp.
     pub timestamp: Timestamp,
     /// Block proposer's public key.
@@ -648,11 +652,11 @@ pub struct LoomAnchor {
 
 ### 14.4 Block Production
 
-Blocks are produced at a target interval of `BLOCK_TIME_TARGET` (3 seconds). Each block may include up to `MAX_COMMITMENTS_PER_BLOCK` (10,000) commitment updates plus any number of registrations, loom anchors, and fraud proofs.
+Blocks are produced at a target interval of `BLOCK_TIME_TARGET` (3 seconds). Each block may include up to `MAX_COMMITMENTS_PER_BLOCK` (10,000) commitment updates plus any number of registrations, loom anchors, fraud proofs, and transfers.
 
 Block hash is computed as `BLAKE3(borsh(block without hash and signatures))`.
 
-Merkle roots (`commitments_root`, `registrations_root`, `anchors_root`, `fraud_proofs_root`) are computed from the respective transaction lists using the sparse Merkle tree implementation in `norn-crypto`.
+Merkle roots (`commitments_root`, `registrations_root`, `anchors_root`, `fraud_proofs_root`, `transfers_root`) are computed from the respective transaction lists using the sparse Merkle tree implementation in `norn-crypto`.
 
 ---
 
@@ -1214,10 +1218,12 @@ When a node joins the network, it performs a state sync to catch up to the curre
 
 1. The node broadcasts a `StateRequest` with its current block height (0 for a new node).
 2. Peers respond with a `StateResponse` containing any blocks the requester is missing, up to a batch limit.
-3. The node applies received blocks sequentially.
+3. The node applies received blocks sequentially, including thread registrations, name registrations, transfers, and commitment updates.
 4. If the response indicates more blocks are available (`tip_height > last received`), the node repeats the request.
 
 State sync has a 10-second timeout per request. Nodes that fail to respond are skipped. This protocol operates over the same GossipSub/libp2p transport as all other `NornMessage` types.
+
+Transfer balance sync relies on `BlockTransfer` records included in each block. When a `KnotProposal` with a transfer is received and applied, the transfer is also queued in the mempool for block inclusion. When a peer receives a block, it applies any transfers it hasn't seen (deduplication by `knot_id`), auto-registering sender and receiver threads if needed. This ensures balances converge across nodes even if a node wasn't online for the original gossip.
 
 ### 20.7 Network Constants
 
@@ -2180,7 +2186,7 @@ pub struct NameRecord {
 3. The `WeaveEngine` validates the registration: name format (via `norn_types::name::validate_name`), duplicate check against `known_names`, signature verification against `owner_pubkey`, and pubkey-to-address match.
 4. On success, the registration is added to the mempool and broadcast to peers via `NornMessage::NameRegistration` (P2P gossip).
 5. At the next block production, the `WeaveEngine` drains name registrations from the mempool into a `WeaveBlock`, computing a `name_registrations_root` Merkle hash.
-6. When a block is applied (solo production, P2P block reception, state sync, or initial sync), the node calls `StateManager::register_name()` for each `NameRegistration` in the block, which burns the fee, stores a `NameRecord`, and updates the reverse index.
+6. When a block is applied (solo production, P2P block reception, state sync, or initial sync), the node calls `StateManager::apply_peer_name_registration()` for each `NameRegistration` in the block, which auto-registers the owner thread if needed (with their real pubkey), stores a `NameRecord`, and updates the reverse index. Fee deduction is skipped since it was already burned on the originating node.
 7. Peers receiving the block via P2P also apply name registrations, making names globally consistent.
 
 ### 28.4 WeaveBlock Fields
@@ -2213,6 +2219,47 @@ This allows commands like: `norn wallet transfer --to alice --amount 10`
 | `NAME_REGISTRATION_FEE` | `ONE_NORN` (10^12 nits) | `norn-types/src/name.rs` | Fee burned on name registration |
 | Min name length | 3 | `norn-types/src/name.rs` | Minimum characters |
 | Max name length | 32 | `norn-types/src/name.rs` | Maximum characters |
+
+---
+
+## 28a. Block-Level Transfer Sync
+
+### 28a.1 Overview
+
+Transfers between threads are executed off-chain via knots and propagated in real-time via `NornMessage::KnotProposal` gossip. However, to ensure that nodes joining later can reconstruct balances, transfers are also recorded in `WeaveBlock` as `BlockTransfer` records.
+
+### 28a.2 BlockTransfer Type
+
+```rust
+pub struct BlockTransfer {
+    pub from: Address,
+    pub to: Address,
+    pub token_id: TokenId,
+    pub amount: Amount,
+    pub memo: Option<Vec<u8>>,
+    pub knot_id: Hash,
+    pub timestamp: u64,
+}
+```
+
+### 28a.3 Flow
+
+1. A `KnotProposal` with a `Transfer` payload arrives via P2P gossip.
+2. The node validates the knot signature and applies the transfer to `StateManager` (debit sender, credit receiver).
+3. The node creates a `BlockTransfer` from the transfer payload and adds it to the `WeaveEngine` mempool.
+4. At the next block production, the `WeaveEngine` drains transfers from the mempool into the `WeaveBlock`, computing a `transfers_root` Merkle hash.
+5. When a peer receives a block, it applies any `BlockTransfer` records it hasn't already processed. Deduplication is by `knot_id` — if a transfer was already applied via gossip, it is skipped. If the sender or receiver thread is unknown locally, it is auto-registered.
+
+### 28a.4 WeaveBlock Fields
+
+Two fields on `WeaveBlock` carry transfers:
+
+```rust
+pub transfers: Vec<BlockTransfer>,
+pub transfers_root: Hash,
+```
+
+The `transfers_root` is verified during block validation (same pattern as other Merkle roots).
 
 ---
 
