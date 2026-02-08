@@ -46,7 +46,7 @@ After installation, the `norn` command is available:
 
 ```bash
 norn --version
-norn wallet create
+norn wallet create --name mywallet
 norn run --dev
 ```
 
