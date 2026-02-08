@@ -396,7 +396,7 @@ impl Node {
                                     name_reg.timestamp,
                                     name_reg.fee_paid,
                                 ) {
-                                    tracing::warn!("name registration failed: {}", e);
+                                    tracing::debug!("skipping known name registration: {}", e);
                                 }
                             }
                             for bt in &block.transfers {
@@ -504,6 +504,7 @@ impl Node {
                                     .is_ok()
                                     {
                                         let mut sm = self.state_manager.write().await;
+                                        sm.auto_register_if_needed(transfer.from);
                                         sm.auto_register_if_needed(transfer.to);
                                         let applied = sm
                                             .apply_transfer(
@@ -564,7 +565,7 @@ impl Node {
                                         name_reg.timestamp,
                                         name_reg.fee_paid,
                                     ) {
-                                        tracing::warn!("name registration failed: {}", e);
+                                        tracing::debug!("skipping known name registration: {}", e);
                                     }
                                 }
                                 for bt in &block.transfers {
@@ -672,7 +673,7 @@ impl Node {
                                             name_reg.timestamp,
                                             name_reg.fee_paid,
                                         ) {
-                                            tracing::warn!("name registration failed: {}", e);
+                                            tracing::debug!("skipping known name registration: {}", e);
                                         }
                                     }
                                     for bt in &block.transfers {
