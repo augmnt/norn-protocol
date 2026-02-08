@@ -7,7 +7,7 @@
 | Version      | 2.0                           |
 | Status       | Living Document               |
 | Date         | 2026-02-08                    |
-| Code Version | 0.6.0                         |
+| Code Version | 0.8.0                         |
 | Supersedes   | v1.0                          |
 | Authors      | Norn Protocol Contributors    |
 
@@ -43,9 +43,12 @@
 26. [Error Taxonomy](#26-error-taxonomy)
 27. [Wallet CLI](#27-wallet-cli)
 28. [NornNames (Name Registry)](#28-nornnames-name-registry)
+28a. [Block-Level Transfer Sync](#28a-block-level-transfer-sync)
+28b. [NT-1 Fungible Token Standard](#28b-nt-1-fungible-token-standard)
 29. [Protocol Constants](#29-protocol-constants)
-30. [Crate Map](#30-crate-map)
-31. [Changelog (v1.0 to v2.0)](#31-changelog-v10-to-v20)
+30. [Token Economics](#30-token-economics)
+31. [Crate Map](#31-crate-map)
+32. [Changelog (v1.0 to v2.0)](#32-changelog-v10-to-v20)
 
 ---
 
@@ -614,6 +617,18 @@ pub struct WeaveBlock {
     pub transfers: Vec<BlockTransfer>,
     /// Merkle root of all transfers in this block.
     pub transfers_root: Hash,
+    /// Token definitions created in this block (NT-1).
+    pub token_definitions: Vec<TokenDefinition>,
+    /// Merkle root of all token definitions in this block.
+    pub token_definitions_root: Hash,
+    /// Token mint operations in this block (NT-1).
+    pub token_mints: Vec<TokenMint>,
+    /// Merkle root of all token mints in this block.
+    pub token_mints_root: Hash,
+    /// Token burn operations in this block (NT-1).
+    pub token_burns: Vec<TokenBurn>,
+    /// Merkle root of all token burns in this block.
+    pub token_burns_root: Hash,
     /// Block timestamp.
     pub timestamp: Timestamp,
     /// Block proposer's public key.
@@ -653,11 +668,11 @@ pub struct LoomAnchor {
 
 ### 14.4 Block Production
 
-Blocks are produced at a target interval of `BLOCK_TIME_TARGET` (3 seconds). Each block may include up to `MAX_COMMITMENTS_PER_BLOCK` (10,000) commitment updates plus any number of registrations, loom anchors, fraud proofs, and transfers.
+Blocks are produced at a target interval of `BLOCK_TIME_TARGET` (3 seconds). Each block may include up to `MAX_COMMITMENTS_PER_BLOCK` (10,000) commitment updates plus any number of registrations, loom anchors, fraud proofs, transfers, token definitions, token mints, and token burns.
 
 Block hash is computed as `BLAKE3(borsh(block without hash and signatures))`.
 
-Merkle roots (`commitments_root`, `registrations_root`, `anchors_root`, `fraud_proofs_root`, `transfers_root`) are computed from the respective transaction lists using the sparse Merkle tree implementation in `norn-crypto`.
+Merkle roots (`commitments_root`, `registrations_root`, `anchors_root`, `fraud_proofs_root`, `transfers_root`, `token_definitions_root`, `token_mints_root`, `token_burns_root`) are computed from the respective transaction lists using the sparse Merkle tree implementation in `norn-crypto`.
 
 ---
 
@@ -1163,14 +1178,20 @@ pub enum NornMessage {
     NameRegistration(NameRegistration),
     /// A protocol upgrade notification.
     UpgradeNotice(UpgradeNotice),
+    /// A token definition (NT-1, discriminant 15).
+    TokenDefinition(TokenDefinition),
+    /// A token mint operation (NT-1, discriminant 16).
+    TokenMint(TokenMint),
+    /// A token burn operation (NT-1, discriminant 17).
+    TokenBurn(TokenBurn),
 }
 ```
 
 ### 20.2 Wire Format
 
-#### 20.2.1 MessageEnvelope Format (Protocol v4+)
+#### 20.2.1 MessageEnvelope Format (Protocol v5+)
 
-As of protocol version 4, messages use a versioned envelope format:
+As of protocol version 5, messages use a versioned envelope format:
 
 ```
 [4 bytes: length (big-endian u32)] [1 byte: ENVELOPE_VERSION (1)] [N bytes: borsh-encoded MessageEnvelope]
@@ -1709,6 +1730,12 @@ The RPC server uses `jsonrpsee` over HTTP. All methods use the `norn_` namespace
 | `norn_listNames` | `address: String` (hex) | `Vec<NameInfo>` | No |
 | `norn_getMetrics` | -- | `String` (Prometheus text format) | No |
 | `norn_submitFraudProof` | `fraud_proof: String` (hex borsh) | `SubmitResult` | Yes |
+| `norn_createToken` | `hex: String` (hex borsh `TokenDefinition`) | `SubmitResult` | Yes |
+| `norn_mintToken` | `hex: String` (hex borsh `TokenMint`) | `SubmitResult` | Yes |
+| `norn_burnToken` | `hex: String` (hex borsh `TokenBurn`) | `SubmitResult` | Yes |
+| `norn_getTokenInfo` | `token_id: String` (hex) | `Option<TokenInfo>` | No |
+| `norn_getTokenBySymbol` | `symbol: String` | `Option<TokenInfo>` | No |
+| `norn_listTokens` | `limit: u64`, `offset: u64` | `Vec<TokenInfo>` | No |
 
 #### WebSocket Subscriptions
 
@@ -1736,6 +1763,11 @@ pub struct BlockInfo {
     pub registration_count: usize,
     pub anchor_count: usize,
     pub fraud_proof_count: usize,
+    pub name_registration_count: usize,
+    pub transfer_count: usize,
+    pub token_definition_count: usize,
+    pub token_mint_count: usize,
+    pub token_burn_count: usize,
 }
 
 pub struct WeaveStateInfo {
@@ -1823,6 +1855,17 @@ pub struct NameInfo {
     pub name: String,
     pub registered_at: u64,
 }
+
+pub struct TokenInfo {
+    pub token_id: String,
+    pub name: String,
+    pub symbol: String,
+    pub decimals: u8,
+    pub max_supply: String,
+    pub current_supply: String,
+    pub creator: String,
+    pub created_at: u64,
+}
 ```
 
 All byte arrays (hashes, addresses, public keys) are hex-encoded in RPC responses.
@@ -1843,7 +1886,6 @@ When `api_key` is set, mutation requests must include the header `Authorization:
 
 The following methods are planned but not yet implemented:
 
-- `norn_submitFraudProof` -- Submit a fraud proof
 - `norn_submitLoomAnchor` -- Submit a loom anchor
 - `norn_getLoom` / `norn_getLoomState` / `norn_listLooms` -- Loom queries
 - `norn_subscribeCommitments` -- WebSocket subscription for commitment updates
@@ -2003,7 +2045,18 @@ All errors are defined in a single `NornError` enum using `thiserror`:
 | `NameAlreadyRegistered(String)` | The requested name is already registered |
 | `InvalidName(String)` | The name does not meet validation rules (length, characters, hyphens) |
 
-### 26.10 Arithmetic Errors
+### 26.10 Token Errors
+
+| Variant | Description |
+|---------|-------------|
+| `TokenAlreadyExists(TokenId)` | A token with this ID already exists |
+| `TokenNotFound(TokenId)` | No token with this ID |
+| `NotTokenAuthority` | Caller is not the token's creator (mint authority) |
+| `TokenSupplyCapExceeded` | Minting would exceed the token's max supply |
+| `InvalidTokenDefinition(String)` | Token definition fails validation (bad name, symbol, decimals, etc.) |
+| `TokenSymbolTaken(String)` | A token with this symbol already exists |
+
+### 26.11 Arithmetic Errors
 
 | Variant | Description |
 |---------|-------------|
@@ -2051,6 +2104,14 @@ norn wallet <COMMAND>
 | `fees` | Show current transaction fee estimates via RPC |
 | `validators` | View the validator set (address, stake, active status) via RPC |
 | `whoami` | Dashboard for the active wallet (balance, names, thread status) |
+| `sign-message` | Sign an arbitrary message with the active wallet's private key |
+| `verify-message` | Verify a signed message against a public key |
+| `rename` | Rename a wallet file on disk |
+| `create-token` | Create a new NT-1 fungible token (costs 10 NORN, burned) |
+| `mint-token` | Mint tokens to a recipient (creator authority required) |
+| `burn-token` | Burn tokens from the active wallet's balance |
+| `token-info` | Query token metadata by symbol or hex token ID |
+| `list-tokens` | List all registered tokens on the network |
 
 ### 27.3 Command Details
 
@@ -2360,6 +2421,160 @@ The `transfers_root` is verified during block validation (same pattern as other 
 
 ---
 
+## 28b. NT-1 Fungible Token Standard
+
+Norn supports protocol-level custom fungible tokens via the NT-1 standard. Token operations are **consensus-level**: they are included in `WeaveBlock`s and propagate to all nodes via P2P gossip, following the same pattern as NornNames (Section 28).
+
+### 28b.1 Token Operations
+
+| Operation | Who | Fee | Effect |
+|-----------|-----|-----|--------|
+| **Create** | Anyone | 10 NORN (burned) | Registers a new token with metadata; optionally mints initial supply to creator |
+| **Mint** | Token creator only | None | Creates new tokens, credits to recipient |
+| **Burn** | Any holder | None | Destroys tokens from burner's balance |
+
+### 28b.2 Types
+
+**TokenDefinition** (consensus object, included in blocks):
+
+```rust
+pub struct TokenDefinition {
+    pub name: String,           // "Wrapped Bitcoin"
+    pub symbol: String,         // "WBTC"
+    pub decimals: u8,           // 8
+    pub max_supply: Amount,     // 0 = unlimited
+    pub initial_supply: Amount, // minted to creator on creation
+    pub creator: Address,
+    pub creator_pubkey: PublicKey,
+    pub timestamp: Timestamp,
+    pub signature: Signature,
+}
+```
+
+**TokenMint** (consensus object, included in blocks):
+
+```rust
+pub struct TokenMint {
+    pub token_id: TokenId,
+    pub to: Address,
+    pub amount: Amount,
+    pub authority: Address,       // must be token creator
+    pub authority_pubkey: PublicKey,
+    pub timestamp: Timestamp,
+    pub signature: Signature,
+}
+```
+
+**TokenBurn** (consensus object, included in blocks):
+
+```rust
+pub struct TokenBurn {
+    pub token_id: TokenId,
+    pub burner: Address,
+    pub burner_pubkey: PublicKey,
+    pub amount: Amount,
+    pub timestamp: Timestamp,
+    pub signature: Signature,
+}
+```
+
+### 28b.3 Token ID
+
+Token IDs are deterministic, computed as:
+
+```
+token_id = BLAKE3(creator || name_bytes || symbol_bytes || decimals || max_supply_le || timestamp_le)
+```
+
+This is implemented by `compute_token_id()` in `norn-types/src/token.rs`.
+
+### 28b.4 Validation Rules
+
+**Token Definition:**
+1. Name: 1--64 printable ASCII characters
+2. Symbol: 1--12 uppercase alphanumeric characters
+3. Decimals: 0--18
+4. `initial_supply <= max_supply` (when `max_supply > 0`)
+5. `pubkey_to_address(creator_pubkey) == creator`
+6. Signature verifies against `creator_pubkey`
+7. Computed `token_id` must not already exist
+8. Symbol must not already be registered
+
+**Token Mint:**
+1. Token must exist
+2. Authority must be the token creator
+3. `pubkey_to_address(authority_pubkey) == authority`
+4. Signature verifies against `authority_pubkey`
+5. `current_supply + amount <= max_supply` (when `max_supply > 0`)
+
+**Token Burn:**
+1. Token must exist
+2. `pubkey_to_address(burner_pubkey) == burner`
+3. Signature verifies against `burner_pubkey`
+4. `amount > 0`
+
+Validation is performed by `validate_token_definition()`, `validate_token_mint()`, and `validate_token_burn()` in `norn-weave/src/token.rs`.
+
+### 28b.5 Signing Data
+
+Each token operation has a deterministic signing payload:
+
+- **TokenDefinition:** `name_bytes || symbol_bytes || decimals || max_supply_le || initial_supply_le || creator || timestamp_le`
+- **TokenMint:** `token_id || to || amount_le || authority || timestamp_le`
+- **TokenBurn:** `token_id || burner || amount_le || timestamp_le`
+
+### 28b.6 Consensus Flow
+
+The flow follows the NornNames pattern (Section 28.3):
+
+1. The wallet creates a token operation, signs it, and submits via RPC (`norn_createToken`, `norn_mintToken`, or `norn_burnToken`).
+2. The RPC handler deserializes the operation and submits it to the `WeaveEngine` mempool.
+3. The `WeaveEngine` validates the operation and, on success, adds it to the mempool and broadcasts it to peers via the corresponding `NornMessage` variant.
+4. At the next block production, the `WeaveEngine` drains token operations from the mempool into the `WeaveBlock`, computing `token_definitions_root`, `token_mints_root`, and `token_burns_root` Merkle hashes.
+5. When a block is applied, the node processes token operations: solo production deducts the 10 NORN creation fee; peer block paths skip fee deduction (same pattern as NornNames).
+6. `StateManager` maintains `token_registry: HashMap<TokenId, TokenRecord>` and `symbol_index: HashMap<String, TokenId>` for token state.
+7. Token state is persisted to disk using the `state:token:` key prefix.
+
+### 28b.7 P2P Gossip
+
+Token operations are gossiped individually via three `NornMessage` variants:
+
+| Variant | Discriminant | Description |
+|---------|-------------|-------------|
+| `TokenDefinition(TokenDefinition)` | 15 | New token created |
+| `TokenMint(TokenMint)` | 16 | Tokens minted |
+| `TokenBurn(TokenBurn)` | 17 | Tokens burned |
+
+These variants are only supported in the v5+ envelope protocol. The legacy codec (`encode_message_legacy()`) rejects discriminants > 13.
+
+### 28b.8 WeaveBlock Fields
+
+Six fields on `WeaveBlock` carry token operations:
+
+```rust
+pub token_definitions: Vec<TokenDefinition>,
+pub token_definitions_root: Hash,
+pub token_mints: Vec<TokenMint>,
+pub token_mints_root: Hash,
+pub token_burns: Vec<TokenBurn>,
+pub token_burns_root: Hash,
+```
+
+### 28b.9 Symbol Uniqueness
+
+Symbol uniqueness is enforced at the consensus level. The `WeaveEngine` maintains a `known_symbols: HashSet<String>` set. If a `TokenDefinition` is submitted with a symbol that already exists, it is rejected with `TokenSymbolTaken`. This prevents token impersonation.
+
+### 28b.10 Token Constants
+
+| Constant | Value | Location | Description |
+|----------|-------|----------|-------------|
+| `TOKEN_CREATION_FEE` | `10 * ONE_NORN` (10^13 nits) | `norn-types/src/token.rs` | Fee burned on token creation |
+| `MAX_TOKEN_NAME_LEN` | 64 | `norn-types/src/token.rs` | Maximum token name length |
+| `MAX_TOKEN_SYMBOL_LEN` | 12 | `norn-types/src/token.rs` | Maximum token symbol length |
+| `MAX_TOKEN_DECIMALS` | 18 | `norn-types/src/token.rs` | Maximum decimal places |
+
+---
+
 ## 29. Protocol Constants
 
 All constants are defined in `norn-types/src/constants.rs`.
@@ -2465,6 +2680,8 @@ For mainnet, the genesis file encodes the initial distribution:
 
 **NornNames burn:** Each NornName registration burns 1 NORN (`NAME_REGISTRATION_FEE`). The fee is debited from the registrant and not credited to any address, permanently reducing the circulating supply.
 
+**Token creation burn:** Each NT-1 token creation burns 10 NORN (`TOKEN_CREATION_FEE`). This creates a meaningful cost for token issuance and further reduces the circulating supply.
+
 **Future: Fee burning.** An EIP-1559-style base fee burning mechanism is planned, where a portion of commitment fees is burned rather than distributed to validators.
 
 ### 30.5 Network Identity
@@ -2568,7 +2785,7 @@ This section documents all material changes from the v1.0 specification to v2.0.
 
 | Feature | Description |
 |---------|-------------|
-| Wallet CLI | 24 subcommands integrated in `norn wallet` |
+| Wallet CLI | 32 subcommands integrated in `norn wallet` |
 | NornNames | Native name registry with 1 NORN burn fee, name resolution in transfers |
 | State Sync | `StateRequest`/`StateResponse` messages for initial node sync |
 | Relay Handle | Outbound relay channel for broadcasting knots, blocks, and commitments to P2P peers |
@@ -2608,9 +2825,31 @@ Protocol version 0.6.0 introduced a rolling upgrade system to enable zero-downti
 | `BlockTransfer` records | Already present in v2.0, included in `WeaveBlock.transfers` for balance sync |
 | `NornMessage::NameRegistration` | Moved from separate gossip to formal message variant (discriminant 13) |
 | `NornMessage::UpgradeNotice` | New message variant (discriminant 14) |
-| Protocol constants | `PROTOCOL_VERSION=4`, `ENVELOPE_VERSION=1`, `LEGACY_PROTOCOL_VERSION=3` |
+| Protocol constants | `PROTOCOL_VERSION=5`, `ENVELOPE_VERSION=1`, `LEGACY_PROTOCOL_VERSION=3` |
 
 These features enable the network to perform rolling upgrades without forking or downtime, as nodes can run mixed protocol versions during the upgrade window.
+
+### 32.7 v0.8.0 Updates (NT-1 Fungible Token Standard)
+
+Protocol version 0.8.0 introduced the NT-1 fungible token standard for protocol-level custom tokens:
+
+| Feature | Description |
+|---------|-------------|
+| `TokenDefinition` type | Consensus-level token creation with name, symbol, decimals, max/initial supply |
+| `TokenMint` type | Creator-only mint operations with supply cap enforcement |
+| `TokenBurn` type | Holder-initiated token burning |
+| Token ID | Deterministic `BLAKE3(creator ++ name ++ symbol ++ decimals ++ max_supply ++ timestamp)` |
+| Symbol uniqueness | Enforced at consensus level via `known_symbols: HashSet<String>` |
+| Token creation fee | 10 NORN burned per token creation (`TOKEN_CREATION_FEE`) |
+| `NornMessage::TokenDefinition` | New message variant (discriminant 15) |
+| `NornMessage::TokenMint` | New message variant (discriminant 16) |
+| `NornMessage::TokenBurn` | New message variant (discriminant 17) |
+| `WeaveBlock` fields | 6 new fields: `token_definitions`, `token_definitions_root`, `token_mints`, `token_mints_root`, `token_burns`, `token_burns_root` |
+| RPC endpoints | 6 new: `norn_createToken`, `norn_mintToken`, `norn_burnToken`, `norn_getTokenInfo`, `norn_getTokenBySymbol`, `norn_listTokens` |
+| Wallet commands | 5 new: `create-token`, `mint-token`, `burn-token`, `token-info`, `list-tokens` |
+| Protocol constants | `PROTOCOL_VERSION=5`, `SCHEMA_VERSION=4` |
+| Validation module | `norn-weave/src/token.rs` — signature verification, supply cap checks, symbol uniqueness |
+| State persistence | `state:token:` key prefix in state store |
 
 ---
 

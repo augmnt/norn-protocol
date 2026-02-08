@@ -332,6 +332,18 @@ NornNames is Norn's native name system, allowing users to register human-readabl
 
 This provides a user-friendly identity layer without requiring an external name service or smart contract.
 
+### 5.5a NT-1 Fungible Token Standard
+
+Norn supports protocol-level custom fungible tokens via the **NT-1** standard. Anyone can create a new token by submitting a `TokenDefinition` to the network and paying a 10 NORN creation fee (burned). Token operations are consensus-level:
+
+- **Create:** Define a token with name, symbol, decimals, max supply, and optional initial supply. The token ID is deterministically computed as `BLAKE3(creator || name || symbol || decimals || max_supply || timestamp)`. Symbol uniqueness is enforced at the consensus level.
+- **Mint:** The token creator (and only the creator) can mint new tokens to any address, up to the declared max supply (0 = unlimited).
+- **Burn:** Any token holder can burn their own tokens, permanently reducing the token's circulating supply.
+
+Token definitions, mints, and burns are included in `WeaveBlock`s with dedicated Merkle roots, propagated via P2P gossip, and applied to state on every node. This ensures token state is globally consistent without relying on smart contracts.
+
+The wallet CLI supports token operations: `create-token`, `mint-token`, `burn-token`, `token-info`, `list-tokens`. Tokens can be referenced by symbol (e.g., `WBTC`) or hex token ID. Custom tokens work seamlessly with existing transfer commands via the `--token` flag.
+
 ### 5.6 Supply Distribution and Vesting
 
 NORN has a fixed maximum supply of **1,000,000,000 NORN** (1 billion), enforced at the protocol level. The `credit()` function in the state manager rejects any operation that would push the total circulating supply above this cap. There is no inflation mechanism -- all NORN in existence is either allocated at genesis or earned from existing fee pools.
@@ -350,10 +362,11 @@ The genesis allocation distributes the supply across seven categories, each desi
 
 **Vesting rationale.** The founder allocation's 4-year linear vesting with a 1-year cliff ensures sustained alignment with the protocol's long-term success. No founder tokens are accessible in the first year, and thereafter tokens unlock gradually over the remaining three years. The ecosystem fund releases over five years, providing sustained resources for developer grants, partnerships, and infrastructure without creating sell pressure.
 
-**Deflationary mechanics.** Two mechanisms reduce the circulating supply over time:
+**Deflationary mechanics.** Three mechanisms reduce the circulating supply over time:
 
 1. **NornNames burn.** Each name registration permanently burns 1 NORN, creating deflationary pressure proportional to network adoption.
-2. **Future fee burning.** A planned EIP-1559-style mechanism will burn a portion of commitment fees, further reducing supply as network usage grows.
+2. **Token creation burn.** Each NT-1 token creation permanently burns 10 NORN, creating a meaningful cost for token issuance and further reducing supply.
+3. **Future fee burning.** A planned EIP-1559-style mechanism will burn a portion of commitment fees, further reducing supply as network usage grows.
 
 Because there is no block reward inflation and the supply cap is enforced at the protocol level, NORN's supply can only decrease over time through burn mechanisms. This makes the token model structurally deflationary.
 

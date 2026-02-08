@@ -1,12 +1,12 @@
-<p align="center">
-  <img src="assets/banner.png" alt="NORN Protocol" width="650">
-</p>
+# Norn
 
-<p align="center">
+**Your thread. Your fate. The chain just watches.**
+
+<p>
   <a href="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml"><img src="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-stable-orange.svg" alt="Rust"></a>
-  <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.7.0"><img src="https://img.shields.io/badge/version-0.7.0-green.svg" alt="Version"></a>
+  <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.8.0"><img src="https://img.shields.io/badge/version-0.8.0-green.svg" alt="Version"></a>
 </p>
 
 ---
@@ -122,7 +122,7 @@ norn run --network mainnet --genesis genesis/mainnet.json
 | `norn-weave` | Anchor chain (block production, commitment processing, HotStuff consensus, dynamic fees, fraud proof verification, staking) |
 | `norn-loom` | Smart contract runtime (Wasm runtime, host functions, gas metering, Loom lifecycle, dispute resolution) |
 | `norn-spindle` | Watchtower service (Weave monitoring, fraud proof construction, rate limiting, service orchestration) |
-| `norn-node` | Full node binary (CLI, node configuration, genesis handling, JSON-RPC server with API key auth, wallet CLI, NornNames, Prometheus metrics endpoint, fraud proof submission, spindle watchtower integration) |
+| `norn-node` | Full node binary (CLI, node configuration, genesis handling, JSON-RPC server with API key auth, wallet CLI, NornNames, NT-1 tokens, Prometheus metrics endpoint, fraud proof submission, spindle watchtower integration) |
 
 ## Getting Started
 
@@ -157,7 +157,7 @@ cargo run --example demo -p norn-node
 
 ## Wallet CLI
 
-The `norn` binary includes a full-featured wallet CLI with 24 subcommands for key management, transfers, NornNames, Thread inspection, and encrypted keystore backup.
+The `norn` binary includes a full-featured wallet CLI with 32 subcommands for key management, transfers, NornNames, custom tokens, Thread inspection, and encrypted keystore backup.
 
 ```bash
 # Create a new wallet
@@ -198,6 +198,25 @@ norn wallet validators
 
 # Active wallet dashboard
 norn wallet whoami
+```
+
+### Token Management
+
+```bash
+# Create a custom fungible token (costs 10 NORN, burned)
+norn wallet create-token --name "My Token" --symbol MTK --decimals 8 --max-supply 1000000 --initial-supply 1000
+
+# Mint tokens (creator only)
+norn wallet mint-token --token MTK --to 0x<ADDRESS> --amount 500
+
+# Burn tokens (any holder)
+norn wallet burn-token --token MTK --amount 100
+
+# Query token metadata
+norn wallet token-info MTK
+
+# List all registered tokens
+norn wallet list-tokens
 ```
 
 Wallets are stored in `~/.norn/wallets/` with Argon2id key derivation and XChaCha20-Poly1305 authenticated encryption.
@@ -244,17 +263,67 @@ norn wallet send --to alice --amount 10
 
 The wallet resolves `alice` to the owner's address via `norn_resolveName` before constructing the transfer.
 
+For full technical details, see the [Protocol Specification, Section 28](docs/Norn_Protocol_Specification_v2.0.md#28-nornnames-name-registry).
+
+## NT-1 Fungible Token Standard
+
+Norn supports **protocol-level custom fungible tokens** via the NT-1 standard. Tokens are consensus-level: definitions, mints, and burns are included in `WeaveBlock`s and propagate to all nodes via P2P gossip.
+
+### Token Operations
+
+| Operation | Who | Fee | Effect |
+|-----------|-----|-----|--------|
+| **Create** | Anyone | 10 NORN (burned) | Registers a new token with metadata; optionally mints initial supply to creator |
+| **Mint** | Token creator only | None | Creates new tokens, credits to recipient |
+| **Burn** | Any holder | None | Destroys tokens from burner's balance |
+
+**Token ID** is deterministic: `BLAKE3(creator ++ name ++ symbol ++ decimals ++ max_supply ++ timestamp)`.
+
+**Symbol uniqueness** is enforced at the consensus level -- no two tokens can share the same ticker.
+
+### Token Rules
+
+| Rule | Constraint |
+|------|-----------|
+| Name length | 1--64 printable ASCII characters |
+| Symbol length | 1--12 uppercase alphanumeric characters |
+| Decimals | 0--18 |
+| Max supply | 0 = unlimited, otherwise enforced on mint |
+
+### Wallet CLI Usage
+
+```bash
+# Create a token
+norn wallet create-token --name "Wrapped Bitcoin" --symbol WBTC --decimals 8 --max-supply 21000000 --initial-supply 0
+
+# Mint tokens to a recipient (creator only)
+norn wallet mint-token --token WBTC --to 0x<ADDRESS> --amount 1000
+
+# Transfer custom tokens
+norn wallet transfer --to 0x<ADDRESS> --amount 100 --token WBTC
+
+# Burn tokens from your own balance
+norn wallet burn-token --token WBTC --amount 50
+
+# Query token info (by symbol or hex token ID)
+norn wallet token-info WBTC
+
+# List all tokens on the network
+norn wallet list-tokens
+```
+
 ### RPC Methods
 
 | Method | Parameters | Returns | Auth |
 |--------|-----------|---------|------|
-| `norn_registerName` | `name`, `owner_hex`, `knot_hex` (hex-encoded borsh `NameRegistration`) | `SubmitResult` | Yes |
-| `norn_resolveName` | `name` | `Option<NameResolution>` | No |
-| `norn_listNames` | `address` (hex) | `Vec<NameInfo>` | No |
+| `norn_createToken` | `hex` (hex-encoded borsh `TokenDefinition`) | `SubmitResult` | Yes |
+| `norn_mintToken` | `hex` (hex-encoded borsh `TokenMint`) | `SubmitResult` | Yes |
+| `norn_burnToken` | `hex` (hex-encoded borsh `TokenBurn`) | `SubmitResult` | Yes |
+| `norn_getTokenInfo` | `token_id` (hex) | `Option<TokenInfo>` | No |
+| `norn_getTokenBySymbol` | `symbol` | `Option<TokenInfo>` | No |
+| `norn_listTokens` | `limit`, `offset` | `Vec<TokenInfo>` | No |
 
-The `knot_hex` parameter carries a wallet-signed `NameRegistration` object (hex-encoded borsh). The registration is added to the WeaveEngine mempool and broadcast via P2P, then included in the next produced block.
-
-For full technical details, see the [Protocol Specification, Section 28](docs/Norn_Protocol_Specification_v2.0.md#28-nornnames-name-registry).
+For full technical details, see the [Protocol Specification, Section 28b](docs/Norn_Protocol_Specification_v2.0.md#28b-nt-1-fungible-token-standard).
 
 ## Token Economics
 
@@ -270,7 +339,7 @@ NORN has a fixed maximum supply of **1,000,000,000 NORN** (1 billion), enforced 
 | Initial Liquidity | 5% | 50,000,000 | Available at launch |
 | Testnet Participants | 5% | 50,000,000 | Airdrop at mainnet launch |
 
-**Deflationary mechanics:** NornNames registration burns 1 NORN per name. Future fee burning (EIP-1559-style) planned.
+**Deflationary mechanics:** NornNames registration burns 1 NORN per name. NT-1 token creation burns 10 NORN per token. Future fee burning (EIP-1559-style) planned.
 
 For full details, see the [Protocol Specification](docs/Norn_Protocol_Specification_v2.0.md).
 
