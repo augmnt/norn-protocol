@@ -130,15 +130,12 @@ pub async fn run(
         memo: memo_bytes,
     });
 
-    // Build knot with minimal states (the node validates actual state)
+    // Build knot with sender as sole participant (transfers are unilateral).
     let sender_state = norn_types::thread::ThreadState::new();
-    let receiver_state = norn_types::thread::ThreadState::new();
 
     let knot = norn_thread::knot::KnotBuilder::transfer(now)
         .add_before_state(sender_addr, keypair.public_key(), 0, &sender_state)
-        .add_before_state(to_addr, [0u8; 32], 0, &receiver_state)
         .add_after_state(sender_addr, keypair.public_key(), 1, &sender_state)
-        .add_after_state(to_addr, [0u8; 32], 1, &receiver_state)
         .with_payload(payload)
         .build()?;
 
