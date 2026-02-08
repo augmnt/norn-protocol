@@ -240,6 +240,65 @@ impl LoomManager {
     pub fn get_state(&self, loom_id: &LoomId) -> Option<&LoomState> {
         self.states.get(loom_id)
     }
+
+    /// Restore a previously persisted loom (used during state rebuild).
+    pub fn restore_loom(
+        &mut self,
+        loom_id: LoomId,
+        loom: Loom,
+        bytecode: LoomBytecode,
+        state_data: HashMap<Vec<u8>, Vec<u8>>,
+    ) {
+        let mut state = LoomState::new(loom_id);
+        state.data = state_data;
+        self.looms.insert(loom_id, loom);
+        self.bytecodes.insert(loom_id, bytecode);
+        self.states.insert(loom_id, state);
+    }
+
+    /// List all deployed looms.
+    pub fn list_looms(&self) -> Vec<(&LoomId, &Loom)> {
+        self.looms.iter().collect()
+    }
+
+    /// Query a loom contract (read-only, no state changes).
+    pub fn query(
+        &self,
+        loom_id: &LoomId,
+        input: &[u8],
+        sender: Address,
+        block_height: u64,
+        timestamp: u64,
+    ) -> Result<Vec<u8>, LoomError> {
+        // Validate loom exists.
+        let _loom = self
+            .looms
+            .get(loom_id)
+            .ok_or(LoomError::LoomNotFound { loom_id: *loom_id })?;
+
+        // Get current state.
+        let state = self
+            .states
+            .get(loom_id)
+            .ok_or(LoomError::LoomNotFound { loom_id: *loom_id })?;
+
+        // Set up host state with the loom's current data.
+        let mut host_state = LoomHostState::new(sender, block_height, timestamp, DEFAULT_GAS_LIMIT);
+        host_state.state = state.data.clone();
+
+        // Get bytecode.
+        let bytecode_entry = self
+            .bytecodes
+            .get(loom_id)
+            .ok_or(LoomError::LoomNotFound { loom_id: *loom_id })?;
+
+        // Instantiate and execute (read-only — state is discarded).
+        let runtime = LoomRuntime::new()?;
+        let mut instance = runtime.instantiate(&bytecode_entry.bytecode, host_state)?;
+        let outputs = instance.call_execute(input)?;
+
+        Ok(outputs)
+    }
 }
 
 impl Default for LoomManager {

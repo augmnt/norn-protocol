@@ -375,4 +375,39 @@ pub enum WalletCommand {
         #[arg(long)]
         rpc_url: Option<String>,
     },
+    /// Deploy a loom (smart contract)
+    DeployLoom {
+        /// Loom name
+        #[arg(long)]
+        name: String,
+        /// Skip confirmation prompt
+        #[arg(long)]
+        yes: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
+    /// Get information about a deployed loom
+    LoomInfo {
+        /// Loom ID (hex)
+        loom_id: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
+    /// List all deployed looms
+    ListLooms {
+        /// Maximum looms to show
+        #[arg(long, default_value = "50")]
+        limit: u64,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
 }

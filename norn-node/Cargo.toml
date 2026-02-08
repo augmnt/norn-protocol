@@ -15,14 +15,14 @@ name = "norn"
 path = "src/main.rs"
 
 [dependencies]
-norn-types = { path = "../norn-types", version = "0.8.3" }
-norn-crypto = { path = "../norn-crypto", version = "0.8.3" }
-norn-thread = { path = "../norn-thread", version = "0.8.3" }
-norn-storage = { path = "../norn-storage", version = "0.8.3" }
-norn-relay = { path = "../norn-relay", version = "0.8.3" }
-norn-weave = { path = "../norn-weave", version = "0.8.3" }
-norn-loom = { path = "../norn-loom", version = "0.8.3" }
-norn-spindle = { path = "../norn-spindle", version = "0.8.3" }
+norn-types = { path = "../norn-types", version = "0.9.0" }
+norn-crypto = { path = "../norn-crypto", version = "0.9.0" }
+norn-thread = { path = "../norn-thread", version = "0.9.0" }
+norn-storage = { path = "../norn-storage", version = "0.9.0" }
+norn-relay = { path = "../norn-relay", version = "0.9.0" }
+norn-weave = { path = "../norn-weave", version = "0.9.0" }
+norn-loom = { path = "../norn-loom", version = "0.9.0" }
+norn-spindle = { path = "../norn-spindle", version = "0.9.0" }
 borsh = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

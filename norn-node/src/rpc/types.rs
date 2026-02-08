@@ -49,6 +49,9 @@ pub struct BlockInfo {
     /// Number of token burns in this block.
     #[serde(default)]
     pub token_burn_count: usize,
+    /// Number of loom deployments in this block.
+    #[serde(default)]
+    pub loom_deploy_count: usize,
 }
 
 /// Information about the current weave state.
@@ -229,6 +232,21 @@ pub struct TokenInfo {
     pub created_at: u64,
 }
 
+/// Information about a deployed loom (smart contract).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoomInfo {
+    /// Loom ID as hex string.
+    pub loom_id: String,
+    /// Human-readable name.
+    pub name: String,
+    /// Operator public key as hex string.
+    pub operator: String,
+    /// Whether the loom is active.
+    pub active: bool,
+    /// Deployment timestamp.
+    pub deployed_at: u64,
+}
+
 /// Information about a name owned by an address.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NameInfo {
@@ -259,6 +277,7 @@ mod tests {
             token_definition_count: 1,
             token_mint_count: 2,
             token_burn_count: 0,
+            loom_deploy_count: 4,
         };
         let json = serde_json::to_string(&info).unwrap();
         let deserialized: BlockInfo = serde_json::from_str(&json).unwrap();
@@ -268,6 +287,7 @@ mod tests {
         assert_eq!(deserialized.token_definition_count, 1);
         assert_eq!(deserialized.token_mint_count, 2);
         assert_eq!(deserialized.token_burn_count, 0);
+        assert_eq!(deserialized.loom_deploy_count, 4);
     }
 
     #[test]

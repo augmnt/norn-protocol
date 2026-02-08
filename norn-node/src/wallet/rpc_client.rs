@@ -4,8 +4,8 @@ use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use jsonrpsee::rpc_params;
 
 use crate::rpc::types::{
-    BlockInfo, FeeEstimateInfo, HealthInfo, NameInfo, NameResolution, SubmitResult, TokenInfo,
-    TransactionHistoryEntry, ValidatorSetInfo, WeaveStateInfo,
+    BlockInfo, FeeEstimateInfo, HealthInfo, LoomInfo, NameInfo, NameResolution, SubmitResult,
+    TokenInfo, TransactionHistoryEntry, ValidatorSetInfo, WeaveStateInfo,
 };
 
 use super::error::WalletError;
@@ -353,6 +353,42 @@ impl RpcClient {
         let result: Vec<TokenInfo> = self
             .client
             .request("norn_listTokens", rpc_params![limit, offset])
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Deploy a loom (smart contract).
+    pub async fn deploy_loom(&self, hex_data: &str) -> Result<SubmitResult, WalletError> {
+        let pb = Self::spinner("Deploying loom...");
+        let result: SubmitResult = self
+            .client
+            .request("norn_deployLoom", rpc_params![hex_data])
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Get loom info by ID.
+    pub async fn get_loom_info(&self, loom_id_hex: &str) -> Result<Option<LoomInfo>, WalletError> {
+        let pb = Self::spinner("Fetching loom info...");
+        let result: Option<LoomInfo> = self
+            .client
+            .request("norn_getLoomInfo", rpc_params![loom_id_hex])
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// List all deployed looms with pagination.
+    pub async fn list_looms(&self, limit: u64, offset: u64) -> Result<Vec<LoomInfo>, WalletError> {
+        let pb = Self::spinner("Fetching looms...");
+        let result: Vec<LoomInfo> = self
+            .client
+            .request("norn_listLooms", rpc_params![limit, offset])
             .await
             .map_err(|e| Self::map_rpc_error(&e))?;
         pb.finish_and_clear();

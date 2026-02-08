@@ -147,6 +147,8 @@ mod tests {
             token_mints_root: [0u8; 32],
             token_burns: vec![],
             token_burns_root: [0u8; 32],
+            loom_deploys: vec![],
+            loom_deploys_root: [0u8; 32],
             timestamp: 1000 + height,
             proposer: [4u8; 32],
             validator_signatures: vec![],

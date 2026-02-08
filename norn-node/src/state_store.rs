@@ -4,13 +4,11 @@ use borsh::BorshDeserialize;
 
 use norn_storage::error::StorageError;
 use norn_storage::traits::KvStore;
-use norn_types::primitives::Address;
+use norn_types::primitives::{Address, LoomId, TokenId};
 use norn_types::thread::ThreadState;
 use norn_types::weave::WeaveBlock;
 
-use norn_types::primitives::TokenId;
-
-use crate::state_manager::{NameRecord, ThreadMeta, TokenRecord, TransferRecord};
+use crate::state_manager::{LoomRecord, NameRecord, ThreadMeta, TokenRecord, TransferRecord};
 
 // Key prefixes for each data bucket.
 const THREAD_STATE_PREFIX: &[u8] = b"state:thread:";
@@ -21,11 +19,16 @@ const NAME_PREFIX: &[u8] = b"state:name:";
 const ADDR_NAMES_PREFIX: &[u8] = b"state:addr_names:";
 const BLOCK_PREFIX: &[u8] = b"state:block:";
 const TOKEN_PREFIX: &[u8] = b"state:token:";
+const LOOM_PREFIX: &[u8] = b"state:loom:";
+#[allow(dead_code)] // Phase 2: loom execution persistence
+const LOOM_BYTECODE_PREFIX: &[u8] = b"state:loom_bytecode:";
+#[allow(dead_code)] // Phase 2: loom execution persistence
+const LOOM_STATE_PREFIX: &[u8] = b"state:loom_state:";
 const SCHEMA_VERSION_KEY: &[u8] = b"meta:schema_version";
 
 /// Current schema version. Bump this whenever a breaking change is made to any
 /// borsh-serialized type persisted through StateStore.
-pub const SCHEMA_VERSION: u32 = 4;
+pub const SCHEMA_VERSION: u32 = 5;
 
 /// Persistent store for StateManager data backed by a KvStore.
 pub struct StateStore {
@@ -285,6 +288,59 @@ impl StateStore {
         Ok(results)
     }
 
+    // ── Looms ───────────────────────────────────────────────────────────
+
+    pub fn save_loom(&self, loom_id: &LoomId, record: &LoomRecord) -> Result<(), StorageError> {
+        let key = self.loom_key(loom_id);
+        let value = borsh::to_vec(record).map_err(|e| StorageError::SerializationError {
+            reason: e.to_string(),
+        })?;
+        self.store.put(&key, &value)
+    }
+
+    #[allow(dead_code)] // Phase 2: loom execution persistence
+    pub fn save_loom_bytecode(
+        &self,
+        loom_id: &LoomId,
+        bytecode: &[u8],
+    ) -> Result<(), StorageError> {
+        let key = self.loom_bytecode_key(loom_id);
+        self.store.put(&key, bytecode)
+    }
+
+    #[allow(dead_code)] // Phase 2: loom execution persistence
+    pub fn save_loom_state(&self, loom_id: &LoomId, state_data: &[u8]) -> Result<(), StorageError> {
+        let key = self.loom_state_key(loom_id);
+        self.store.put(&key, state_data)
+    }
+
+    #[allow(dead_code)] // Phase 2: loom execution persistence
+    pub fn load_loom_bytecode(&self, loom_id: &LoomId) -> Result<Option<Vec<u8>>, StorageError> {
+        let key = self.loom_bytecode_key(loom_id);
+        self.store.get(&key)
+    }
+
+    #[allow(dead_code)] // Phase 2: loom execution persistence
+    pub fn load_loom_state(&self, loom_id: &LoomId) -> Result<Option<Vec<u8>>, StorageError> {
+        let key = self.loom_state_key(loom_id);
+        self.store.get(&key)
+    }
+
+    pub fn load_all_looms(&self) -> Result<Vec<(LoomId, LoomRecord)>, StorageError> {
+        let pairs = self.store.prefix_scan(LOOM_PREFIX)?;
+        let mut results = Vec::with_capacity(pairs.len());
+        for (key, value) in pairs {
+            let loom_id = self.loom_id_from_key(&key, LOOM_PREFIX.len());
+            let record = LoomRecord::try_from_slice(&value).map_err(|e| {
+                StorageError::DeserializationError {
+                    reason: e.to_string(),
+                }
+            })?;
+            results.push((loom_id, record));
+        }
+        Ok(results)
+    }
+
     // ── Rebuild ─────────────────────────────────────────────────────────
 
     /// Rebuild a full StateManager from persisted data.
@@ -296,12 +352,14 @@ impl StateStore {
         let address_names = self.load_all_address_names()?;
         let blocks = self.load_all_blocks()?;
         let tokens = self.load_all_tokens()?;
+        let looms = self.load_all_looms()?;
 
         let state_count = thread_states.len();
         let transfer_count = transfers.len();
         let name_count = names.len();
         let block_count = blocks.len();
         let token_count = tokens.len();
+        let loom_count = looms.len();
 
         let mut sm = crate::state_manager::StateManager::from_parts(
             thread_states.into_iter().collect(),
@@ -317,11 +375,17 @@ impl StateStore {
             sm.seed_token(token_id, record);
         }
 
+        // Seed loom registry from persisted data.
+        for (loom_id, record) in looms {
+            sm.seed_loom(loom_id, record);
+        }
+
         if state_count > 0
             || transfer_count > 0
             || name_count > 0
             || block_count > 0
             || token_count > 0
+            || loom_count > 0
         {
             tracing::info!(
                 threads = state_count,
@@ -329,6 +393,7 @@ impl StateStore {
                 names = name_count,
                 blocks = block_count,
                 tokens = token_count,
+                looms = loom_count,
                 "state rebuilt from disk"
             );
         }
@@ -388,6 +453,38 @@ impl StateStore {
     }
 
     fn token_id_from_key(&self, key: &[u8], prefix_len: usize) -> TokenId {
+        let mut id = [0u8; 32];
+        let data = &key[prefix_len..];
+        if data.len() >= 32 {
+            id.copy_from_slice(&data[..32]);
+        }
+        id
+    }
+
+    fn loom_key(&self, loom_id: &LoomId) -> Vec<u8> {
+        let mut key = Vec::with_capacity(LOOM_PREFIX.len() + 32);
+        key.extend_from_slice(LOOM_PREFIX);
+        key.extend_from_slice(loom_id);
+        key
+    }
+
+    #[allow(dead_code)] // Phase 2: loom execution persistence
+    fn loom_bytecode_key(&self, loom_id: &LoomId) -> Vec<u8> {
+        let mut key = Vec::with_capacity(LOOM_BYTECODE_PREFIX.len() + 32);
+        key.extend_from_slice(LOOM_BYTECODE_PREFIX);
+        key.extend_from_slice(loom_id);
+        key
+    }
+
+    #[allow(dead_code)] // Phase 2: loom execution persistence
+    fn loom_state_key(&self, loom_id: &LoomId) -> Vec<u8> {
+        let mut key = Vec::with_capacity(LOOM_STATE_PREFIX.len() + 32);
+        key.extend_from_slice(LOOM_STATE_PREFIX);
+        key.extend_from_slice(loom_id);
+        key
+    }
+
+    fn loom_id_from_key(&self, key: &[u8], prefix_len: usize) -> LoomId {
         let mut id = [0u8; 32];
         let data = &key[prefix_len..];
         if data.len() >= 32 {
@@ -540,6 +637,8 @@ mod tests {
             token_mints_root: [0u8; 32],
             token_burns: vec![],
             token_burns_root: [0u8; 32],
+            loom_deploys: vec![],
+            loom_deploys_root: [0u8; 32],
             timestamp: 1000,
             proposer: [0u8; 32],
             validator_signatures: vec![],

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::consensus::ConsensusMessage;
 use crate::fraud::FraudProofSubmission;
 use crate::knot::Knot;
+use crate::loom::{LoomRegistration, LoomStateTransition};
 use crate::primitives::*;
 use crate::weave::{
     CommitmentUpdate, NameRegistration, Registration, TokenBurn, TokenDefinition, TokenMint,
@@ -245,6 +246,10 @@ pub enum NornMessage {
     TokenMint(TokenMint),
     /// A token burn operation (NT-1 burn).
     TokenBurn(TokenBurn),
+    /// A loom deployment.
+    LoomDeploy(Box<LoomRegistration>),
+    /// A loom state transition (execution result).
+    LoomExecution(Box<LoomStateTransition>),
 }
 
 impl NornMessage {
@@ -270,6 +275,8 @@ impl NornMessage {
             NornMessage::TokenDefinition(_) => 15,
             NornMessage::TokenMint(_) => 16,
             NornMessage::TokenBurn(_) => 17,
+            NornMessage::LoomDeploy(_) => 18,
+            NornMessage::LoomExecution(_) => 19,
         }
     }
 }

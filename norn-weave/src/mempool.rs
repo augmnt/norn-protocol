@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use norn_types::fraud::FraudProofSubmission;
+use norn_types::loom::LoomRegistration;
 use norn_types::primitives::ThreadId;
 use norn_types::weave::{
     BlockTransfer, CommitmentUpdate, LoomAnchor, NameRegistration, Registration, TokenBurn,
@@ -21,6 +22,7 @@ pub struct BlockContents {
     pub token_definitions: Vec<TokenDefinition>,
     pub token_mints: Vec<TokenMint>,
     pub token_burns: Vec<TokenBurn>,
+    pub loom_deploys: Vec<LoomRegistration>,
 }
 
 /// Transaction mempool for pending weave transactions.
@@ -43,6 +45,8 @@ pub struct Mempool {
     token_mints: Vec<TokenMint>,
     /// Pending token burns.
     token_burns: Vec<TokenBurn>,
+    /// Pending loom deployments.
+    loom_deploys: Vec<LoomRegistration>,
     /// Maximum total number of items in the mempool.
     max_size: usize,
 }
@@ -60,6 +64,7 @@ impl Mempool {
             token_definitions: Vec::new(),
             token_mints: Vec::new(),
             token_burns: Vec::new(),
+            loom_deploys: Vec::new(),
             max_size,
         }
     }
@@ -75,6 +80,7 @@ impl Mempool {
             + self.token_definitions.len()
             + self.token_mints.len()
             + self.token_burns.len()
+            + self.loom_deploys.len()
     }
 
     /// Add a commitment update (deduplicates by thread_id; latest wins).
@@ -159,6 +165,15 @@ impl Mempool {
         Ok(())
     }
 
+    /// Add a loom deployment for block inclusion.
+    pub fn add_loom_deploy(&mut self, ld: LoomRegistration) -> Result<(), WeaveError> {
+        if self.total_size() >= self.max_size {
+            return Err(WeaveError::MempoolFull);
+        }
+        self.loom_deploys.push(ld);
+        Ok(())
+    }
+
     /// Drain items from the mempool for block building.
     /// Takes up to `max_commitments` commitment updates, and all registrations,
     /// anchors, and fraud proofs.
@@ -187,6 +202,7 @@ impl Mempool {
         let token_definitions = std::mem::take(&mut self.token_definitions);
         let token_mints = std::mem::take(&mut self.token_mints);
         let token_burns = std::mem::take(&mut self.token_burns);
+        let loom_deploys = std::mem::take(&mut self.loom_deploys);
 
         BlockContents {
             commitments,
@@ -198,6 +214,7 @@ impl Mempool {
             token_definitions,
             token_mints,
             token_burns,
+            loom_deploys,
         }
     }
 

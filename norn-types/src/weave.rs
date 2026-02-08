@@ -2,6 +2,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
 use crate::fraud::FraudProofSubmission;
+use crate::loom::LoomRegistration;
 use crate::primitives::*;
 
 /// A commitment update submitted by a thread to the weave.
@@ -218,6 +219,10 @@ pub struct WeaveBlock {
     pub token_burns: Vec<TokenBurn>,
     /// Merkle root of all token burns in this block.
     pub token_burns_root: Hash,
+    /// Loom deployments included in this block.
+    pub loom_deploys: Vec<LoomRegistration>,
+    /// Merkle root of all loom deployments in this block.
+    pub loom_deploys_root: Hash,
     /// Block timestamp.
     pub timestamp: Timestamp,
     /// Block proposer's public key.

@@ -179,5 +179,18 @@ pub async fn run(command: WalletCommand) -> Result<(), WalletError> {
         WalletCommand::TokenBalances { json, rpc_url } => {
             commands::token_balances::run(json, rpc_url.as_deref()).await
         }
+        WalletCommand::DeployLoom { name, yes, rpc_url } => {
+            commands::deploy_loom::run(&name, yes, rpc_url.as_deref()).await
+        }
+        WalletCommand::LoomInfo {
+            loom_id,
+            json,
+            rpc_url,
+        } => commands::loom_info::run(&loom_id, json, rpc_url.as_deref()).await,
+        WalletCommand::ListLooms {
+            limit,
+            json,
+            rpc_url,
+        } => commands::list_looms::run(limit, json, rpc_url.as_deref()).await,
     }
 }

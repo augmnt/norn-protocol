@@ -11,6 +11,7 @@ pub mod error;
 pub mod fees;
 pub mod fraud;
 pub mod leader;
+pub mod loom;
 pub mod mempool;
 pub mod name;
 pub mod registration;

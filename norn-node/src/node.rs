@@ -282,6 +282,19 @@ impl Node {
             }
         }
 
+        // Seed WeaveEngine with persisted looms from StateManager.
+        {
+            let loom_ids: Vec<_> = sm.registered_looms().copied().collect();
+            if !loom_ids.is_empty() {
+                tracing::info!(
+                    looms = loom_ids.len(),
+                    "seeding WeaveEngine with persisted looms"
+                );
+                let mut engine = weave_engine.write().await;
+                engine.seed_known_looms(loom_ids);
+            }
+        }
+
         let state_manager = Arc::new(RwLock::new(sm));
 
         // Initialize the relay if networking is configured (before RPC, so handle is available).
@@ -564,6 +577,16 @@ impl Node {
                                     tracing::debug!("peer token burn failed: {}", e);
                                 }
                             }
+                            // Apply loom deploys from synced block.
+                            for ld in &block.loom_deploys {
+                                let loom_id = norn_types::loom::compute_loom_id(ld);
+                                sm.apply_peer_loom_deploy(
+                                    loom_id,
+                                    &ld.config.name,
+                                    ld.operator,
+                                    ld.timestamp,
+                                );
+                            }
                             for bt in &block.transfers {
                                 if !sm.has_transfer(&bt.knot_id) {
                                     sm.auto_register_if_needed(bt.from);
@@ -786,6 +809,16 @@ impl Node {
                                         tracing::debug!("peer token burn failed: {}", e);
                                     }
                                 }
+                                // Apply loom deploys from peer block.
+                                for ld in &block.loom_deploys {
+                                    let loom_id = norn_types::loom::compute_loom_id(ld);
+                                    sm.apply_peer_loom_deploy(
+                                        loom_id,
+                                        &ld.config.name,
+                                        ld.operator,
+                                        ld.timestamp,
+                                    );
+                                }
                                 for bt in &block.transfers {
                                     if !sm.has_transfer(&bt.knot_id) {
                                         sm.auto_register_if_needed(bt.from);
@@ -941,6 +974,16 @@ impl Node {
                                             tracing::debug!("peer token burn failed: {}", e);
                                         }
                                     }
+                                    // Apply loom deploys from synced block.
+                                    for ld in &block.loom_deploys {
+                                        let loom_id = norn_types::loom::compute_loom_id(ld);
+                                        sm.apply_peer_loom_deploy(
+                                            loom_id,
+                                            &ld.config.name,
+                                            ld.operator,
+                                            ld.timestamp,
+                                        );
+                                    }
                                     for bt in &block.transfers {
                                         if !sm.has_transfer(&bt.knot_id) {
                                             sm.auto_register_if_needed(bt.from);
@@ -1065,6 +1108,20 @@ impl Node {
                                             tracing::debug!("solo token burn skipped: {}", e);
                                         }
                                     }
+                                    // Apply loom deploys (solo — deduct deploy fee locally).
+                                    for ld in &block.loom_deploys {
+                                        let loom_id = norn_types::loom::compute_loom_id(ld);
+                                        let operator_addr = pubkey_to_address(&ld.operator);
+                                        if let Err(e) = sm.deploy_loom(
+                                            loom_id,
+                                            &ld.config.name,
+                                            ld.operator,
+                                            operator_addr,
+                                            ld.timestamp,
+                                        ) {
+                                            tracing::debug!("solo loom deploy skipped: {}", e);
+                                        }
+                                    }
                                     // Note: transfers are NOT re-applied here — they were
                                     // already applied by the KnotProposal handler above.
                                     // Deduct commitment fees from committers.
@@ -1112,6 +1169,7 @@ impl Node {
                                         token_definition_count: block.token_definitions.len(),
                                         token_mint_count: block.token_mints.len(),
                                         token_burn_count: block.token_burns.len(),
+                                        loom_deploy_count: block.loom_deploys.len(),
                                     };
                                     let _ = tx.send(info);
                                 }

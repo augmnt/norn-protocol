@@ -4,8 +4,9 @@ use borsh::{BorshDeserialize, BorshSerialize};
 
 use norn_types::constants::MAX_SUPPLY;
 use norn_types::error::NornError;
+use norn_types::loom::LOOM_DEPLOY_FEE;
 use norn_types::name::NAME_REGISTRATION_FEE;
-use norn_types::primitives::{Address, Amount, Hash, PublicKey, TokenId, NATIVE_TOKEN_ID};
+use norn_types::primitives::{Address, Amount, Hash, LoomId, PublicKey, TokenId, NATIVE_TOKEN_ID};
 use norn_types::thread::ThreadState;
 use norn_types::token::TOKEN_CREATION_FEE;
 use norn_types::weave::WeaveBlock;
@@ -31,6 +32,17 @@ pub struct TokenRecord {
     pub current_supply: Amount,
     pub creator: Address,
     pub created_at: u64,
+}
+
+/// A record of a deployed loom (smart contract).
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct LoomRecord {
+    pub name: String,
+    pub operator: PublicKey,
+    pub max_participants: usize,
+    pub min_participants: usize,
+    pub active: bool,
+    pub deployed_at: u64,
 }
 
 /// Metadata tracked per thread beyond its ThreadState.
@@ -82,6 +94,8 @@ pub struct StateManager {
     token_registry: HashMap<TokenId, TokenRecord>,
     /// Index from symbol to token_id for symbol-based lookups.
     symbol_index: HashMap<String, TokenId>,
+    /// Registry of deployed looms by loom_id.
+    loom_registry: HashMap<LoomId, LoomRecord>,
 }
 
 impl Default for StateManager {
@@ -104,6 +118,7 @@ impl StateManager {
             total_supply_cache: 0,
             token_registry: HashMap::new(),
             symbol_index: HashMap::new(),
+            loom_registry: HashMap::new(),
         }
     }
 
@@ -134,6 +149,7 @@ impl StateManager {
             total_supply_cache,
             token_registry: HashMap::new(),
             symbol_index: HashMap::new(),
+            loom_registry: HashMap::new(),
         }
     }
 
@@ -1147,6 +1163,96 @@ impl StateManager {
         self.symbol_index.insert(record.symbol.clone(), token_id);
         self.token_registry.insert(token_id, record);
     }
+
+    // ── Loom Operations ──────────────────────────────────────────────────
+
+    /// Deploy a loom (solo path — deducts fee).
+    pub fn deploy_loom(
+        &mut self,
+        loom_id: LoomId,
+        name: &str,
+        operator: PublicKey,
+        operator_address: Address,
+        timestamp: u64,
+    ) -> Result<(), NornError> {
+        // Deduct deploy fee from operator (warn but don't fail if insufficient).
+        self.debit_fee(operator_address, LOOM_DEPLOY_FEE);
+
+        let record = LoomRecord {
+            name: name.to_string(),
+            operator,
+            max_participants: 1000,
+            min_participants: 1,
+            active: true,
+            deployed_at: timestamp,
+        };
+
+        self.loom_registry.insert(loom_id, record.clone());
+
+        // Persist.
+        if let Some(ref store) = self.state_store {
+            if let Err(e) = store.save_loom(&loom_id, &record) {
+                tracing::warn!("failed to persist loom: {}", e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Apply a peer loom deploy (skips fee deduction).
+    pub fn apply_peer_loom_deploy(
+        &mut self,
+        loom_id: LoomId,
+        name: &str,
+        operator: PublicKey,
+        timestamp: u64,
+    ) {
+        if self.loom_registry.contains_key(&loom_id) {
+            tracing::debug!(
+                loom_id = %hex::encode(loom_id),
+                "skipping duplicate peer loom deploy"
+            );
+            return;
+        }
+
+        let record = LoomRecord {
+            name: name.to_string(),
+            operator,
+            max_participants: 1000,
+            min_participants: 1,
+            active: true,
+            deployed_at: timestamp,
+        };
+
+        self.loom_registry.insert(loom_id, record.clone());
+
+        // Persist.
+        if let Some(ref store) = self.state_store {
+            if let Err(e) = store.save_loom(&loom_id, &record) {
+                tracing::warn!("failed to persist peer loom: {}", e);
+            }
+        }
+    }
+
+    /// Get a loom record by ID.
+    pub fn get_loom(&self, loom_id: &LoomId) -> Option<&LoomRecord> {
+        self.loom_registry.get(loom_id)
+    }
+
+    /// List all looms (for RPC).
+    pub fn list_looms(&self) -> Vec<(&LoomId, &LoomRecord)> {
+        self.loom_registry.iter().collect()
+    }
+
+    /// Iterate over registered looms for WeaveEngine seeding.
+    pub fn registered_looms(&self) -> impl Iterator<Item = &LoomId> {
+        self.loom_registry.keys()
+    }
+
+    /// Seed a loom into the registry (used during state rebuild).
+    pub fn seed_loom(&mut self, loom_id: LoomId, record: LoomRecord) {
+        self.loom_registry.insert(loom_id, record);
+    }
 }
 
 #[cfg(test)]
@@ -1299,6 +1405,8 @@ mod tests {
             token_mints_root: [0u8; 32],
             token_burns: vec![],
             token_burns_root: [0u8; 32],
+            loom_deploys: vec![],
+            loom_deploys_root: [0u8; 32],
             timestamp: 1000,
             proposer: [0u8; 32],
             validator_signatures: vec![],

@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use norn_crypto::keys::Keypair;
 use norn_crypto::merkle::SparseMerkleTree;
 use norn_types::constants::MAX_COMMITMENTS_PER_BLOCK;
+use norn_types::loom::LoomRegistration;
 use norn_types::network::NornMessage;
 use norn_types::primitives::*;
 use norn_types::weave::{
@@ -34,6 +35,8 @@ pub struct WeaveEngine {
     known_tokens: HashMap<TokenId, crate::token::TokenMeta>,
     /// Known token symbols for uniqueness enforcement.
     known_symbols: HashSet<String>,
+    /// Known loom IDs for duplicate detection.
+    known_looms: HashSet<LoomId>,
     /// Last committed block (for RPC queries).
     last_block: Option<WeaveBlock>,
     /// Current timestamp, set by the node before each tick.
@@ -60,6 +63,7 @@ impl WeaveEngine {
             known_names: HashSet::new(),
             known_tokens: HashMap::new(),
             known_symbols: HashSet::new(),
+            known_looms: HashSet::new(),
             last_block: None,
             current_timestamp: 0,
         }
@@ -121,6 +125,13 @@ impl WeaveEngine {
             NornMessage::TokenBurn(tb) => {
                 if crate::token::validate_token_burn(&tb, &self.known_tokens).is_ok() {
                     let _ = self.mempool.add_token_burn(tb);
+                }
+                vec![]
+            }
+
+            NornMessage::LoomDeploy(ld) => {
+                if crate::loom::validate_loom_registration(&ld, &self.known_looms).is_ok() {
+                    let _ = self.mempool.add_loom_deploy(*ld);
                 }
                 vec![]
             }
@@ -205,6 +216,13 @@ impl WeaveEngine {
                     }
                 }
 
+                // Reject block if any loom deploy is invalid.
+                for ld in &weave_block.loom_deploys {
+                    if crate::loom::validate_loom_registration(ld, &self.known_looms).is_err() {
+                        return vec![];
+                    }
+                }
+
                 // All content is valid — apply commitments.
                 for c in &weave_block.commitments {
                     let _ = commitment::apply_commitment(
@@ -261,6 +279,11 @@ impl WeaveEngine {
                     if let Some(meta) = self.known_tokens.get_mut(&tb.token_id) {
                         meta.current_supply = meta.current_supply.saturating_sub(tb.amount);
                     }
+                }
+                // Apply loom deployments.
+                for ld in &weave_block.loom_deploys {
+                    let loom_id = norn_types::loom::compute_loom_id(ld);
+                    self.known_looms.insert(loom_id);
                 }
                 // Update state.
                 self.weave_state.height = weave_block.height;
@@ -403,6 +426,11 @@ impl WeaveEngine {
                 meta.current_supply = meta.current_supply.saturating_sub(tb.amount);
             }
         }
+        // Apply loom deployments to state.
+        for ld in &weave_block.loom_deploys {
+            let loom_id = norn_types::loom::compute_loom_id(ld);
+            self.known_looms.insert(loom_id);
+        }
 
         // Update state.
         self.weave_state.height = weave_block.height;
@@ -521,6 +549,26 @@ impl WeaveEngine {
     ) {
         self.known_names.extend(names);
         self.known_threads.extend(threads);
+    }
+
+    /// Validate and add a loom deployment to the mempool.
+    pub fn add_loom_deploy(
+        &mut self,
+        ld: LoomRegistration,
+    ) -> Result<LoomId, crate::error::WeaveError> {
+        let loom_id = crate::loom::validate_loom_registration(&ld, &self.known_looms)?;
+        self.mempool.add_loom_deploy(ld)?;
+        Ok(loom_id)
+    }
+
+    /// Get the known looms set.
+    pub fn known_looms(&self) -> &HashSet<LoomId> {
+        &self.known_looms
+    }
+
+    /// Seed known looms from persisted state.
+    pub fn seed_known_looms(&mut self, looms: impl IntoIterator<Item = LoomId>) {
+        self.known_looms.extend(looms);
     }
 
     /// Seed known tokens from persisted state.

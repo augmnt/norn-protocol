@@ -36,6 +36,9 @@ pub enum WeaveError {
     #[error("invalid token burn: {reason}")]
     InvalidTokenBurn { reason: String },
 
+    #[error("invalid loom registration: {reason}")]
+    InvalidLoomRegistration { reason: String },
+
     #[error("consensus error: {reason}")]
     ConsensusError { reason: String },
 

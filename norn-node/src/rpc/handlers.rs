@@ -11,9 +11,9 @@ use norn_types::network::NornMessage;
 use norn_weave::engine::WeaveEngine;
 
 use super::types::{
-    BlockInfo, CommitmentProofInfo, FeeEstimateInfo, HealthInfo, NameInfo, NameResolution,
-    SubmitResult, ThreadInfo, ThreadStateInfo, TokenInfo, TransactionHistoryEntry, ValidatorInfo,
-    ValidatorSetInfo, WeaveStateInfo,
+    BlockInfo, CommitmentProofInfo, FeeEstimateInfo, HealthInfo, LoomInfo, NameInfo,
+    NameResolution, SubmitResult, ThreadInfo, ThreadStateInfo, TokenInfo, TransactionHistoryEntry,
+    ValidatorInfo, ValidatorSetInfo, WeaveStateInfo,
 };
 use crate::metrics::NodeMetrics;
 use crate::state_manager::StateManager;
@@ -184,6 +184,21 @@ pub trait NornRpc {
         limit: u64,
         offset: u64,
     ) -> Result<Vec<TokenInfo>, ErrorObjectOwned>;
+
+    /// Deploy a loom (hex-encoded borsh LoomRegistration).
+    #[method(name = "norn_deployLoom")]
+    async fn deploy_loom(&self, deploy_hex: String) -> Result<SubmitResult, ErrorObjectOwned>;
+
+    /// Get loom info by loom ID (hex).
+    #[method(name = "norn_getLoomInfo")]
+    async fn get_loom_info(
+        &self,
+        loom_id_hex: String,
+    ) -> Result<Option<LoomInfo>, ErrorObjectOwned>;
+
+    /// List all deployed looms with pagination.
+    #[method(name = "norn_listLooms")]
+    async fn list_looms(&self, limit: u64, offset: u64) -> Result<Vec<LoomInfo>, ErrorObjectOwned>;
 }
 
 /// Implementation of the NornRpc trait.
@@ -231,6 +246,22 @@ fn parse_token_hex(hex_str: &str) -> Result<[u8; 32], ErrorObjectOwned> {
     Ok(id)
 }
 
+/// Parse a hex-encoded loom ID into a [u8; 32].
+fn parse_loom_hex(hex_str: &str) -> Result<[u8; 32], ErrorObjectOwned> {
+    let bytes = hex::decode(hex_str)
+        .map_err(|e| ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>))?;
+    if bytes.len() != 32 {
+        return Err(ErrorObjectOwned::owned(
+            -32602,
+            format!("loom_id must be 32 bytes, got {}", bytes.len()),
+            None::<()>,
+        ));
+    }
+    let mut id = [0u8; 32];
+    id.copy_from_slice(&bytes);
+    Ok(id)
+}
+
 #[async_trait]
 impl NornRpcServer for NornRpcImpl {
     async fn get_block(&self, height: u64) -> Result<Option<BlockInfo>, ErrorObjectOwned> {
@@ -252,6 +283,7 @@ impl NornRpcServer for NornRpcImpl {
                 token_definition_count: block.token_definitions.len(),
                 token_mint_count: block.token_mints.len(),
                 token_burn_count: block.token_burns.len(),
+                loom_deploy_count: block.loom_deploys.len(),
             }));
         }
         drop(sm);
@@ -275,6 +307,7 @@ impl NornRpcServer for NornRpcImpl {
                 token_definition_count: 0,
                 token_mint_count: 0,
                 token_burn_count: 0,
+                loom_deploy_count: 0,
             }))
         } else {
             Ok(None)
@@ -300,6 +333,7 @@ impl NornRpcServer for NornRpcImpl {
                 token_definition_count: block.token_definitions.len(),
                 token_mint_count: block.token_mints.len(),
                 token_burn_count: block.token_burns.len(),
+                loom_deploy_count: block.loom_deploys.len(),
             }))
         } else {
             let state = engine.weave_state();
@@ -318,6 +352,7 @@ impl NornRpcServer for NornRpcImpl {
                 token_definition_count: 0,
                 token_mint_count: 0,
                 token_burn_count: 0,
+                loom_deploy_count: 0,
             }))
         }
     }
@@ -1209,6 +1244,85 @@ impl NornRpcServer for NornRpcImpl {
 
         Ok(result)
     }
+
+    async fn deploy_loom(&self, deploy_hex: String) -> Result<SubmitResult, ErrorObjectOwned> {
+        let bytes = hex::decode(&deploy_hex).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>)
+        })?;
+
+        let loom_reg: norn_types::loom::LoomRegistration =
+            borsh::from_slice(&bytes).map_err(|e| {
+                ErrorObjectOwned::owned(
+                    -32602,
+                    format!("invalid loom registration: {}", e),
+                    None::<()>,
+                )
+            })?;
+
+        // Add to WeaveEngine mempool (validates signature, config, duplicates).
+        let mut engine = self.weave_engine.write().await;
+        match engine.add_loom_deploy(loom_reg.clone()) {
+            Ok(loom_id) => {
+                // Broadcast to P2P network.
+                if let Some(ref handle) = self.relay_handle {
+                    let h = handle.clone();
+                    let msg = NornMessage::LoomDeploy(Box::new(loom_reg));
+                    tokio::spawn(async move {
+                        let _ = h.broadcast(msg).await;
+                    });
+                }
+                Ok(SubmitResult {
+                    success: true,
+                    reason: Some(format!(
+                        "loom deployed (id: {}, will be included in next block)",
+                        hex::encode(loom_id)
+                    )),
+                })
+            }
+            Err(e) => Ok(SubmitResult {
+                success: false,
+                reason: Some(e.to_string()),
+            }),
+        }
+    }
+
+    async fn get_loom_info(
+        &self,
+        loom_id_hex: String,
+    ) -> Result<Option<LoomInfo>, ErrorObjectOwned> {
+        let loom_id = parse_loom_hex(&loom_id_hex)?;
+        let sm = self.state_manager.read().await;
+        Ok(sm.get_loom(&loom_id).map(|record| LoomInfo {
+            loom_id: loom_id_hex,
+            name: record.name.clone(),
+            operator: hex::encode(record.operator),
+            active: record.active,
+            deployed_at: record.deployed_at,
+        }))
+    }
+
+    async fn list_looms(&self, limit: u64, offset: u64) -> Result<Vec<LoomInfo>, ErrorObjectOwned> {
+        let limit = if limit == 0 { 50 } else { limit.min(200) } as usize;
+        let offset = offset as usize;
+
+        let sm = self.state_manager.read().await;
+        let looms = sm.list_looms();
+
+        let result = looms
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .map(|(loom_id, record)| LoomInfo {
+                loom_id: hex::encode(loom_id),
+                name: record.name.clone(),
+                operator: hex::encode(record.operator),
+                active: record.active,
+                deployed_at: record.deployed_at,
+            })
+            .collect();
+
+        Ok(result)
+    }
 }
 
 #[cfg(test)]
@@ -1234,6 +1348,7 @@ mod tests {
             token_definition_count: 0,
             token_mint_count: 0,
             token_burn_count: 0,
+            loom_deploy_count: 0,
         };
     }
 }

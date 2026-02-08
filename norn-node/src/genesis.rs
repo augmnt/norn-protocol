@@ -32,6 +32,8 @@ pub fn create_genesis_block(config: &GenesisConfig) -> Result<(WeaveBlock, Weave
         token_mints_root: [0u8; 32],
         token_burns: Vec::new(),
         token_burns_root: [0u8; 32],
+        loom_deploys: Vec::new(),
+        loom_deploys_root: [0u8; 32],
         timestamp: config.timestamp,
         proposer: [0u8; 32],
         validator_signatures: Vec::new(),

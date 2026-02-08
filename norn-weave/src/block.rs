@@ -30,6 +30,7 @@ pub fn build_block(
     let token_definitions_root = compute_merkle_root_borsh(&contents.token_definitions);
     let token_mints_root = compute_merkle_root_borsh(&contents.token_mints);
     let token_burns_root = compute_merkle_root_borsh(&contents.token_burns);
+    let loom_deploys_root = compute_merkle_root_borsh(&contents.loom_deploys);
 
     let mut block = WeaveBlock {
         height: prev_height + 1,
@@ -53,6 +54,8 @@ pub fn build_block(
         token_mints_root,
         token_burns: contents.token_burns,
         token_burns_root,
+        loom_deploys: contents.loom_deploys,
+        loom_deploys_root,
         timestamp,
         proposer: proposer_keypair.public_key(),
         validator_signatures: Vec::new(),
@@ -85,6 +88,7 @@ pub fn compute_block_hash(block: &WeaveBlock) -> Hash {
     data.extend_from_slice(&block.token_definitions_root);
     data.extend_from_slice(&block.token_mints_root);
     data.extend_from_slice(&block.token_burns_root);
+    data.extend_from_slice(&block.loom_deploys_root);
     data.extend_from_slice(&block.timestamp.to_le_bytes());
     data.extend_from_slice(&block.proposer);
 
@@ -115,6 +119,9 @@ pub fn compute_block_hash(block: &WeaveBlock) -> Hash {
     }
     if let Ok(tb_bytes) = borsh::to_vec(&block.token_burns) {
         data.extend_from_slice(&blake3_hash(&tb_bytes));
+    }
+    if let Ok(ld_bytes) = borsh::to_vec(&block.loom_deploys) {
+        data.extend_from_slice(&blake3_hash(&ld_bytes));
     }
 
     blake3_hash(&data)
@@ -212,6 +219,13 @@ pub fn verify_block(block: &WeaveBlock, validator_set: &ValidatorSet) -> Result<
         });
     }
 
+    let expected_loom_deploys_root = compute_merkle_root_borsh(&block.loom_deploys);
+    if block.loom_deploys_root != expected_loom_deploys_root {
+        return Err(WeaveError::InvalidBlock {
+            reason: "loom deploys merkle root mismatch".to_string(),
+        });
+    }
+
     // 4. Verify validator signatures (need at least quorum_size) using batch verification.
     let quorum = validator_set.quorum_size();
 
@@ -294,6 +308,7 @@ mod tests {
             token_definitions: vec![],
             token_mints: vec![],
             token_burns: vec![],
+            loom_deploys: vec![],
         };
 
         let block = build_block([0u8; 32], 0, contents, &kp, 1000);
@@ -320,6 +335,7 @@ mod tests {
             token_definitions: vec![],
             token_mints: vec![],
             token_burns: vec![],
+            loom_deploys: vec![],
         };
         let block = build_block([0u8; 32], 0, contents, &kp, 1000);
 
@@ -341,6 +357,7 @@ mod tests {
             token_definitions: vec![],
             token_mints: vec![],
             token_burns: vec![],
+            loom_deploys: vec![],
         };
         let mut block = build_block([0u8; 32], 0, contents, &kp, 1000);
         block.hash[0] ^= 0xff;
@@ -363,6 +380,7 @@ mod tests {
             token_definitions: vec![],
             token_mints: vec![],
             token_burns: vec![],
+            loom_deploys: vec![],
         };
         let block = build_block([0u8; 32], 0, contents, &kp, 1000);
 
@@ -395,6 +413,7 @@ mod tests {
             token_definitions: vec![],
             token_mints: vec![],
             token_burns: vec![],
+            loom_deploys: vec![],
         };
         let block = build_block([0u8; 32], 0, contents, &kp, 1000);
 
@@ -416,6 +435,7 @@ mod tests {
             token_definitions: vec![],
             token_mints: vec![],
             token_burns: vec![],
+            loom_deploys: vec![],
         };
         let mut block = build_block([0u8; 32], 0, contents, &kp, 1000);
         let vs = make_validator_set(&[&kp]);
