@@ -7,6 +7,7 @@ use crate::wallet::format::{
 };
 use crate::wallet::keystore::Keystore;
 use crate::wallet::rpc_client::RpcClient;
+use crate::wallet::ui::{cell, cell_dim, info_table, print_table};
 
 pub async fn run(
     address: Option<&str>,
@@ -74,29 +75,24 @@ pub async fn run(
     }
 
     println!();
-    println!(
-        "  {}: {}",
-        style_bold().apply_to("Address"),
-        format_address(&addr)
-    );
-    println!(
-        "  {}: {}",
-        style_bold().apply_to("Balance"),
-        format_amount_with_token_name(balance, &token_symbol)
-    );
+    println!("  {}", style_bold().apply_to("Balance"));
+
+    let mut table = info_table();
+    table.add_row(vec![cell("Address"), cell(format_address(&addr))]);
+    table.add_row(vec![
+        cell("Balance"),
+        cell(format_amount_with_token_name(balance, &token_symbol)),
+    ]);
     if let Some(h) = block_height {
-        println!(
-            "  {}: {}",
-            style_bold().apply_to("Block"),
-            style_dim().apply_to(format!("#{}", h))
-        );
+        table.add_row(vec![cell("Block"), cell_dim(format!("#{}", h))]);
     }
+
+    print_table(&table);
+
     if balance == 0 {
         println!(
             "  {}",
-            console::Style::new()
-                .dim()
-                .apply_to("Hint: Use `norn wallet faucet` to get testnet tokens")
+            style_dim().apply_to("Hint: Use `norn wallet faucet` to get testnet tokens")
         );
     }
     println!();

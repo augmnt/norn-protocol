@@ -1,6 +1,7 @@
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
 use crate::wallet::format::{print_success, style_bold};
+use crate::wallet::ui::{cell, info_table, print_table};
 
 pub fn run(rpc_url: Option<&str>, network: Option<&str>, json: bool) -> Result<(), WalletError> {
     let mut config = WalletConfig::load()?;
@@ -47,14 +48,21 @@ pub fn run(rpc_url: Option<&str>, network: Option<&str>, json: bool) -> Result<(
 
     println!();
     println!("  {}", style_bold().apply_to("Wallet Configuration"));
-    println!(
-        "  Active wallet: {}",
-        config.active_wallet.as_deref().unwrap_or("(none)")
-    );
-    println!("  RPC URL:       {}", config.rpc_url);
-    println!("  Network:       {}", config.network);
-    println!("  Data dir:      {}", WalletConfig::data_dir()?.display());
-    println!("  Wallets:       {}", config.wallets.len());
+
+    let mut table = info_table();
+    table.add_row(vec![
+        cell("Active wallet"),
+        cell(config.active_wallet.as_deref().unwrap_or("(none)")),
+    ]);
+    table.add_row(vec![cell("RPC URL"), cell(&config.rpc_url)]);
+    table.add_row(vec![cell("Network"), cell(&config.network)]);
+    table.add_row(vec![
+        cell("Data dir"),
+        cell(WalletConfig::data_dir()?.display()),
+    ]);
+    table.add_row(vec![cell("Wallets"), cell(config.wallets.len())]);
+
+    print_table(&table);
     println!();
 
     Ok(())

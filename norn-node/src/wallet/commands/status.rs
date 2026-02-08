@@ -1,8 +1,9 @@
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
-use crate::wallet::format::{format_address, style_bold, style_dim, style_success, style_warn};
+use crate::wallet::format::{format_address, style_bold, style_dim, truncate_hex_string};
 use crate::wallet::keystore::Keystore;
 use crate::wallet::rpc_client::RpcClient;
+use crate::wallet::ui::{cell, cell_green, cell_yellow, info_table, print_table};
 
 pub async fn run(name: Option<&str>, json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
@@ -33,32 +34,32 @@ pub async fn run(name: Option<&str>, json: bool, rpc_url: Option<&str>) -> Resul
 
     println!();
     println!("  {} {}", style_bold().apply_to("Wallet:"), wallet_name);
-    println!("  Address: {}", format_address(&ks.address));
 
+    let mut table = info_table();
+    table.add_row(vec![cell("Address"), cell(format_address(&ks.address))]);
+
+    let is_registered = thread_info.is_some();
     match thread_info {
         Some(info) => {
-            println!("  Status:  {}", style_success().apply_to("Registered"));
-            println!("  Version: {}", info.version);
-            println!(
-                "  State:   {}",
-                if info.state_hash.len() > 16 {
-                    format!(
-                        "{}...{}",
-                        &info.state_hash[..8],
-                        &info.state_hash[info.state_hash.len() - 8..]
-                    )
-                } else {
-                    info.state_hash
-                }
-            );
+            table.add_row(vec![cell("Status"), cell_green("Registered")]);
+            table.add_row(vec![cell("Version"), cell(info.version)]);
+            table.add_row(vec![
+                cell("State"),
+                cell(truncate_hex_string(&info.state_hash, 8)),
+            ]);
         }
         None => {
-            println!("  Status:  {}", style_warn().apply_to("Not registered"));
-            println!(
-                "  {}",
-                style_dim().apply_to("Run `norn wallet register` to register your thread.")
-            );
+            table.add_row(vec![cell("Status"), cell_yellow("Not registered")]);
         }
+    }
+
+    print_table(&table);
+
+    if !is_registered {
+        println!(
+            "  {}",
+            style_dim().apply_to("Run `norn wallet register` to register your thread.")
+        );
     }
     println!();
 
