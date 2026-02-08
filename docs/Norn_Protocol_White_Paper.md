@@ -262,7 +262,7 @@ Relays handle:
 - **State sync**: New nodes request missing blocks from peers via `StateRequest`/`StateResponse` messages, enabling rapid catch-up to the current chain tip.
 - **Discovery**: Peer discovery via Kademlia DHT, with GossipSub for topic-based message propagation.
 
-The relay layer uses QUIC for transport, providing multiplexed, encrypted connections with low latency and NAT traversal capabilities. Nodes interact with the relay through a `RelayHandle` -- a cloneable channel-based interface that allows any component (RPC server, consensus engine, block producer) to broadcast messages to the P2P network without direct access to the libp2p swarm.
+The relay layer is designed for QUIC transport, providing multiplexed, encrypted connections with low latency and NAT traversal capabilities. The current implementation uses TCP via libp2p; QUIC transport is planned for a future release. Nodes interact with the relay through a `RelayHandle` -- a cloneable channel-based interface that allows any component (RPC server, consensus engine, block producer) to broadcast messages to the P2P network without direct access to the libp2p swarm.
 
 ---
 
@@ -714,7 +714,7 @@ Norn is built entirely in Rust, chosen for its memory safety guarantees, high pe
 |-----------|-----------|---------|
 | **Language** | Rust | Memory-safe systems programming; no garbage collector; compiles to native and Wasm |
 | **Consensus** | HotStuff BFT | Custom Rust implementation with pipelined phases |
-| **Networking** | libp2p | QUIC transport, GossipSub pubsub, Kademlia DHT, encrypted connections |
+| **Networking** | libp2p | TCP transport (QUIC planned), GossipSub pubsub, Kademlia DHT, encrypted connections |
 | **Smart Contracts** | WebAssembly (wasmtime) | Deterministic off-chain execution with fuel-based gas metering |
 | **Serialization** | borsh | Binary Object Representation Serializer for Hashing -- deterministic, canonical, compact |
 | **Hashing** | BLAKE3 | 256-bit cryptographic hash; faster than SHA-256 while maintaining security |
@@ -832,7 +832,7 @@ The Norn Protocol has completed six development phases, representing a fully fun
 | Phase | Name | Status | Highlights |
 |-------|------|--------|------------|
 | **Phase 0** | Foundation | Complete | Ed25519 key management, BLAKE3 hashing, Thread/Knot types, borsh serialization, BIP-39 seeds, SLIP-0010 HD derivation |
-| **Phase 1** | Networking | Complete | libp2p integration, QUIC transport, relay service, P2P Knot exchange, GossipSub, Kademlia DHT |
+| **Phase 1** | Networking | Complete | libp2p integration, TCP transport (QUIC planned), relay service, P2P Knot exchange, GossipSub, Kademlia DHT |
 | **Phase 2** | Weave | Complete | HotStuff BFT consensus, block production, Sparse Merkle Tree, commitment processing, fraud proof verification, EIP-1559-style dynamic fees, DPoS staking with bonding periods and slashing |
 | **Phase 3** | Loom Runtime | Complete | wasmtime integration, Wasm execution with fuel metering, host functions (state, transfers, context), Loom lifecycle (deploy, join, execute, anchor, leave), dispute resolution via re-execution |
 | **Phase 4** | Spindle Service | Complete | Weave monitoring, fraud proof construction and submission, rate limiting, service orchestration |

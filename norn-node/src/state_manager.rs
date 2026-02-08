@@ -44,6 +44,13 @@ pub struct TransferRecord {
     pub block_height: Option<u64>,
 }
 
+/// Maximum number of blocks kept in memory (older blocks available via SQLite).
+const MAX_BLOCK_ARCHIVE: usize = 1000;
+/// Maximum number of transfer records kept in memory.
+const MAX_TRANSFER_LOG: usize = 10_000;
+/// Maximum number of knot IDs tracked for dedup.
+const MAX_KNOWN_KNOT_IDS: usize = 50_000;
+
 /// Node-side state manager that tracks balances, history, and blocks
 /// alongside the WeaveEngine's consensus-level tracking.
 pub struct StateManager {
@@ -155,11 +162,19 @@ impl StateManager {
         self.thread_states.contains_key(address)
     }
 
-    /// Auto-register a thread if not already present (for transfer recipients).
-    /// Uses a zero pubkey since we don't know the recipient's key.
+    /// Auto-register a thread if not already present.
+    /// Uses the provided pubkey when available, otherwise falls back to a zero
+    /// pubkey (e.g., for transfer recipients whose key is unknown).
     pub fn auto_register_if_needed(&mut self, address: Address) {
         if !self.is_registered(&address) {
             self.register_thread(address, [0u8; 32]);
+        }
+    }
+
+    /// Auto-register a thread with a known public key if not already present.
+    pub fn auto_register_with_pubkey(&mut self, address: Address, pubkey: PublicKey) {
+        if !self.is_registered(&address) {
+            self.register_thread(address, pubkey);
         }
     }
 
@@ -322,10 +337,8 @@ impl StateManager {
     }
 
     /// Apply a transfer received from a peer block or P2P gossip.
-    /// Only credits the recipient — the debit was already handled on the
-    /// originating node. This is necessary because the sender may not have
-    /// sufficient balance locally (e.g., after a state reset or when syncing
-    /// from blocks without full state history).
+    /// Debits the sender (best-effort — warns on insufficient balance) and
+    /// credits the recipient so that balances converge across nodes.
     #[allow(clippy::too_many_arguments)]
     pub fn apply_peer_transfer(
         &mut self,
@@ -341,7 +354,34 @@ impl StateManager {
             return Err(NornError::InvalidAmount);
         }
 
-        // Credit receiver only (debit already happened on originating node).
+        // Debit sender (best-effort: warn if insufficient balance).
+        if let Some(sender_state) = self.thread_states.get(&from) {
+            if sender_state.has_balance(&token_id, amount) {
+                let sender_state = self.thread_states.get_mut(&from).unwrap();
+                sender_state.debit(&token_id, amount);
+
+                // Update sender state hash.
+                if let Some(meta) = self.thread_meta.get_mut(&from) {
+                    meta.state_hash = norn_thread::state::compute_state_hash(
+                        self.thread_states.get(&from).unwrap(),
+                    );
+                }
+            } else {
+                tracing::warn!(
+                    "peer transfer: sender {} has insufficient balance for {} (available: {})",
+                    hex::encode(from),
+                    amount,
+                    sender_state.balance(&token_id),
+                );
+            }
+        } else {
+            tracing::warn!(
+                "peer transfer: sender {} not registered, skipping debit",
+                hex::encode(from),
+            );
+        }
+
+        // Credit receiver.
         let receiver_state = self
             .thread_states
             .get_mut(&to)
@@ -372,6 +412,14 @@ impl StateManager {
 
         // Persist
         if let Some(ref store) = self.state_store {
+            if let Err(e) = store.save_thread_state(&from, self.thread_states.get(&from).unwrap()) {
+                tracing::warn!("Failed to persist sender state: {}", e);
+            }
+            if let Some(meta) = self.thread_meta.get(&from) {
+                if let Err(e) = store.save_thread_meta(&from, meta) {
+                    tracing::warn!("Failed to persist sender meta: {}", e);
+                }
+            }
             if let Err(e) = store.save_thread_state(&to, self.thread_states.get(&to).unwrap()) {
                 tracing::warn!("Failed to persist receiver state: {}", e);
             }
@@ -421,6 +469,9 @@ impl StateManager {
             return;
         }
         state.debit(&NATIVE_TOKEN_ID, fee);
+
+        // Fee is burned (not credited to anyone), so decrement total supply.
+        self.total_supply_cache = self.total_supply_cache.saturating_sub(fee);
 
         // Update state hash in meta.
         if let Some(meta) = self.thread_meta.get_mut(&address) {
@@ -485,7 +536,8 @@ impl StateManager {
         }
     }
 
-    /// Archive a produced block.
+    /// Archive a produced block. Evicts oldest blocks from memory when the
+    /// archive exceeds `MAX_BLOCK_ARCHIVE` (older blocks remain in SQLite).
     pub fn archive_block(&mut self, block: WeaveBlock) {
         // Persist
         if let Some(ref store) = self.state_store {
@@ -494,6 +546,27 @@ impl StateManager {
             }
         }
         self.block_archive.push(block);
+
+        // Evict oldest blocks from memory (they're persisted to disk).
+        if self.block_archive.len() > MAX_BLOCK_ARCHIVE {
+            let excess = self.block_archive.len() - MAX_BLOCK_ARCHIVE;
+            self.block_archive.drain(..excess);
+        }
+
+        // Evict oldest transfer records from memory.
+        if self.transfer_log.len() > MAX_TRANSFER_LOG {
+            let excess = self.transfer_log.len() - MAX_TRANSFER_LOG;
+            self.transfer_log.drain(..excess);
+        }
+
+        // Prune oldest knot IDs when the set grows too large.
+        if self.known_knot_ids.len() > MAX_KNOWN_KNOT_IDS {
+            // HashSet has no ordering, so we clear half and rebuild from recent transfers.
+            self.known_knot_ids.clear();
+            for record in &self.transfer_log {
+                self.known_knot_ids.insert(record.knot_id);
+            }
+        }
     }
 
     /// Get a block by height.
@@ -565,6 +638,11 @@ impl StateManager {
 
         let sender_state = self.thread_states.get_mut(&owner).unwrap();
         sender_state.debit(&NATIVE_TOKEN_ID, NAME_REGISTRATION_FEE);
+
+        // Registration fee is burned, so decrement total supply.
+        self.total_supply_cache = self
+            .total_supply_cache
+            .saturating_sub(NAME_REGISTRATION_FEE);
 
         // Update state hash.
         if let Some(meta) = self.thread_meta.get_mut(&owner) {

@@ -103,6 +103,17 @@ impl WeaveEngine {
             }
 
             NornMessage::Block(weave_block) => {
+                // Validate block height is sequential (allow catch-up from any
+                // height above current, but reject blocks at or below current).
+                if weave_block.height <= self.weave_state.height && self.weave_state.height > 0 {
+                    tracing::debug!(
+                        received = weave_block.height,
+                        current = self.weave_state.height,
+                        "rejecting peer block: height not ahead of current"
+                    );
+                    return vec![];
+                }
+
                 // Validate the block structure.
                 let vs = self.staking.active_validators();
                 if block::verify_block(&weave_block, &vs).is_err() {

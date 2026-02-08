@@ -10,6 +10,9 @@ use crate::rpc::types::{
 
 use super::error::WalletError;
 
+/// Default RPC request timeout in seconds.
+const DEFAULT_RPC_TIMEOUT_SECS: u64 = 10;
+
 /// JSON-RPC client for the Norn node.
 pub struct RpcClient {
     client: HttpClient,
@@ -19,6 +22,7 @@ impl RpcClient {
     /// Create a new RPC client.
     pub fn new(url: &str) -> Result<Self, WalletError> {
         let client = HttpClientBuilder::default()
+            .request_timeout(std::time::Duration::from_secs(DEFAULT_RPC_TIMEOUT_SECS))
             .build(url)
             .map_err(|e| WalletError::RpcError(format!("failed to connect: {}", e)))?;
         Ok(Self { client })

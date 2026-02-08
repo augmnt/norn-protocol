@@ -331,6 +331,7 @@ impl Node {
     }
 
     /// Attempt state sync with peers on startup.
+    /// Continues requesting blocks in batches until fully caught up.
     async fn sync_state(&mut self) {
         let handle = match self.relay_handle {
             Some(ref h) => h.clone(),
@@ -340,49 +341,83 @@ impl Node {
         tracing::info!("Requesting state sync from peers...");
 
         let our_genesis_hash = self.genesis_hash;
-        let request = NornMessage::StateRequest {
-            current_height: 0,
-            genesis_hash: our_genesis_hash,
-        };
-        if handle.broadcast(request).await.is_err() {
-            tracing::debug!("Failed to send state sync request");
-            return;
-        }
+        let mut current_height: u64 = 0;
+        let mut total_synced: u64 = 0;
 
-        // Listen for a StateResponse with a timeout.
-        if let Some(ref mut rx) = self.relay_rx {
-            let timeout = tokio::time::timeout(std::time::Duration::from_secs(10), async {
-                loop {
-                    match rx.recv().await {
-                        Ok(NornMessage::StateResponse {
-                            blocks,
-                            tip_height,
-                            genesis_hash,
-                        }) => {
-                            if our_genesis_hash != [0u8; 32]
-                                && genesis_hash != [0u8; 32]
-                                && genesis_hash != our_genesis_hash
-                            {
-                                tracing::warn!(
-                                    ours = %hex::encode(our_genesis_hash),
-                                    theirs = %hex::encode(genesis_hash),
-                                    "rejecting state sync response: genesis hash mismatch"
-                                );
-                                continue;
+        loop {
+            let request = NornMessage::StateRequest {
+                current_height,
+                genesis_hash: our_genesis_hash,
+            };
+            if handle.broadcast(request).await.is_err() {
+                tracing::debug!("Failed to send state sync request");
+                return;
+            }
+
+            // Listen for a StateResponse with a timeout.
+            let response = if let Some(ref mut rx) = self.relay_rx {
+                let timeout = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                    loop {
+                        match rx.recv().await {
+                            Ok(NornMessage::StateResponse {
+                                blocks,
+                                tip_height,
+                                genesis_hash,
+                            }) => {
+                                if our_genesis_hash != [0u8; 32]
+                                    && genesis_hash != [0u8; 32]
+                                    && genesis_hash != our_genesis_hash
+                                {
+                                    tracing::warn!(
+                                        ours = %hex::encode(our_genesis_hash),
+                                        theirs = %hex::encode(genesis_hash),
+                                        "rejecting state sync response: genesis hash mismatch"
+                                    );
+                                    continue;
+                                }
+                                return Some((blocks, tip_height));
                             }
-                            return Some((blocks, tip_height));
+                            Ok(_) => continue,
+                            Err(_) => return None,
                         }
-                        Ok(_) => continue, // ignore other messages during sync
-                        Err(_) => return None,
+                    }
+                })
+                .await;
+
+                match timeout {
+                    Ok(Some(resp)) => Some(resp),
+                    Ok(None) => {
+                        if total_synced == 0 {
+                            tracing::info!("State sync: no response from peers (channel closed)");
+                        }
+                        None
+                    }
+                    Err(_) => {
+                        if total_synced == 0 {
+                            tracing::info!(
+                                "State sync: timed out waiting for response (starting fresh)"
+                            );
+                        }
+                        None
                     }
                 }
-            })
-            .await;
+            } else {
+                None
+            };
 
-            match timeout {
-                Ok(Some((blocks, tip_height))) => {
-                    let count = blocks.len();
+            match response {
+                Some((blocks, tip_height)) => {
+                    let batch_size = blocks.len() as u64;
+                    if batch_size == 0 {
+                        tracing::info!(total_synced, "state sync complete (no more blocks)");
+                        break;
+                    }
+
+                    let mut max_height = current_height;
                     for block in blocks {
+                        if block.height > max_height {
+                            max_height = block.height;
+                        }
                         {
                             let mut sm = self.state_manager.write().await;
                             for reg in &block.registrations {
@@ -431,14 +466,28 @@ impl Node {
                         engine.set_timestamp(current_timestamp());
                         let _ = engine.on_network_message(NornMessage::Block(Box::new(block)));
                     }
-                    tracing::info!(synced_blocks = count, tip_height, "state sync complete");
+
+                    total_synced += batch_size;
+                    current_height = max_height;
+
+                    // If we've caught up to the tip, we're done.
+                    if current_height >= tip_height {
+                        tracing::info!(
+                            synced_blocks = total_synced,
+                            tip_height,
+                            "state sync complete"
+                        );
+                        break;
+                    }
+
+                    tracing::info!(
+                        synced_so_far = total_synced,
+                        current_height,
+                        tip_height,
+                        "state sync: requesting next batch..."
+                    );
                 }
-                Ok(None) => {
-                    tracing::info!("State sync: no response from peers (channel closed)");
-                }
-                Err(_) => {
-                    tracing::info!("State sync: timed out waiting for response (starting fresh)");
-                }
+                None => break,
             }
         }
     }
@@ -511,7 +560,7 @@ impl Node {
                                             drop(sm);
                                             continue;
                                         }
-                                        sm.auto_register_if_needed(transfer.from);
+                                        sm.auto_register_with_pubkey(transfer.from, sender_pubkey);
                                         sm.auto_register_if_needed(transfer.to);
                                         let applied = sm
                                             .apply_peer_transfer(
@@ -625,6 +674,9 @@ impl Node {
                                 continue;
                             }
                             // Respond with blocks the requester is missing.
+                            // TODO: Use unicast to the requesting peer instead of broadcast
+                            // once RelayHandle supports send_to(). Broadcasting works but is
+                            // wasteful since all peers receive the response.
                             if let Some(ref handle) = self.relay_handle {
                                 let sm = self.state_manager.read().await;
                                 let mut blocks = Vec::new();
@@ -835,6 +887,8 @@ impl Node {
                                         registration_count: block.registrations.len(),
                                         anchor_count: block.anchors.len(),
                                         fraud_proof_count: block.fraud_proofs.len(),
+                                        name_registration_count: block.name_registrations.len(),
+                                        transfer_count: block.transfers.len(),
                                     };
                                     let _ = tx.send(info);
                                 }

@@ -123,5 +123,14 @@ pub async fn run(command: WalletCommand) -> Result<(), WalletError> {
         WalletCommand::Whoami { json, rpc_url } => {
             commands::whoami::run(json, rpc_url.as_deref()).await
         }
+        WalletCommand::SignMessage { message, name } => {
+            commands::sign_message::run(&message, name.as_deref())
+        }
+        WalletCommand::VerifyMessage {
+            message,
+            signature,
+            pubkey,
+        } => commands::verify_message::run(&message, &signature, &pubkey),
+        WalletCommand::Rename { from, to } => commands::rename::run(&from, &to),
     }
 }

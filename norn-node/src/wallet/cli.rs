@@ -256,4 +256,34 @@ pub enum WalletCommand {
         #[arg(long)]
         rpc_url: Option<String>,
     },
+    /// Sign a message with the active wallet's private key
+    SignMessage {
+        /// Message to sign
+        #[arg(long)]
+        message: String,
+        /// Wallet name (defaults to active wallet)
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Verify a signed message
+    VerifyMessage {
+        /// Message that was signed
+        #[arg(long)]
+        message: String,
+        /// Hex-encoded signature (64 bytes)
+        #[arg(long)]
+        signature: String,
+        /// Hex-encoded public key (32 bytes)
+        #[arg(long)]
+        pubkey: String,
+    },
+    /// Rename a wallet
+    Rename {
+        /// Current wallet name
+        #[arg(long)]
+        from: String,
+        /// New wallet name
+        #[arg(long)]
+        to: String,
+    },
 }

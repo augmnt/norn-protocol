@@ -67,14 +67,35 @@ pub async fn start_rpc_server(
     Ok((handle, block_tx))
 }
 
-/// Tower middleware for API key authentication on RPC POST requests.
+/// Tower middleware for API key authentication on RPC mutation methods.
+/// Read-only methods are whitelisted and accessible without authentication.
 mod auth_middleware {
     use http::header::AUTHORIZATION;
     use http::{Request, Response, StatusCode};
+    use http_body_util::BodyExt;
     use std::future::Future;
     use std::pin::Pin;
     use std::task::{Context, Poll};
     use tower::{Layer, Service};
+
+    /// Read-only RPC methods that don't require authentication.
+    const READ_ONLY_METHODS: &[&str] = &[
+        "norn_getBalance",
+        "norn_getBlock",
+        "norn_getLatestBlock",
+        "norn_getWeaveState",
+        "norn_getThread",
+        "norn_getThreadState",
+        "norn_health",
+        "norn_getValidatorSet",
+        "norn_getFeeEstimate",
+        "norn_getCommitmentProof",
+        "norn_getTransactionHistory",
+        "norn_resolveName",
+        "norn_listNames",
+        "norn_getMetrics",
+        "norn_getNodeInfo",
+    ];
 
     /// Tower layer that wraps services with API key authentication.
     #[derive(Clone)]
@@ -99,20 +120,46 @@ mod auth_middleware {
         }
     }
 
-    /// Tower service that checks the Authorization header on POST requests.
+    /// Tower service that checks the Authorization header on mutation RPC methods.
+    /// Read-only methods are allowed without authentication.
     #[derive(Clone)]
     pub struct AuthService<S> {
         inner: S,
         api_key: String,
     }
 
+    /// Extract the JSON-RPC method name from a request body (best-effort).
+    /// Looks for `"method":"..."` or `"method": "..."` patterns without
+    /// requiring a full JSON parse.
+    fn extract_method_name(body: &[u8]) -> Option<String> {
+        let text = std::str::from_utf8(body).ok()?;
+        // Fast path: find "method" key and extract its string value.
+        let method_idx = text.find("\"method\"")?;
+        let after_key = &text[method_idx + 8..];
+        // Skip whitespace and colon
+        let after_colon = after_key.find(':').map(|i| &after_key[i + 1..])?;
+        let trimmed = after_colon.trim_start();
+        if !trimmed.starts_with('"') {
+            return None;
+        }
+        let value_start = 1; // skip opening quote
+        let value_end = trimmed[value_start..].find('"')?;
+        Some(trimmed[value_start..value_start + value_end].to_string())
+    }
+
+    fn is_read_only(method: &str) -> bool {
+        READ_ONLY_METHODS.contains(&method)
+    }
+
     impl<S, B> Service<Request<B>> for AuthService<S>
     where
-        S: Service<Request<B>> + Clone + Send + 'static,
+        S: Service<Request<jsonrpsee::server::HttpBody>> + Clone + Send + 'static,
         S::Response: From<Response<jsonrpsee::server::HttpBody>>,
         S::Future: Send,
         S::Error: Send,
-        B: Send + 'static,
+        B: http_body::Body + Send + 'static,
+        B::Data: Send,
+        B::Error: std::fmt::Display,
     {
         type Response = S::Response;
         type Error = S::Error;
@@ -123,33 +170,71 @@ mod auth_middleware {
         }
 
         fn call(&mut self, req: Request<B>) -> Self::Future {
-            // Only check POST requests (all JSON-RPC calls are POST).
-            if req.method() == http::Method::POST {
+            let mut inner = self.inner.clone();
+            let api_key = self.api_key.clone();
+
+            Box::pin(async move {
+                // Non-POST requests pass through (e.g., WebSocket upgrades).
+                if req.method() != http::Method::POST {
+                    let (parts, body) = req.into_parts();
+                    let collected = body
+                        .collect()
+                        .await
+                        .map(|c| c.to_bytes())
+                        .unwrap_or_default();
+                    let new_body = jsonrpsee::server::HttpBody::from(collected.to_vec());
+                    return inner.call(Request::from_parts(parts, new_body)).await;
+                }
+
+                // Check auth header upfront.
                 let authorized = req
                     .headers()
                     .get(AUTHORIZATION)
                     .and_then(|v| v.to_str().ok())
                     .and_then(|v| v.strip_prefix("Bearer "))
-                    .map(|token| token == self.api_key)
+                    .map(|token| token == api_key)
                     .unwrap_or(false);
 
-                if !authorized {
-                    return Box::pin(async {
-                        let body = jsonrpsee::server::HttpBody::from(
-                            r#"{"jsonrpc":"2.0","error":{"code":-32000,"message":"unauthorized: invalid or missing API key"},"id":null}"#,
-                        );
-                        let response = Response::builder()
-                            .status(StatusCode::UNAUTHORIZED)
-                            .header("Content-Type", "application/json")
-                            .body(body)
-                            .expect("valid response");
-                        Ok(response.into())
-                    });
+                // If authorized, pass through immediately.
+                if authorized {
+                    let (parts, body) = req.into_parts();
+                    let collected = body
+                        .collect()
+                        .await
+                        .map(|c| c.to_bytes())
+                        .unwrap_or_default();
+                    let new_body = jsonrpsee::server::HttpBody::from(collected.to_vec());
+                    return inner.call(Request::from_parts(parts, new_body)).await;
                 }
-            }
 
-            let mut inner = self.inner.clone();
-            Box::pin(async move { inner.call(req).await })
+                // Not authorized — collect body and check if it's a read-only method.
+                let (parts, body) = req.into_parts();
+                let collected = body
+                    .collect()
+                    .await
+                    .map(|c| c.to_bytes())
+                    .unwrap_or_default();
+
+                let method_name = extract_method_name(&collected);
+                let is_read = method_name.as_deref().map(is_read_only).unwrap_or(false);
+
+                if is_read {
+                    // Read-only method — allow without auth.
+                    let new_body = jsonrpsee::server::HttpBody::from(collected.to_vec());
+                    inner.call(Request::from_parts(parts, new_body)).await
+                } else {
+                    // Mutation method — reject without auth.
+                    let body = jsonrpsee::server::HttpBody::from(
+                        r#"{"jsonrpc":"2.0","error":{"code":-32000,"message":"unauthorized: invalid or missing API key"},"id":null}"#,
+                    );
+                    let response = Response::builder()
+                        .status(StatusCode::UNAUTHORIZED)
+                        .header("Content-Type", "application/json")
+                        .body(body)
+                        .expect("valid response");
+                    Ok(response.into())
+                }
+            })
         }
     }
 }

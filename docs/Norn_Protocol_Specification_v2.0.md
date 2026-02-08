@@ -6,7 +6,8 @@
 |--------------|-------------------------------|
 | Version      | 2.0                           |
 | Status       | Living Document               |
-| Date         | 2026-02-06                    |
+| Date         | 2026-02-08                    |
+| Code Version | 0.6.0                         |
 | Supersedes   | v1.0                          |
 | Authors      | Norn Protocol Contributors    |
 
@@ -1146,6 +1147,8 @@ pub enum NornMessage {
     StateRequest {
         /// The requester's current block height.
         current_height: u64,
+        /// The requester's genesis hash (for network compatibility check).
+        genesis_hash: Hash,
     },
     /// Response with blocks for state sync.
     StateResponse {
@@ -1153,32 +1156,89 @@ pub enum NornMessage {
         blocks: Vec<WeaveBlock>,
         /// The sender's tip height.
         tip_height: u64,
+        /// The sender's genesis hash (for network compatibility check).
+        genesis_hash: Hash,
     },
+    /// A name registration (consensus-level).
+    NameRegistration(NameRegistration),
+    /// A protocol upgrade notification.
+    UpgradeNotice(UpgradeNotice),
 }
 ```
 
 ### 20.2 Wire Format
 
-Messages are framed as:
+#### 20.2.1 MessageEnvelope Format (Protocol v4+)
+
+As of protocol version 4, messages use a versioned envelope format:
 
 ```
-[4 bytes: length (big-endian u32)] [N bytes: borsh-encoded NornMessage]
+[4 bytes: length (big-endian u32)] [1 byte: ENVELOPE_VERSION (1)] [N bytes: borsh-encoded MessageEnvelope]
 ```
 
-There is no explicit type tag. Borsh enum discriminants handle variant identification during deserialization.
+The `MessageEnvelope` structure provides protocol version negotiation:
 
-Maximum message size: `MAX_MESSAGE_SIZE` = 2,097,152 bytes (2 MB).
+```rust
+pub struct MessageEnvelope {
+    /// Protocol version this message uses.
+    pub protocol_version: u8,
+    /// Message type discriminant (stable across versions).
+    pub message_type: u8,
+    /// Borsh-encoded message payload.
+    pub payload: Vec<u8>,
+}
+```
+
+Each `NornMessage` variant has a stable discriminant (0-14), obtained via `NornMessage::discriminant()`. This allows peers to identify message types without fully deserializing unknown protocol versions.
+
+#### 20.2.2 Legacy Wire Format (Protocol v3)
+
+For backward compatibility, nodes also accept the legacy format:
+
+```
+[4 bytes: length (big-endian u32)] [1 byte: LEGACY_PROTOCOL_VERSION (3)] [N bytes: borsh-encoded NornMessage]
+```
+
+The codec performs **dual-decode**: it inspects byte 4 (after length prefix) and decodes as envelope format if the value is `1`, or legacy format if the value is `3`. This allows seamless interoperability during rolling upgrades.
+
+#### 20.2.3 Protocol Constants
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `PROTOCOL_VERSION` | 4 | Current protocol version (envelope format) |
+| `ENVELOPE_VERSION` | 1 | Envelope wire format version |
+| `LEGACY_PROTOCOL_VERSION` | 3 | Previous protocol version (direct borsh) |
+| `MAX_MESSAGE_SIZE` | 2,097,152 bytes (2 MB) | Maximum message size |
+
+New message types (discriminant > 13) cannot be encoded in legacy format and will error if a peer requests backward compatibility.
 
 ### 20.3 GossipSub Topics
 
-The relay layer uses libp2p GossipSub for message dissemination:
+The relay layer uses libp2p GossipSub for message dissemination. As of protocol v4, nodes use **versioned topics** and maintain dual-publish/dual-subscribe for backward compatibility.
+
+#### 20.3.1 Versioned Topics (Protocol v4+)
 
 | Topic | Content |
 |-------|---------|
-| `norn/blocks` | `WeaveBlock` messages |
-| `norn/commitments` | `CommitmentUpdate` messages |
-| `norn/fraud-proofs` | `FraudProofSubmission` messages |
-| `norn/general` | All other message types |
+| `norn/blocks/v4` | `WeaveBlock` messages (envelope format) |
+| `norn/commitments/v4` | `CommitmentUpdate` messages (envelope format) |
+| `norn/fraud-proofs/v4` | `FraudProofSubmission` messages (envelope format) |
+| `norn/general/v4` | All other message types (envelope format) |
+
+Topic names are constructed via `versioned_topic(base, version)`, which returns `"{base}/v{version}"`.
+
+#### 20.3.2 Legacy Topics (Protocol v3)
+
+For backward compatibility, nodes also publish to and subscribe from unversioned topics:
+
+| Topic | Content |
+|-------|---------|
+| `norn/blocks` | `WeaveBlock` messages (legacy format) |
+| `norn/commitments` | `CommitmentUpdate` messages (legacy format) |
+| `norn/fraud-proofs` | `FraudProofSubmission` messages (legacy format) |
+| `norn/general` | All other message types (legacy format) |
+
+During a rolling upgrade, nodes **dual-publish** to both versioned and legacy topics, and **dual-subscribe** to both topic sets. This ensures network continuity as nodes upgrade incrementally.
 
 ### 20.4 RelayMessage
 
@@ -1196,6 +1256,23 @@ pub struct RelayMessage {
     pub signature: Signature,
 }
 ```
+
+### 20.4a UpgradeNotice
+
+Sent when a node detects a peer running a newer protocol version:
+
+```rust
+pub struct UpgradeNotice {
+    /// The protocol version the peer is running.
+    pub protocol_version: u8,
+    /// Human-readable upgrade message.
+    pub message: String,
+    /// Timestamp of the notice.
+    pub timestamp: u64,
+}
+```
+
+Nodes track which versions they've already sent notices for via `notified_versions: HashSet<u8>` to rate-limit notifications (one per version). This prevents spam while ensuring operators are aware when peers are running newer protocol versions.
 
 ### 20.5 Relay Architecture
 
@@ -1216,12 +1293,25 @@ The relay layer (`norn-relay`) is built on libp2p, NOT a REST API. It includes:
 
 When a node joins the network, it performs a state sync to catch up to the current chain tip:
 
-1. The node broadcasts a `StateRequest` with its current block height (0 for a new node).
-2. Peers respond with a `StateResponse` containing any blocks the requester is missing, up to a batch limit.
-3. The node applies received blocks sequentially, including thread registrations, name registrations, transfers, and commitment updates.
-4. If the response indicates more blocks are available (`tip_height > last received`), the node repeats the request.
+1. The node broadcasts a `StateRequest` with its current block height (0 for a new node) and its genesis hash.
+2. Peers respond with a `StateResponse` containing any blocks the requester is missing, up to a batch limit, along with their own genesis hash.
+3. **Genesis hash validation**: If the `StateResponse.genesis_hash` does not match the requester's genesis hash, the response is rejected with a warning. This ensures nodes only synchronize with peers on the same network.
+4. The node applies received blocks sequentially, including thread registrations, name registrations, transfers, and commitment updates.
+5. If the response indicates more blocks are available (`tip_height > last received`), the node repeats the request.
 
 State sync has a 10-second timeout per request. Nodes that fail to respond are skipped. This protocol operates over the same GossipSub/libp2p transport as all other `NornMessage` types.
+
+#### 20.6.1 Genesis Hash Computation
+
+The genesis hash is computed via `compute_genesis_hash(genesis_block, genesis_config)` and includes:
+
+- The genesis block hash
+- The genesis config version (`GenesisConfig.version`)
+- The chain ID
+
+This ensures that nodes with different genesis configurations (e.g., different chain IDs or genesis parameters) do not accidentally peer with each other. The genesis hash is computed once at node startup and included in all `StateRequest` and `StateResponse` messages.
+
+#### 20.6.2 Transfer Balance Sync
 
 Transfer balance sync relies on `BlockTransfer` records included in each block. When a `KnotProposal` with a transfer is received and applied, the transfer is also queued in the mempool for block inclusion. When a peer receives a block, it applies any transfers it hasn't seen (deduplication by `knot_id`), auto-registering sender and receiver threads if needed. This ensures balances converge across nodes even if a node wasn't online for the original gossip.
 
@@ -1232,6 +1322,9 @@ Transfer balance sync relies on `BlockTransfer` records included in each block. 
 | `DEFAULT_RELAY_PORT` | 9740 |
 | `MAX_RELAY_CONNECTIONS` | 50 |
 | `MAX_MESSAGE_SIZE` | 2,097,152 bytes (2 MB) |
+| `PROTOCOL_VERSION` | 4 |
+| `ENVELOPE_VERSION` | 1 |
+| `LEGACY_PROTOCOL_VERSION` | 3 |
 
 ---
 
@@ -1763,6 +1856,8 @@ The following methods are planned but not yet implemented:
 
 ```rust
 pub struct GenesisConfig {
+    /// Genesis configuration version (for protocol upgrades).
+    pub version: u32,
     /// Chain identifier.
     pub chain_id: String,
     /// Genesis timestamp.
@@ -1775,6 +1870,8 @@ pub struct GenesisConfig {
     pub parameters: GenesisParameters,
 }
 ```
+
+The `version` field (with `serde(default)` for backward compatibility with older JSON configs) is used in genesis hash computation to ensure nodes with different genesis config versions do not accidentally peer. The current genesis config version is defined by the `GENESIS_CONFIG_VERSION` constant in `norn-types/src/genesis.rs`.
 
 ### 25.2 GenesisValidator
 
@@ -2494,6 +2591,26 @@ This section documents all material changes from the v1.0 specification to v2.0.
 | `FRAUD_PROOF_WINDOW` | Separate thread/loom windows | Unified 86,400 seconds |
 | `BLOCKS_PER_EPOCH` | Defined | `1_000` -- implemented in `constants.rs` |
 | All loom constants | Various | Verified against `norn-types/src/constants.rs` |
+
+### 32.6 v0.6.0 Updates (Rolling Upgrade System)
+
+Protocol version 0.6.0 introduced a rolling upgrade system to enable zero-downtime network upgrades:
+
+| Feature | Description |
+|---------|-------------|
+| `MessageEnvelope` | Versioned wire format wrapper with `protocol_version`, `message_type`, `payload` fields |
+| Dual-decode codec | Accepts both envelope format (byte[4]=1) and legacy format (byte[4]=3) |
+| Versioned GossipSub topics | Topics named `norn/{topic}/v{version}` (e.g., `norn/blocks/v4`) |
+| Dual-publish/dual-subscribe | Nodes publish to both versioned and legacy topics during upgrades |
+| `UpgradeNotice` message | Sent when a peer with a newer protocol version is detected |
+| Genesis hash validation | `StateRequest`/`StateResponse` carry `genesis_hash` to prevent cross-network peering |
+| `GenesisConfig.version` | Version field in genesis config (with serde default for backward compat) |
+| `BlockTransfer` records | Already present in v2.0, included in `WeaveBlock.transfers` for balance sync |
+| `NornMessage::NameRegistration` | Moved from separate gossip to formal message variant (discriminant 13) |
+| `NornMessage::UpgradeNotice` | New message variant (discriminant 14) |
+| Protocol constants | `PROTOCOL_VERSION=4`, `ENVELOPE_VERSION=1`, `LEGACY_PROTOCOL_VERSION=3` |
+
+These features enable the network to perform rolling upgrades without forking or downtime, as nodes can run mixed protocol versions during the upgrade window.
 
 ---
 

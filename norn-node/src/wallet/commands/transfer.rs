@@ -65,6 +65,15 @@ pub async fn run(
         });
     }
 
+    // Fetch the current fee estimate (best-effort: don't block transfer on failure).
+    let fee_display = match rpc.get_fee_estimate().await {
+        Ok(info) => {
+            let fee: u128 = info.fee_per_commitment.parse().unwrap_or(0);
+            Some(format_amount_with_symbol(fee, &NATIVE_TOKEN_ID))
+        }
+        Err(_) => None,
+    };
+
     // Show confirmation
     if !yes {
         println!();
@@ -83,6 +92,9 @@ pub async fn run(
             "  Amount:  {}",
             style_bold().apply_to(format_amount_with_symbol(amount, &token_id))
         );
+        if let Some(ref fee_str) = fee_display {
+            println!("  Fee:     {}", style_dim().apply_to(fee_str));
+        }
         println!(
             "  Balance: {}",
             style_dim().apply_to(format_amount_with_symbol(current_balance, &token_id))

@@ -195,6 +195,8 @@ impl NornRpcServer for NornRpcImpl {
                 registration_count: block.registrations.len(),
                 anchor_count: block.anchors.len(),
                 fraud_proof_count: block.fraud_proofs.len(),
+                name_registration_count: block.name_registrations.len(),
+                transfer_count: block.transfers.len(),
             }));
         }
         drop(sm);
@@ -213,6 +215,8 @@ impl NornRpcServer for NornRpcImpl {
                 registration_count: 0,
                 anchor_count: 0,
                 fraud_proof_count: 0,
+                name_registration_count: 0,
+                transfer_count: 0,
             }))
         } else {
             Ok(None)
@@ -233,6 +237,8 @@ impl NornRpcServer for NornRpcImpl {
                 registration_count: block.registrations.len(),
                 anchor_count: block.anchors.len(),
                 fraud_proof_count: block.fraud_proofs.len(),
+                name_registration_count: block.name_registrations.len(),
+                transfer_count: block.transfers.len(),
             }))
         } else {
             let state = engine.weave_state();
@@ -246,6 +252,8 @@ impl NornRpcServer for NornRpcImpl {
                 registration_count: 0,
                 anchor_count: 0,
                 fraud_proof_count: 0,
+                name_registration_count: 0,
+                transfer_count: 0,
             }))
         }
     }
@@ -587,18 +595,36 @@ impl NornRpcServer for NornRpcImpl {
             });
         }
 
-        // Verify the sender's signature.
-        let sender_pubkey = knot.before_states[0].pubkey;
-        if let Err(e) = norn_crypto::keys::verify(&knot.id, &knot.signatures[0], &sender_pubkey) {
+        // Verify all signatures match their corresponding before_state pubkeys.
+        if knot.signatures.len() != knot.before_states.len() {
             return Ok(SubmitResult {
                 success: false,
-                reason: Some(format!("invalid sender signature: {}", e)),
+                reason: Some(format!(
+                    "signature count ({}) does not match before_states count ({})",
+                    knot.signatures.len(),
+                    knot.before_states.len()
+                )),
             });
         }
 
+        for (i, (sig, bs)) in knot
+            .signatures
+            .iter()
+            .zip(knot.before_states.iter())
+            .enumerate()
+        {
+            if let Err(e) = norn_crypto::keys::verify(&knot.id, sig, &bs.pubkey) {
+                return Ok(SubmitResult {
+                    success: false,
+                    reason: Some(format!("invalid signature at index {}: {}", i, e)),
+                });
+            }
+        }
+
         // Apply transfer via StateManager.
+        let sender_pubkey = knot.before_states[0].pubkey;
         let mut sm = self.state_manager.write().await;
-        sm.auto_register_if_needed(from);
+        sm.auto_register_with_pubkey(from, sender_pubkey);
         sm.auto_register_if_needed(to);
 
         let knot_id = knot.id;
@@ -740,8 +766,12 @@ impl NornRpcServer for NornRpcImpl {
     ) -> Result<Vec<TransactionHistoryEntry>, ErrorObjectOwned> {
         let address = parse_address_hex(&address_hex)?;
 
+        // Cap limit to prevent excessive memory use.
+        let limit = if limit == 0 { 100 } else { limit.min(1000) } as usize;
+        let offset = offset as usize;
+
         let sm = self.state_manager.read().await;
-        let records = sm.get_history(&address, limit as usize, offset as usize);
+        let records = sm.get_history(&address, limit, offset);
 
         let entries = records
             .into_iter()
@@ -882,6 +912,32 @@ impl NornRpcServer for NornRpcImpl {
                 ErrorObjectOwned::owned(-32602, format!("invalid fraud proof: {}", e), None::<()>)
             })?;
 
+        // Validate submitter pubkey is not zero.
+        if submission.submitter == [0u8; 32] {
+            return Ok(SubmitResult {
+                success: false,
+                reason: Some("submitter public key must not be zero".to_string()),
+            });
+        }
+
+        // Verify the submitter's signature over the proof.
+        let proof_bytes = borsh::to_vec(&submission.proof).map_err(|e| {
+            ErrorObjectOwned::owned(
+                -32000,
+                format!("failed to serialize proof for verification: {}", e),
+                None::<()>,
+            )
+        })?;
+        let proof_hash = norn_crypto::hash::blake3_hash(&proof_bytes);
+        if let Err(e) =
+            norn_crypto::keys::verify(&proof_hash, &submission.signature, &submission.submitter)
+        {
+            return Ok(SubmitResult {
+                success: false,
+                reason: Some(format!("invalid submitter signature: {}", e)),
+            });
+        }
+
         let mut engine = self.weave_engine.write().await;
         let responses =
             engine.on_network_message(NornMessage::FraudProof(Box::new(submission.clone())));
@@ -930,6 +986,8 @@ mod tests {
             registration_count: 0,
             anchor_count: 0,
             fraud_proof_count: 0,
+            name_registration_count: 0,
+            transfer_count: 0,
         };
     }
 }

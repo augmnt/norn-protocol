@@ -34,6 +34,12 @@ pub struct BlockInfo {
     pub anchor_count: usize,
     /// Number of fraud proofs in this block.
     pub fraud_proof_count: usize,
+    /// Number of name registrations in this block.
+    #[serde(default)]
+    pub name_registration_count: usize,
+    /// Number of transfers in this block.
+    #[serde(default)]
+    pub transfer_count: usize,
 }
 
 /// Information about the current weave state.
@@ -218,10 +224,14 @@ mod tests {
             registration_count: 2,
             anchor_count: 1,
             fraud_proof_count: 0,
+            name_registration_count: 3,
+            transfer_count: 5,
         };
         let json = serde_json::to_string(&info).unwrap();
         let deserialized: BlockInfo = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.height, 42);
+        assert_eq!(deserialized.name_registration_count, 3);
+        assert_eq!(deserialized.transfer_count, 5);
     }
 
     #[test]
