@@ -81,33 +81,24 @@ This is where you run all `norn wallet` commands. The wallet talks to Alice's lo
 
 ## How They Connect
 
-```
-                    seed.norn.network
-                    (always-on relay)
-                   ┌─────────────────┐
-                   │  norn run --dev  │
-                   │  --no-bootstrap  │
-                   │  P2P: 0.0.0.0   │
-                   │  :9740           │
-                   └────────┬────────┘
-                            │
-              ┌─────────────┼─────────────┐
-              │ gossipsub   │  gossipsub  │
-              │ (mesh)      │  (mesh)     │
-              ▼             ▼             ▼
-   ┌──────────────┐              ┌──────────────┐
-   │   Alice      │◄────────────►│     Bob      │
-   │  (primary)   │  mDNS on    │  (secondary) │
-   │              │  same LAN   │              │
-   │  Wallet:     │              │  Wallet:     │
-   │  founder.json│              │  bob.json    │
-   └──────────────┘              └──────────────┘
-         ▲                             ▲
-         │ RPC localhost               │ RPC localhost
-         │                             │
-   norn wallet send              norn wallet send
-   norn wallet register-name     norn wallet balance
-   norn wallet whoami            ...
+```mermaid
+graph TD
+    Seed["<b>seed.norn.network</b><br/><i>always-on relay</i><br/>norn run --dev --no-bootstrap<br/>P2P: 0.0.0.0:9740"]
+
+    Alice["<b>Alice</b> (primary)<br/>Wallet: founder.json"]
+    Bob["<b>Bob</b> (secondary)<br/>Wallet: bob.json"]
+
+    AliceCLI["norn wallet send<br/>norn wallet register-name<br/>norn wallet whoami"]
+    BobCLI["norn wallet send<br/>norn wallet balance"]
+
+    Alice -- "gossipsub (mesh)" --> Seed
+    Seed -- "gossipsub (mesh)" --> Alice
+    Bob -- "gossipsub (mesh)" --> Seed
+    Seed -- "gossipsub (mesh)" --> Bob
+    Alice <-- "mDNS on same LAN" --> Bob
+
+    AliceCLI -- "RPC localhost:9741" --> Alice
+    BobCLI -- "RPC localhost:9741" --> Bob
 ```
 
 **Connection flow on startup:**
