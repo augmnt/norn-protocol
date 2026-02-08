@@ -1,7 +1,8 @@
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
 use crate::wallet::format::{
-    format_address, print_divider, print_error, print_success, style_bold, style_info,
+    format_address, format_token_amount_with_name, parse_token_amount, print_divider, print_error,
+    print_success, style_bold, style_info,
 };
 use crate::wallet::keystore::Keystore;
 use crate::wallet::prompt::{confirm, prompt_password};
@@ -13,15 +14,6 @@ pub async fn run(
     yes: bool,
     rpc_url: Option<&str>,
 ) -> Result<(), WalletError> {
-    let amount_val: u128 = amount
-        .replace('_', "")
-        .parse()
-        .map_err(|_| WalletError::Other("invalid amount".to_string()))?;
-
-    if amount_val == 0 {
-        return Err(WalletError::Other("amount must be > 0".to_string()));
-    }
-
     let config = WalletConfig::load()?;
     let wallet_name = config.active_wallet_name()?;
     let ks = Keystore::load(wallet_name)?;
@@ -29,9 +21,15 @@ pub async fn run(
     let url = rpc_url.unwrap_or(&config.rpc_url);
     let rpc = RpcClient::new(url)?;
 
-    // Resolve token (by symbol or hex ID).
+    // Resolve token first so we know the correct decimals for amount parsing.
     let token_info = super::mint_token::resolve_token(&rpc, token).await?;
     let token_id = super::mint_token::hex_to_token_id(&token_info.token_id)?;
+
+    let amount_val = parse_token_amount(amount, token_info.decimals)?;
+
+    if amount_val == 0 {
+        return Err(WalletError::Other("amount must be > 0".to_string()));
+    }
 
     // Show confirmation.
     if !yes {
@@ -48,7 +46,14 @@ pub async fn run(
             format_address(&ks.address),
             wallet_name
         );
-        println!("  Amount:  {}", style_bold().apply_to(amount));
+        println!(
+            "  Amount:  {}",
+            style_bold().apply_to(format_token_amount_with_name(
+                amount_val,
+                token_info.decimals,
+                &token_info.symbol
+            ))
+        );
         println!();
 
         if !confirm("Burn these tokens?")? {
@@ -86,7 +91,10 @@ pub async fn run(
     let result = rpc.burn_token(&hex_data).await?;
 
     if result.success {
-        print_success(&format!("Burned {} {}", amount, token_info.symbol));
+        print_success(&format!(
+            "Burned {}",
+            format_token_amount_with_name(amount_val, token_info.decimals, &token_info.symbol)
+        ));
     } else {
         print_error(
             &format!(

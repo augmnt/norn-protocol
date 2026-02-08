@@ -3,7 +3,7 @@ use norn_types::constants::MAX_SUPPLY;
 use crate::rpc::types::TokenInfo;
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
-use crate::wallet::format::{format_amount, print_error, style_bold};
+use crate::wallet::format::{format_amount, format_token_amount, print_error, style_bold};
 use crate::wallet::rpc_client::RpcClient;
 use crate::wallet::ui::{cell, cell_bold, cell_dim, info_table, print_table};
 
@@ -64,13 +64,18 @@ pub async fn run(token: &str, json: bool, rpc_url: Option<&str>) -> Result<(), W
         } else if is_native {
             format_amount(MAX_SUPPLY)
         } else {
-            token_info.max_supply.clone()
+            let max: u128 = token_info.max_supply.parse().unwrap_or(0);
+            format_token_amount(max, token_info.decimals)
         };
         table.add_row(vec![cell("Max Supply"), cell(&max_display)]);
-        table.add_row(vec![
-            cell("Current Supply"),
-            cell(&token_info.current_supply),
-        ]);
+
+        let supply_display = if is_native {
+            token_info.current_supply.clone()
+        } else {
+            let supply: u128 = token_info.current_supply.parse().unwrap_or(0);
+            format_token_amount(supply, token_info.decimals)
+        };
+        table.add_row(vec![cell("Current Supply"), cell(&supply_display)]);
         table.add_row(vec![cell("Creator"), cell(&token_info.creator)]);
 
         if !is_native {

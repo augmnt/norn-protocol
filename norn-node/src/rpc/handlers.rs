@@ -17,7 +17,25 @@ use super::types::{
 };
 use crate::metrics::NodeMetrics;
 use crate::state_manager::StateManager;
-use crate::wallet::format::{format_address, format_amount_with_symbol};
+use norn_types::constants::NORN_DECIMALS;
+use norn_types::primitives::NATIVE_TOKEN_ID;
+
+use crate::wallet::format::{
+    format_address, format_amount_with_symbol, format_token_amount_with_name,
+};
+
+/// Format an amount using the correct decimals for the given token.
+/// Looks up the token in the state manager's registry; falls back to NORN decimals for native.
+fn format_amount_for_token(amount: u128, token_id: &[u8; 32], sm: &StateManager) -> String {
+    if *token_id == NATIVE_TOKEN_ID {
+        format_token_amount_with_name(amount, NORN_DECIMALS as u8, "NORN")
+    } else if let Some(record) = sm.get_token(token_id) {
+        format_token_amount_with_name(amount, record.decimals, &record.symbol)
+    } else {
+        // Unknown token — fall back to raw amount with truncated ID.
+        format!("{} (token:{}...)", amount, &hex::encode(token_id)[..8])
+    }
+}
 
 /// JSON-RPC trait for the Norn node.
 #[rpc(server)]
@@ -459,7 +477,7 @@ impl NornRpcServer for NornRpcImpl {
                 .map(|(token_id, &amount)| super::types::BalanceEntry {
                     token_id: hex::encode(token_id),
                     amount: amount.to_string(),
-                    human_readable: format_amount_with_symbol(amount, token_id),
+                    human_readable: format_amount_for_token(amount, token_id, &sm),
                 })
                 .collect();
 
@@ -839,7 +857,7 @@ impl NornRpcServer for NornRpcImpl {
                     to: format_address(&r.to),
                     token_id: hex::encode(r.token_id),
                     amount: r.amount.to_string(),
-                    human_readable: format_amount_with_symbol(r.amount, &r.token_id),
+                    human_readable: format_amount_for_token(r.amount, &r.token_id, &sm),
                     memo: memo_str,
                     timestamp: r.timestamp,
                     block_height: r.block_height,

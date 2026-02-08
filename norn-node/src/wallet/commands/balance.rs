@@ -3,7 +3,7 @@ use norn_types::primitives::NATIVE_TOKEN_ID;
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
 use crate::wallet::format::{
-    format_address, format_amount_with_token_name, parse_address, style_bold, style_dim,
+    format_address, format_token_amount_with_name, parse_address, style_bold, style_dim,
 };
 use crate::wallet::keystore::Keystore;
 use crate::wallet::rpc_client::RpcClient;
@@ -28,16 +28,22 @@ pub async fn run(
     };
 
     // Resolve token: handle native shortcuts locally, else RPC symbol lookup.
-    let (token_id, token_symbol) = match token {
-        Some(t) if t.eq_ignore_ascii_case("norn") || t == "native" => {
-            (NATIVE_TOKEN_ID, "NORN".to_string())
-        }
+    let (token_id, token_symbol, token_decimals) = match token {
+        Some(t) if t.eq_ignore_ascii_case("norn") || t == "native" => (
+            NATIVE_TOKEN_ID,
+            "NORN".to_string(),
+            norn_types::constants::NORN_DECIMALS as u8,
+        ),
         Some(t) => {
             let info = super::mint_token::resolve_token(&rpc, t).await?;
             let id = super::mint_token::hex_to_token_id(&info.token_id)?;
-            (id, info.symbol)
+            (id, info.symbol, info.decimals)
         }
-        None => (NATIVE_TOKEN_ID, "NORN".to_string()),
+        None => (
+            NATIVE_TOKEN_ID,
+            "NORN".to_string(),
+            norn_types::constants::NORN_DECIMALS as u8,
+        ),
     };
 
     let addr_hex = hex::encode(addr);
@@ -62,7 +68,7 @@ pub async fn run(
             "token_id": hex::encode(token_id),
             "token_symbol": token_symbol,
             "balance": balance_str,
-            "human_readable": format_amount_with_token_name(balance, &token_symbol),
+            "human_readable": format_token_amount_with_name(balance, token_decimals, &token_symbol),
         });
         if let Some(h) = block_height {
             info["block_height"] = serde_json::json!(h);
@@ -81,7 +87,11 @@ pub async fn run(
     table.add_row(vec![cell("Address"), cell(format_address(&addr))]);
     table.add_row(vec![
         cell("Balance"),
-        cell(format_amount_with_token_name(balance, &token_symbol)),
+        cell(format_token_amount_with_name(
+            balance,
+            token_decimals,
+            &token_symbol,
+        )),
     ]);
     if let Some(h) = block_height {
         table.add_row(vec![cell("Block"), cell_dim(format!("#{}", h))]);

@@ -4,8 +4,8 @@ use norn_types::token::TOKEN_CREATION_FEE;
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
 use crate::wallet::format::{
-    format_address, format_amount_with_symbol, print_divider, print_error, print_success,
-    style_bold, style_dim, style_info,
+    format_address, format_amount_with_symbol, format_token_amount_with_name, parse_token_amount,
+    print_divider, print_error, print_success, style_bold, style_dim, style_info,
 };
 use crate::wallet::keystore::Keystore;
 use crate::wallet::prompt::{confirm, prompt_password};
@@ -32,14 +32,13 @@ pub async fn run(
         )));
     }
 
-    let max_supply_val: u128 = max_supply
-        .replace('_', "")
-        .parse()
-        .map_err(|_| WalletError::Other("invalid max-supply value".to_string()))?;
-    let initial_supply_val: u128 = initial_supply
-        .replace('_', "")
-        .parse()
-        .map_err(|_| WalletError::Other("invalid initial-supply value".to_string()))?;
+    // Parse supply values using token decimals. "0" for max_supply means unlimited.
+    let max_supply_val: u128 = if max_supply == "0" {
+        0
+    } else {
+        parse_token_amount(max_supply, decimals)?
+    };
+    let initial_supply_val: u128 = parse_token_amount(initial_supply, decimals)?;
 
     if max_supply_val > 0 && initial_supply_val > max_supply_val {
         return Err(WalletError::Other(
@@ -92,10 +91,13 @@ pub async fn run(
             if max_supply_val == 0 {
                 "unlimited".to_string()
             } else {
-                max_supply_val.to_string()
+                format_token_amount_with_name(max_supply_val, decimals, symbol)
             }
         );
-        println!("  Initial Supply: {}", initial_supply_val);
+        println!(
+            "  Initial Supply: {}",
+            format_token_amount_with_name(initial_supply_val, decimals, symbol)
+        );
         println!(
             "  Creator:        {} ({})",
             format_address(&ks.address),

@@ -1,5 +1,5 @@
 use console::Style;
-use norn_types::constants::{NORN_DECIMALS, ONE_NORN};
+use norn_types::constants::NORN_DECIMALS;
 use norn_types::primitives::{Address, Amount, PublicKey, TokenId, NATIVE_TOKEN_ID};
 
 use super::error::WalletError;
@@ -32,19 +32,34 @@ pub fn style_dim() -> Style {
 
 // ── Amount formatting ───────────────────────────────────────────────────────
 
-/// Format an Amount into a human-readable string like "1,234.567890120000".
-pub fn format_amount(amount: Amount) -> String {
-    let decimals = NORN_DECIMALS as usize;
-    let whole = amount / ONE_NORN;
-    let frac = amount % ONE_NORN;
+/// Format an Amount using a specific number of decimal places.
+/// For example, `format_token_amount(2_110_000_00, 8)` => `"2.11000000"`.
+pub fn format_token_amount(amount: Amount, decimals: u8) -> String {
+    if decimals == 0 {
+        return format_with_commas(amount);
+    }
+    let decimal_places = decimals as usize;
+    let divisor: u128 = 10u128.pow(decimals as u32);
+    let whole = amount / divisor;
+    let frac = amount % divisor;
 
     let whole_str = format_with_commas(whole);
-    let frac_str = format!("{:0>width$}", frac, width = decimals);
+    let frac_str = format!("{:0>width$}", frac, width = decimal_places);
 
     format!("{}.{}", whole_str, frac_str)
 }
 
-/// Format amount with token symbol.
+/// Format a token amount with its symbol name.
+pub fn format_token_amount_with_name(amount: Amount, decimals: u8, symbol: &str) -> String {
+    format!("{} {}", format_token_amount(amount, decimals), symbol)
+}
+
+/// Format a native NORN Amount into a human-readable string like "1,234.567890120000".
+pub fn format_amount(amount: Amount) -> String {
+    format_token_amount(amount, NORN_DECIMALS as u8)
+}
+
+/// Format amount with token symbol (native NORN only — uses NORN decimals).
 pub fn format_amount_with_symbol(amount: Amount, token_id: &TokenId) -> String {
     let formatted = format_amount(amount);
     if *token_id == NATIVE_TOKEN_ID {
@@ -58,14 +73,17 @@ pub fn format_amount_with_symbol(amount: Amount, token_id: &TokenId) -> String {
     }
 }
 
-/// Format amount with a known token symbol name.
-pub fn format_amount_with_token_name(amount: Amount, symbol: &str) -> String {
-    format!("{} {}", format_amount(amount), symbol)
-}
+/// Parse a human-readable amount string using a specific number of decimal places.
+/// For example, `parse_token_amount("10.5", 8)` => `1_050_000_000`.
+pub fn parse_token_amount(s: &str, decimals: u8) -> Result<Amount, WalletError> {
+    let s = s.replace([',', '_'], "");
 
-/// Parse a human-readable amount string (e.g. "10.5") into an Amount.
-pub fn parse_amount(s: &str) -> Result<Amount, WalletError> {
-    let s = s.replace(',', "");
+    if decimals == 0 {
+        return s.parse().map_err(|_| WalletError::InvalidAmount(s.clone()));
+    }
+
+    let decimal_places = decimals as usize;
+    let divisor: u128 = 10u128.pow(decimals as u32);
     let parts: Vec<&str> = s.split('.').collect();
 
     match parts.len() {
@@ -73,7 +91,7 @@ pub fn parse_amount(s: &str) -> Result<Amount, WalletError> {
             let whole: u128 = parts[0]
                 .parse()
                 .map_err(|_| WalletError::InvalidAmount(s.clone()))?;
-            Ok(whole * ONE_NORN)
+            Ok(whole * divisor)
         }
         2 => {
             let whole: u128 = if parts[0].is_empty() {
@@ -83,20 +101,25 @@ pub fn parse_amount(s: &str) -> Result<Amount, WalletError> {
                     .parse()
                     .map_err(|_| WalletError::InvalidAmount(s.clone()))?
             };
-            let decimals = NORN_DECIMALS as usize;
-            let frac_str = if parts[1].len() > decimals {
-                &parts[1][..decimals]
+            let frac_str = if parts[1].len() > decimal_places {
+                &parts[1][..decimal_places]
             } else {
                 parts[1]
             };
-            let padded = format!("{:0<width$}", frac_str, width = decimals);
+            let padded = format!("{:0<width$}", frac_str, width = decimal_places);
             let frac: u128 = padded
                 .parse()
                 .map_err(|_| WalletError::InvalidAmount(s.clone()))?;
-            Ok(whole * ONE_NORN + frac)
+            Ok(whole * divisor + frac)
         }
         _ => Err(WalletError::InvalidAmount(s)),
     }
+}
+
+/// Parse a human-readable amount string (e.g. "10.5") into a native NORN Amount.
+#[allow(dead_code)]
+pub fn parse_amount(s: &str) -> Result<Amount, WalletError> {
+    parse_token_amount(s, NORN_DECIMALS as u8)
 }
 
 fn format_with_commas(n: u128) -> String {
@@ -286,6 +309,7 @@ pub fn print_mnemonic_box(words: &[&str]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use norn_types::constants::ONE_NORN;
 
     #[test]
     fn test_format_amount_zero() {
@@ -367,5 +391,59 @@ mod tests {
         assert_eq!(parse_token_id("NORN").unwrap(), NATIVE_TOKEN_ID);
         assert_eq!(parse_token_id("norn").unwrap(), NATIVE_TOKEN_ID);
         assert_eq!(parse_token_id("native").unwrap(), NATIVE_TOKEN_ID);
+    }
+
+    // ── Token-amount (custom decimals) tests ──────────────────────────────
+
+    #[test]
+    fn test_format_token_amount_8_decimals() {
+        // 211_000_000 raw with 8 decimals = 2.11
+        assert_eq!(format_token_amount(211_000_000, 8), "2.11000000");
+    }
+
+    #[test]
+    fn test_format_token_amount_zero_decimals() {
+        assert_eq!(format_token_amount(42, 0), "42");
+        assert_eq!(format_token_amount(1_234_567, 0), "1,234,567");
+    }
+
+    #[test]
+    fn test_format_token_amount_6_decimals() {
+        // 1_500_000 raw with 6 decimals = 1.5
+        assert_eq!(format_token_amount(1_500_000, 6), "1.500000");
+    }
+
+    #[test]
+    fn test_parse_token_amount_8_decimals() {
+        assert_eq!(parse_token_amount("2.11", 8).unwrap(), 211_000_000);
+        assert_eq!(parse_token_amount("100", 8).unwrap(), 100 * 10u128.pow(8));
+    }
+
+    #[test]
+    fn test_parse_token_amount_zero_decimals() {
+        assert_eq!(parse_token_amount("42", 0).unwrap(), 42);
+    }
+
+    #[test]
+    fn test_format_parse_token_roundtrip_8() {
+        let raw = 123_456_789u128;
+        let formatted = format_token_amount(raw, 8);
+        let parsed = parse_token_amount(&formatted, 8).unwrap();
+        assert_eq!(parsed, raw);
+    }
+
+    #[test]
+    fn test_format_parse_token_roundtrip_6() {
+        let raw = 1_234_567u128;
+        let formatted = format_token_amount(raw, 6);
+        let parsed = parse_token_amount(&formatted, 6).unwrap();
+        assert_eq!(parsed, raw);
+    }
+
+    #[test]
+    fn test_norn_delegates_to_token_amount() {
+        // format_amount should produce same result as format_token_amount with 12 decimals
+        let amount = 1234567890123u128;
+        assert_eq!(format_amount(amount), format_token_amount(amount, 12));
     }
 }

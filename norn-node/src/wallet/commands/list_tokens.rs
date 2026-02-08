@@ -1,6 +1,6 @@
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
-use crate::wallet::format::{style_bold, style_dim, truncate_hex_string};
+use crate::wallet::format::{format_token_amount, style_bold, style_dim, truncate_hex_string};
 use crate::wallet::rpc_client::RpcClient;
 use crate::wallet::ui::{cell_right, data_table, print_table};
 
@@ -33,15 +33,17 @@ pub async fn run(limit: u64, json: bool, rpc_url: Option<&str>) -> Result<(), Wa
         ]);
 
         for token in &tokens {
+            let supply: u128 = token.current_supply.parse().unwrap_or(0);
             let max_str = if token.max_supply == "0" {
                 "unlimited".to_string()
             } else {
-                token.max_supply.clone()
+                let max: u128 = token.max_supply.parse().unwrap_or(0);
+                format_token_amount(max, token.decimals)
             };
             table.add_row(vec![
                 comfy_table::Cell::new(&token.symbol),
                 comfy_table::Cell::new(&token.name),
-                cell_right(&token.current_supply),
+                cell_right(format_token_amount(supply, token.decimals)),
                 cell_right(&max_str),
                 cell_right(token.decimals),
                 comfy_table::Cell::new(truncate_hex_string(&token.creator, 6)),

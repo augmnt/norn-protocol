@@ -3,7 +3,7 @@ use norn_types::primitives::NATIVE_TOKEN_ID;
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
 use crate::wallet::format::{
-    format_address, format_amount, format_amount_with_symbol, style_bold, style_info,
+    format_address, format_amount_with_symbol, format_token_amount, style_bold, style_info,
 };
 use crate::wallet::keystore::Keystore;
 use crate::wallet::rpc_client::RpcClient;
@@ -38,13 +38,13 @@ pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
         .map(|b| b.height);
 
     // Fetch custom token balances (non-zero only).
-    let mut token_balances: Vec<(String, u128)> = Vec::new();
+    let mut token_balances: Vec<(String, u128, u8)> = Vec::new(); // (symbol, balance, decimals)
     if let Ok(tokens) = rpc.list_tokens(200, 0).await {
         for t in &tokens {
             if let Ok(bal_str) = rpc.get_balance(&addr_hex, &t.token_id).await {
                 let bal: u128 = bal_str.parse().unwrap_or(0);
                 if bal > 0 {
-                    token_balances.push((t.symbol.clone(), bal));
+                    token_balances.push((t.symbol.clone(), bal, t.decimals));
                 }
             }
         }
@@ -53,10 +53,11 @@ pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     if json {
         let token_holdings: Vec<serde_json::Value> = token_balances
             .iter()
-            .map(|(sym, bal)| {
+            .map(|(sym, bal, decimals)| {
                 serde_json::json!({
                     "symbol": sym,
                     "balance": bal.to_string(),
+                    "human_readable": format!("{} {}", format_token_amount(*bal, *decimals), sym),
                 })
             })
             .collect();
@@ -119,10 +120,10 @@ pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
         println!("  {}", style_bold().apply_to("Token Holdings"));
 
         let mut ttable = data_table(&["Token", "Balance"]);
-        for (sym, bal) in &token_balances {
+        for (sym, bal, decimals) in &token_balances {
             ttable.add_row(vec![
                 cell(sym),
-                cell_right(format!("{} {}", format_amount(*bal), sym)),
+                cell_right(format!("{} {}", format_token_amount(*bal, *decimals), sym)),
             ]);
         }
         print_table(&ttable);

@@ -3,7 +3,8 @@ use norn_types::primitives::NATIVE_TOKEN_ID;
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
 use crate::wallet::format::{
-    format_address, format_amount, format_amount_with_symbol, style_bold, style_dim,
+    format_address, format_amount, format_amount_with_symbol, format_token_amount, style_bold,
+    style_dim,
 };
 use crate::wallet::keystore::Keystore;
 use crate::wallet::rpc_client::RpcClient;
@@ -33,13 +34,13 @@ pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
         .map(|b| b.height);
 
     // Custom token balances.
-    let mut holdings: Vec<(String, String, u128)> = Vec::new(); // (symbol, token_id_hex, balance)
+    let mut holdings: Vec<(String, String, u128, u8)> = Vec::new(); // (symbol, token_id_hex, balance, decimals)
     if let Ok(tokens) = rpc.list_tokens(200, 0).await {
         for t in &tokens {
             if let Ok(bal_str) = rpc.get_balance(&addr_hex, &t.token_id).await {
                 let bal: u128 = bal_str.parse().unwrap_or(0);
                 if bal > 0 {
-                    holdings.push((t.symbol.clone(), t.token_id.clone(), bal));
+                    holdings.push((t.symbol.clone(), t.token_id.clone(), bal, t.decimals));
                 }
             }
         }
@@ -52,12 +53,12 @@ pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
             "balance": native_str,
             "human_readable": format_amount_with_symbol(native_bal, &NATIVE_TOKEN_ID),
         })];
-        for (sym, tid, bal) in &holdings {
+        for (sym, tid, bal, decimals) in &holdings {
             entries.push(serde_json::json!({
                 "symbol": sym,
                 "token_id": tid,
                 "balance": bal.to_string(),
-                "human_readable": format!("{} {}", format_amount(*bal), sym),
+                "human_readable": format!("{} {}", format_token_amount(*bal, *decimals), sym),
             }));
         }
         let mut info = serde_json::json!({
@@ -94,10 +95,10 @@ pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     ]);
 
     // Custom tokens.
-    for (sym, _tid, bal) in &holdings {
+    for (sym, _tid, bal, decimals) in &holdings {
         table.add_row(vec![
             comfy_table::Cell::new(sym),
-            cell_right(format!("{} {}", format_amount(*bal), sym)),
+            cell_right(format!("{} {}", format_token_amount(*bal, *decimals), sym)),
         ]);
     }
 

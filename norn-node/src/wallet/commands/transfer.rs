@@ -3,8 +3,9 @@ use norn_types::primitives::NATIVE_TOKEN_ID;
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
 use crate::wallet::format::{
-    format_address, format_amount_with_symbol, format_amount_with_token_name, parse_address,
-    parse_amount, print_divider, print_error, print_success, style_bold, style_dim, style_info,
+    format_address, format_amount_with_symbol, format_token_amount_with_name, parse_address,
+    parse_token_amount, print_divider, print_error, print_success, style_bold, style_dim,
+    style_info,
 };
 use crate::wallet::keystore::Keystore;
 use crate::wallet::prompt::{confirm, prompt_password};
@@ -22,29 +23,35 @@ pub async fn run(
     let wallet_name = config.active_wallet_name()?;
     let ks = Keystore::load(wallet_name)?;
 
-    let amount = parse_amount(amount_str)?;
+    let url = rpc_url.unwrap_or(&config.rpc_url);
+    let rpc = RpcClient::new(url)?;
+
+    // Resolve token first so we know the correct decimals for amount parsing.
+    let (token_id, token_symbol, token_decimals) = match token {
+        Some(t) if t.eq_ignore_ascii_case("norn") || t == "native" => (
+            NATIVE_TOKEN_ID,
+            "NORN".to_string(),
+            norn_types::constants::NORN_DECIMALS as u8,
+        ),
+        Some(t) => {
+            let info = super::mint_token::resolve_token(&rpc, t).await?;
+            let id = super::mint_token::hex_to_token_id(&info.token_id)?;
+            (id, info.symbol, info.decimals)
+        }
+        None => (
+            NATIVE_TOKEN_ID,
+            "NORN".to_string(),
+            norn_types::constants::NORN_DECIMALS as u8,
+        ),
+    };
+
+    let amount = parse_token_amount(amount_str, token_decimals)?;
 
     if amount == 0 {
         return Err(WalletError::InvalidAmount(
             "amount must be greater than zero".to_string(),
         ));
     }
-
-    let url = rpc_url.unwrap_or(&config.rpc_url);
-    let rpc = RpcClient::new(url)?;
-
-    // Resolve token: handle native shortcuts locally, else RPC symbol lookup.
-    let (token_id, token_symbol) = match token {
-        Some(t) if t.eq_ignore_ascii_case("norn") || t == "native" => {
-            (NATIVE_TOKEN_ID, "NORN".to_string())
-        }
-        Some(t) => {
-            let info = super::mint_token::resolve_token(&rpc, t).await?;
-            let id = super::mint_token::hex_to_token_id(&info.token_id)?;
-            (id, info.symbol)
-        }
-        None => (NATIVE_TOKEN_ID, "NORN".to_string()),
-    };
 
     // Resolve `to` — try as address first, otherwise resolve as a name.
     let to_addr = if to.starts_with("0x") || (to.len() == 40 && hex::decode(to).is_ok()) {
@@ -69,8 +76,12 @@ pub async fn run(
 
     if current_balance < amount {
         return Err(WalletError::InsufficientBalance {
-            available: format_amount_with_token_name(current_balance, &token_symbol),
-            required: format_amount_with_token_name(amount, &token_symbol),
+            available: format_token_amount_with_name(
+                current_balance,
+                token_decimals,
+                &token_symbol,
+            ),
+            required: format_token_amount_with_name(amount, token_decimals, &token_symbol),
         });
     }
 
@@ -99,15 +110,20 @@ pub async fn run(
         );
         println!(
             "  Amount:  {}",
-            style_bold().apply_to(format_amount_with_token_name(amount, &token_symbol))
+            style_bold().apply_to(format_token_amount_with_name(
+                amount,
+                token_decimals,
+                &token_symbol
+            ))
         );
         if let Some(ref fee_str) = fee_display {
             println!("  Fee:     {}", style_dim().apply_to(fee_str));
         }
         println!(
             "  Balance: {}",
-            style_dim().apply_to(format_amount_with_token_name(
+            style_dim().apply_to(format_token_amount_with_name(
                 current_balance,
+                token_decimals,
                 &token_symbol
             ))
         );
@@ -165,7 +181,7 @@ pub async fn run(
     if result.success {
         print_success(&format!(
             "Transfer of {} sent!",
-            format_amount_with_token_name(amount, &token_symbol)
+            format_token_amount_with_name(amount, token_decimals, &token_symbol)
         ));
         println!(
             "  Knot ID: {}",
@@ -177,7 +193,7 @@ pub async fn run(
             "  {}",
             style_dim().apply_to(format!(
                 "Remaining balance: {}",
-                format_amount_with_token_name(remaining, &token_symbol)
+                format_token_amount_with_name(remaining, token_decimals, &token_symbol)
             ))
         );
     } else {
