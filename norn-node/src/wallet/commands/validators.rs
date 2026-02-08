@@ -3,11 +3,10 @@ use norn_types::primitives::NATIVE_TOKEN_ID;
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
 use crate::wallet::format::{
-    format_amount_with_symbol, style_bold, style_dim, style_success, style_warn,
-    truncate_hex_string,
+    format_amount_with_symbol, style_bold, style_dim, truncate_hex_string,
 };
 use crate::wallet::rpc_client::RpcClient;
-use crate::wallet::ui::{data_table, print_table};
+use crate::wallet::ui::{cell, cell_green, cell_yellow, data_table, print_table};
 
 pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
@@ -39,16 +38,16 @@ pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
         for v in &info.validators {
             let addr_display = truncate_hex_string(&format!("0x{}", v.address), 6);
             let stake: u128 = v.stake.parse().unwrap_or(0);
-            let status = if v.active {
-                format!("{} active", style_success().apply_to("\u{25cf}"))
+            let status_cell = if v.active {
+                cell_green("\u{25cf} active")
             } else {
-                format!("{} inactive", style_warn().apply_to("\u{25cf}"))
+                cell_yellow("\u{25cf} inactive")
             };
 
             table.add_row(vec![
-                comfy_table::Cell::new(addr_display),
-                comfy_table::Cell::new(format_amount_with_symbol(stake, &NATIVE_TOKEN_ID)),
-                comfy_table::Cell::new(status),
+                cell(addr_display),
+                cell(format_amount_with_symbol(stake, &NATIVE_TOKEN_ID)),
+                status_cell,
             ]);
         }
 

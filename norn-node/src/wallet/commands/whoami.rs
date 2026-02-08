@@ -3,12 +3,14 @@ use norn_types::primitives::NATIVE_TOKEN_ID;
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
 use crate::wallet::format::{
-    format_address, format_amount, format_amount_with_symbol, style_bold, style_dim, style_info,
-    style_success, style_warn,
+    format_address, format_amount, format_amount_with_symbol, style_bold, style_info,
 };
 use crate::wallet::keystore::Keystore;
 use crate::wallet::rpc_client::RpcClient;
-use crate::wallet::ui::{cell_right, data_table, info_table, print_table};
+use crate::wallet::ui::{
+    cell, cell_cyan, cell_dim, cell_green, cell_right, cell_yellow, data_table, info_table,
+    print_table,
+};
 
 pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
@@ -87,40 +89,28 @@ pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
 
     let mut table = info_table();
 
+    table.add_row(vec![cell("Address"), cell(format_address(&ks.address))]);
     table.add_row(vec![
-        comfy_table::Cell::new("Address"),
-        comfy_table::Cell::new(format_address(&ks.address)),
-    ]);
-    table.add_row(vec![
-        comfy_table::Cell::new("Balance"),
-        comfy_table::Cell::new(format_amount_with_symbol(balance, &NATIVE_TOKEN_ID)),
+        cell("Balance"),
+        cell(format_amount_with_symbol(balance, &NATIVE_TOKEN_ID)),
     ]);
     if let Some(h) = block_height {
-        table.add_row(vec![
-            comfy_table::Cell::new("Block"),
-            comfy_table::Cell::new(format!("#{}", h)),
-        ]);
+        table.add_row(vec![cell("Block"), cell(format!("#{}", h))]);
     }
 
-    let names_display = if names.is_empty() {
-        style_dim().apply_to("none").to_string()
+    let names_cell = if names.is_empty() {
+        cell_dim("none")
     } else {
         let name_list: Vec<&str> = names.iter().map(|n| n.name.as_str()).collect();
-        style_info().apply_to(name_list.join(", ")).to_string()
+        cell_cyan(name_list.join(", "))
     };
-    table.add_row(vec![
-        comfy_table::Cell::new("Names"),
-        comfy_table::Cell::new(names_display),
-    ]);
+    table.add_row(vec![cell("Names"), names_cell]);
 
-    let thread_display = match thread_info {
-        Some(_) => format!("{} registered", style_success().apply_to("\u{25cf}")),
-        None => format!("{} not registered", style_warn().apply_to("\u{25cf}")),
+    let thread_cell = match thread_info {
+        Some(_) => cell_green("\u{25cf} registered"),
+        None => cell_yellow("\u{25cf} not registered"),
     };
-    table.add_row(vec![
-        comfy_table::Cell::new("Thread"),
-        comfy_table::Cell::new(thread_display),
-    ]);
+    table.add_row(vec![cell("Thread"), thread_cell]);
 
     print_table(&table);
 
@@ -131,7 +121,7 @@ pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
         let mut ttable = data_table(&["Token", "Balance"]);
         for (sym, bal) in &token_balances {
             ttable.add_row(vec![
-                comfy_table::Cell::new(sym),
+                cell(sym),
                 cell_right(format!("{} {}", format_amount(*bal), sym)),
             ]);
         }

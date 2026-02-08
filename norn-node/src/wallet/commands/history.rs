@@ -1,11 +1,9 @@
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
-use crate::wallet::format::{
-    style_bold, style_dim, style_success, style_warn, truncate_hex_string,
-};
+use crate::wallet::format::{style_bold, style_dim, truncate_hex_string};
 use crate::wallet::keystore::Keystore;
 use crate::wallet::rpc_client::RpcClient;
-use crate::wallet::ui::{data_table, print_table};
+use crate::wallet::ui::{cell, cell_green, cell_yellow, data_table, print_table};
 
 pub async fn run(limit: usize, json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
@@ -53,10 +51,10 @@ pub async fn run(limit: usize, json: bool, rpc_url: Option<&str>) -> Result<(), 
     for entry in &entries {
         let time_str = format_timestamp(entry.timestamp);
 
-        let dir_label = if entry.direction == "sent" {
-            style_warn().apply_to("SENT").to_string()
+        let dir_cell = if entry.direction == "sent" {
+            cell_yellow("SENT")
         } else {
-            style_success().apply_to("RCVD").to_string()
+            cell_green("RCVD")
         };
 
         let counterparty = if entry.direction == "sent" {
@@ -72,11 +70,11 @@ pub async fn run(limit: usize, json: bool, rpc_url: Option<&str>) -> Result<(), 
             .to_string();
 
         table.add_row(vec![
-            comfy_table::Cell::new(&time_str),
-            comfy_table::Cell::new(dir_label),
-            comfy_table::Cell::new(&entry.human_readable),
-            comfy_table::Cell::new(truncate_hex_string(counterparty, 6)),
-            comfy_table::Cell::new(memo),
+            cell(&time_str),
+            dir_cell,
+            cell(&entry.human_readable),
+            cell(truncate_hex_string(counterparty, 6)),
+            cell(memo),
         ]);
     }
 

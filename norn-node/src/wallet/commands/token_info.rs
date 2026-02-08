@@ -3,9 +3,9 @@ use norn_types::constants::MAX_SUPPLY;
 use crate::rpc::types::TokenInfo;
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
-use crate::wallet::format::{format_amount, print_error, style_bold, style_dim};
+use crate::wallet::format::{format_amount, print_error, style_bold};
 use crate::wallet::rpc_client::RpcClient;
-use crate::wallet::ui::{info_table, print_table};
+use crate::wallet::ui::{cell, cell_bold, cell_dim, info_table, print_table};
 
 pub async fn run(token: &str, json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
@@ -55,12 +55,9 @@ pub async fn run(token: &str, json: bool, rpc_url: Option<&str>) -> Result<(), W
 
         let mut table = info_table();
 
-        table.add_row(vec!["Name", &token_info.name]);
-        table.add_row(vec![
-            "Symbol",
-            &style_bold().apply_to(&token_info.symbol).to_string(),
-        ]);
-        table.add_row(vec!["Decimals", &token_info.decimals.to_string()]);
+        table.add_row(vec![cell("Name"), cell(&token_info.name)]);
+        table.add_row(vec![cell("Symbol"), cell_bold(&token_info.symbol)]);
+        table.add_row(vec![cell("Decimals"), cell(token_info.decimals)]);
 
         let max_display = if token_info.max_supply == "0" {
             "unlimited".to_string()
@@ -69,13 +66,18 @@ pub async fn run(token: &str, json: bool, rpc_url: Option<&str>) -> Result<(), W
         } else {
             token_info.max_supply.clone()
         };
-        table.add_row(vec!["Max Supply", &max_display]);
-        table.add_row(vec!["Current Supply", &token_info.current_supply]);
-        table.add_row(vec!["Creator", &token_info.creator]);
+        table.add_row(vec![cell("Max Supply"), cell(&max_display)]);
+        table.add_row(vec![
+            cell("Current Supply"),
+            cell(&token_info.current_supply),
+        ]);
+        table.add_row(vec![cell("Creator"), cell(&token_info.creator)]);
 
         if !is_native {
-            let ts_str = format_timestamp(token_info.created_at);
-            table.add_row(vec!["Created At", &ts_str]);
+            table.add_row(vec![
+                cell("Created At"),
+                cell(format_timestamp(token_info.created_at)),
+            ]);
         }
 
         let id_display = if is_native {
@@ -83,10 +85,7 @@ pub async fn run(token: &str, json: bool, rpc_url: Option<&str>) -> Result<(), W
         } else {
             token_info.token_id.clone()
         };
-        table.add_row(vec![
-            "Token ID",
-            &style_dim().apply_to(&id_display).to_string(),
-        ]);
+        table.add_row(vec![cell("Token ID"), cell_dim(id_display)]);
 
         print_table(&table);
         println!();

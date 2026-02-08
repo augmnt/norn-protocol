@@ -1,4 +1,4 @@
-use comfy_table::{presets, CellAlignment, ContentArrangement, Table};
+use comfy_table::{presets, Attribute, CellAlignment, Color, ContentArrangement, Table};
 
 /// Data table for lists (tokens, validators, history, wallets).
 /// UTF8_FULL preset with header separator, dynamic width.
@@ -24,6 +24,36 @@ pub fn info_table() -> Table {
 /// Right-aligned cell (for amounts / numbers).
 pub fn cell_right(content: impl ToString) -> comfy_table::Cell {
     comfy_table::Cell::new(content).set_alignment(CellAlignment::Right)
+}
+
+/// Plain cell.
+pub fn cell(content: impl ToString) -> comfy_table::Cell {
+    comfy_table::Cell::new(content)
+}
+
+/// Green cell (success / received).
+pub fn cell_green(content: impl ToString) -> comfy_table::Cell {
+    comfy_table::Cell::new(content).fg(Color::Green)
+}
+
+/// Yellow cell (warning / sent).
+pub fn cell_yellow(content: impl ToString) -> comfy_table::Cell {
+    comfy_table::Cell::new(content).fg(Color::Yellow)
+}
+
+/// Cyan cell (info / emphasis).
+pub fn cell_cyan(content: impl ToString) -> comfy_table::Cell {
+    comfy_table::Cell::new(content).fg(Color::Cyan)
+}
+
+/// Bold cell.
+pub fn cell_bold(content: impl ToString) -> comfy_table::Cell {
+    comfy_table::Cell::new(content).add_attribute(Attribute::Bold)
+}
+
+/// Dim cell.
+pub fn cell_dim(content: impl ToString) -> comfy_table::Cell {
+    comfy_table::Cell::new(content).add_attribute(Attribute::Dim)
 }
 
 /// Print table with 2-space left indent to match existing CLI aesthetic.

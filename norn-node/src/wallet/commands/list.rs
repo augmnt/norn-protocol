@@ -1,8 +1,8 @@
 use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
-use crate::wallet::format::{format_address, style_bold, style_dim, style_success};
+use crate::wallet::format::{format_address, style_bold, style_dim};
 use crate::wallet::keystore::Keystore;
-use crate::wallet::ui::{data_table, print_table};
+use crate::wallet::ui::{cell, cell_green, data_table, print_table};
 
 pub fn run(json: bool) -> Result<(), WalletError> {
     let config = WalletConfig::load()?;
@@ -50,23 +50,19 @@ pub fn run(json: bool) -> Result<(), WalletError> {
 
         match Keystore::load(name) {
             Ok(ks) => {
-                let status = if active {
-                    format!("{} active", style_success().apply_to("\u{25cf}"))
+                let status_cell = if active {
+                    cell_green("\u{25cf} active")
                 } else {
-                    String::new()
+                    cell("")
                 };
                 table.add_row(vec![
-                    comfy_table::Cell::new(name),
-                    comfy_table::Cell::new(format_address(&ks.address)),
-                    comfy_table::Cell::new(status),
+                    cell(name),
+                    cell(format_address(&ks.address)),
+                    status_cell,
                 ]);
             }
             Err(_) => {
-                table.add_row(vec![
-                    comfy_table::Cell::new(name),
-                    comfy_table::Cell::new("(error loading)"),
-                    comfy_table::Cell::new(""),
-                ]);
+                table.add_row(vec![cell(name), cell("(error loading)"), cell("")]);
             }
         }
     }
