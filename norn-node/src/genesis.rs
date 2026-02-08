@@ -1,5 +1,7 @@
 use norn_crypto::hash::blake3_hash;
-use norn_types::genesis::{GenesisAllocation, GenesisConfig, GenesisParameters};
+use norn_types::genesis::{
+    GenesisAllocation, GenesisConfig, GenesisNameRegistration, GenesisParameters,
+};
 use norn_types::primitives::{Address, NATIVE_TOKEN_ID};
 use norn_types::weave::{FeeState, WeaveBlock, WeaveState};
 
@@ -96,6 +98,10 @@ pub fn devnet_genesis() -> (GenesisConfig, Address) {
             min_validator_stake: 1_000_000_000_000,
             initial_base_fee: 100,
         },
+        name_registrations: vec![GenesisNameRegistration {
+            name: "augmnt".to_string(),
+            owner: DEVNET_FOUNDER,
+        }],
     };
 
     (config, DEVNET_FOUNDER)
@@ -182,6 +188,7 @@ mod tests {
                 min_validator_stake: 1_000_000_000_000,
                 initial_base_fee: 100,
             },
+            name_registrations: Vec::new(),
         }
     }
 

@@ -23,6 +23,9 @@ pub struct GenesisConfig {
     pub allocations: Vec<GenesisAllocation>,
     /// Protocol parameters.
     pub parameters: GenesisParameters,
+    /// Names to register at genesis.
+    #[serde(default)]
+    pub name_registrations: Vec<GenesisNameRegistration>,
 }
 
 fn default_genesis_version() -> u32 {
@@ -49,6 +52,15 @@ pub struct GenesisAllocation {
     pub token_id: TokenId,
     /// Amount to allocate.
     pub amount: Amount,
+}
+
+/// A name registration included in the genesis config.
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+pub struct GenesisNameRegistration {
+    /// The name to register.
+    pub name: String,
+    /// Owner address for the name.
+    pub owner: Address,
 }
 
 /// Protocol parameters set at genesis.

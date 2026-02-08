@@ -171,15 +171,6 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
                         cyan.apply_to(format!("{} boot node(s)", config.network.boot_nodes.len())),
                     );
                 }
-                if dev {
-                    let (_, founder_addr) = crate::genesis::devnet_genesis();
-                    let green = console::Style::new().green();
-                    println!(
-                        "  {} 0x{} (10,000,000 NORN)",
-                        dim.apply_to("Founder "),
-                        green.apply_to(hex::encode(founder_addr)),
-                    );
-                }
                 println!();
             }
 

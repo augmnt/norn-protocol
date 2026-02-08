@@ -13,3 +13,5 @@ pub mod peer_manager;
 pub mod protocol;
 pub mod relay;
 pub mod spindle_registry;
+
+pub use libp2p::PeerId;

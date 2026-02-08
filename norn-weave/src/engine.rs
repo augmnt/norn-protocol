@@ -339,6 +339,22 @@ impl WeaveEngine {
         &self.known_threads
     }
 
+    /// Get the set of known names.
+    pub fn known_names(&self) -> &HashSet<String> {
+        &self.known_names
+    }
+
+    /// Seed known names and threads from persisted state.
+    /// Called once at startup so WeaveEngine is in sync with StateManager.
+    pub fn seed_known_state(
+        &mut self,
+        names: impl IntoIterator<Item = String>,
+        threads: impl IntoIterator<Item = [u8; 20]>,
+    ) {
+        self.known_names.extend(names);
+        self.known_threads.extend(threads);
+    }
+
     /// Get the last committed block.
     pub fn last_block(&self) -> Option<&WeaveBlock> {
         self.last_block.as_ref()

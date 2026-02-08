@@ -22,17 +22,35 @@ use crate::protocol::{
 };
 use crate::spindle_registry::SpindleRegistry;
 
+/// Internal enum for outbound message routing.
+enum OutboundMessage {
+    /// Broadcast to all peers via gossipsub.
+    Broadcast(NornMessage),
+    /// Send directly to a specific peer via request-response.
+    SendToPeer(PeerId, NornMessage),
+}
+
 /// A cloneable handle for sending messages through the relay after `run()` is spawned.
 #[derive(Clone)]
 pub struct RelayHandle {
-    outbound_tx: mpsc::Sender<NornMessage>,
+    outbound_tx: mpsc::Sender<OutboundMessage>,
 }
 
 impl RelayHandle {
     /// Broadcast a message through the relay's gossipsub network.
     pub async fn broadcast(&self, msg: NornMessage) -> Result<(), RelayError> {
         self.outbound_tx
-            .send(msg)
+            .send(OutboundMessage::Broadcast(msg))
+            .await
+            .map_err(|_| RelayError::ChannelError {
+                reason: "relay outbound channel closed".to_string(),
+            })
+    }
+
+    /// Send a message directly to a specific peer via request-response.
+    pub async fn send_to_peer(&self, peer_id: PeerId, msg: NornMessage) -> Result<(), RelayError> {
+        self.outbound_tx
+            .send(OutboundMessage::SendToPeer(peer_id, msg))
             .await
             .map_err(|_| RelayError::ChannelError {
                 reason: "relay outbound channel closed".to_string(),
@@ -47,9 +65,9 @@ pub struct RelayNode {
     peer_manager: PeerManager,
     _spindle_registry: SpindleRegistry,
     _discovery: Discovery,
-    message_tx: broadcast::Sender<NornMessage>,
-    outbound_tx: mpsc::Sender<NornMessage>,
-    outbound_rx: Option<mpsc::Receiver<NornMessage>>,
+    message_tx: broadcast::Sender<(NornMessage, Option<PeerId>)>,
+    outbound_tx: mpsc::Sender<OutboundMessage>,
+    outbound_rx: Option<mpsc::Receiver<OutboundMessage>>,
     /// Protocol versions for which we've already broadcast an upgrade notice.
     notified_versions: HashSet<u8>,
 }
@@ -180,7 +198,8 @@ impl RelayNode {
     }
 
     /// Subscribe to receive messages from the network.
-    pub fn subscribe(&self) -> broadcast::Receiver<NornMessage> {
+    /// Each message is paired with the source peer ID (if known).
+    pub fn subscribe(&self) -> broadcast::Receiver<(NornMessage, Option<PeerId>)> {
         self.message_tx.subscribe()
     }
 
@@ -317,26 +336,37 @@ impl RelayNode {
                         }
                     }
                 }
-                Some(msg) = outbound_rx.recv() => {
-                    // Dual-publish: envelope on versioned topic, legacy on unversioned.
-                    let v_topic_name = versioned_topic_for_message(&msg);
-                    match codec::encode_message(&msg) {
-                        Ok(data) => {
-                            let topic = IdentTopic::new(&v_topic_name);
-                            if let Err(e) = self.swarm
-                                .behaviour_mut()
-                                .gossipsub
-                                .publish(topic, data)
-                            {
-                                debug!("outbound publish failed: {}", e);
+                Some(outbound) = outbound_rx.recv() => {
+                    match outbound {
+                        OutboundMessage::Broadcast(msg) => {
+                            // Dual-publish: envelope on versioned topic, legacy on unversioned.
+                            let v_topic_name = versioned_topic_for_message(&msg);
+                            match codec::encode_message(&msg) {
+                                Ok(data) => {
+                                    let topic = IdentTopic::new(&v_topic_name);
+                                    if let Err(e) = self.swarm
+                                        .behaviour_mut()
+                                        .gossipsub
+                                        .publish(topic, data)
+                                    {
+                                        debug!("outbound publish failed: {}", e);
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!("failed to encode outbound message: {}", e);
+                                }
                             }
+                            // Legacy publish (best-effort).
+                            self.publish_legacy(&msg);
                         }
-                        Err(e) => {
-                            warn!("failed to encode outbound message: {}", e);
+                        OutboundMessage::SendToPeer(peer_id, msg) => {
+                            debug!(%peer_id, "sending direct message to peer");
+                            self.swarm
+                                .behaviour_mut()
+                                .request_response
+                                .send_request(&peer_id, msg);
                         }
                     }
-                    // Legacy publish (best-effort).
-                    self.publish_legacy(&msg);
                 }
             }
         }
@@ -356,7 +386,7 @@ impl RelayNode {
                 );
                 match codec::decode_message(&message.data) {
                     Ok(DecodedMessage::Known(msg)) => {
-                        let _ = self.message_tx.send(*msg);
+                        let _ = self.message_tx.send((*msg, Some(propagation_source)));
                     }
                     Ok(DecodedMessage::Unknown {
                         protocol_version,
@@ -383,7 +413,7 @@ impl RelayNode {
                     request, channel, ..
                 } => {
                     debug!(%peer, "received direct request");
-                    let _ = self.message_tx.send(request.clone());
+                    let _ = self.message_tx.send((request.clone(), Some(peer)));
                     // Send back an echo response (acknowledgement).
                     let _ = self
                         .swarm
@@ -393,7 +423,7 @@ impl RelayNode {
                 }
                 request_response::Message::Response { response, .. } => {
                     debug!(%peer, "received direct response");
-                    let _ = self.message_tx.send(response);
+                    let _ = self.message_tx.send((response, Some(peer)));
                 }
             },
             NornBehaviourEvent::Identify(libp2p::identify::Event::Received {
@@ -459,7 +489,7 @@ impl RelayNode {
                 .unwrap_or_default()
                 .as_secs(),
         });
-        let _ = self.message_tx.send(notice);
+        let _ = self.message_tx.send((notice, None));
     }
 
     /// Get a reference to the relay config.

@@ -764,6 +764,16 @@ impl StateManager {
         self.name_registry.get(name)
     }
 
+    /// Iterate over all registered name strings.
+    pub fn registered_names(&self) -> impl Iterator<Item = &str> {
+        self.name_registry.keys().map(|s| s.as_str())
+    }
+
+    /// Iterate over all registered thread IDs (addresses).
+    pub fn registered_thread_ids(&self) -> impl Iterator<Item = &Address> {
+        self.thread_states.keys()
+    }
+
     /// Get all names owned by an address.
     pub fn names_for_address(&self, address: &Address) -> Vec<&str> {
         self.address_names

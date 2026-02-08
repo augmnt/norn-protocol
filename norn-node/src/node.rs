@@ -5,6 +5,7 @@ use norn_crypto::address::pubkey_to_address;
 use norn_crypto::keys::Keypair;
 use norn_relay::config::RelayConfig;
 use norn_relay::relay::{RelayHandle, RelayNode};
+use norn_relay::PeerId;
 use norn_spindle::service::SpindleService;
 use norn_storage::memory::MemoryStore;
 use norn_storage::traits::KvStore;
@@ -31,7 +32,7 @@ pub struct Node {
     block_tx: Option<tokio::sync::broadcast::Sender<crate::rpc::types::BlockInfo>>,
     weave_store: WeaveStore<Arc<dyn KvStore>>,
     relay: Option<RelayNode>,
-    relay_rx: Option<tokio::sync::broadcast::Receiver<NornMessage>>,
+    relay_rx: Option<tokio::sync::broadcast::Receiver<(NornMessage, Option<PeerId>)>>,
     relay_handle: Option<RelayHandle>,
     spindle: SpindleService,
 }
@@ -88,6 +89,19 @@ impl Node {
         } else {
             Keypair::generate()
         };
+
+        // Display the validator address for operators.
+        if config.validator.enabled {
+            let dim = console::Style::new().dim();
+            let green = console::Style::new().green();
+            let address = pubkey_to_address(&keypair.public_key());
+            println!(
+                "  {} 0x{}",
+                dim.apply_to("Validator"),
+                green.apply_to(hex::encode(address))
+            );
+            println!();
+        }
 
         // Resolve genesis config: inline > file > defaults.
         let genesis_config_opt: Option<norn_types::genesis::GenesisConfig> =
@@ -223,6 +237,22 @@ impl Node {
             tracing::warn!("Failed to write schema version: {}", e);
         }
         sm.set_store(ss);
+
+        // Seed WeaveEngine with persisted names and threads from StateManager.
+        {
+            let names: Vec<String> = sm.registered_names().map(|s| s.to_string()).collect();
+            let threads: Vec<[u8; 20]> = sm.registered_thread_ids().copied().collect();
+            if !names.is_empty() || !threads.is_empty() {
+                tracing::info!(
+                    names = names.len(),
+                    threads = threads.len(),
+                    "seeding WeaveEngine with persisted state"
+                );
+                let mut engine = weave_engine.write().await;
+                engine.seed_known_state(names, threads);
+            }
+        }
+
         let state_manager = Arc::new(RwLock::new(sm));
 
         // Initialize the relay if networking is configured (before RPC, so handle is available).
@@ -284,6 +314,42 @@ impl Node {
                             "processed genesis allocations"
                         );
                     }
+                }
+            }
+        }
+
+        // Register genesis names (idempotent — skips names already registered).
+        if let Some(ref gc) = genesis_config_opt {
+            if !gc.name_registrations.is_empty() {
+                let mut sm = state_manager.write().await;
+                let mut registered = 0u32;
+                for gnr in &gc.name_registrations {
+                    if sm.resolve_name(&gnr.name).is_none() {
+                        sm.auto_register_if_needed(gnr.owner);
+                        if let Err(e) = sm.apply_peer_name_registration(
+                            &gnr.name,
+                            gnr.owner,
+                            [0u8; 32],
+                            gc.timestamp,
+                            0,
+                        ) {
+                            tracing::warn!("failed to register genesis name '{}': {}", gnr.name, e);
+                        } else {
+                            registered += 1;
+                        }
+                    }
+                }
+                if registered > 0 {
+                    // Also seed WeaveEngine so it knows about genesis names.
+                    let names: Vec<String> = gc
+                        .name_registrations
+                        .iter()
+                        .map(|gnr| gnr.name.clone())
+                        .collect();
+                    drop(sm);
+                    let mut engine = weave_engine.write().await;
+                    engine.seed_known_state(names, std::iter::empty());
+                    tracing::info!(count = registered, "registered genesis names");
                 }
             }
         }
@@ -359,11 +425,14 @@ impl Node {
                 let timeout = tokio::time::timeout(std::time::Duration::from_secs(10), async {
                     loop {
                         match rx.recv().await {
-                            Ok(NornMessage::StateResponse {
-                                blocks,
-                                tip_height,
-                                genesis_hash,
-                            }) => {
+                            Ok((
+                                NornMessage::StateResponse {
+                                    blocks,
+                                    tip_height,
+                                    genesis_hash,
+                                },
+                                _source,
+                            )) => {
                                 if our_genesis_hash != [0u8; 32]
                                     && genesis_hash != [0u8; 32]
                                     && genesis_hash != our_genesis_hash
@@ -527,7 +596,7 @@ impl Node {
         loop {
             // Check for incoming relay messages (non-blocking).
             if let Some(ref mut rx) = self.relay_rx {
-                while let Ok(msg) = rx.try_recv() {
+                while let Ok((msg, source_peer)) = rx.try_recv() {
                     match msg {
                         NornMessage::KnotProposal(ref knot) => {
                             // Feed to spindle watchtower for fraud detection.
@@ -674,9 +743,7 @@ impl Node {
                                 continue;
                             }
                             // Respond with blocks the requester is missing.
-                            // TODO: Use unicast to the requesting peer instead of broadcast
-                            // once RelayHandle supports send_to(). Broadcasting works but is
-                            // wasteful since all peers receive the response.
+                            // Unicast to the requesting peer if known, otherwise broadcast.
                             if let Some(ref handle) = self.relay_handle {
                                 let sm = self.state_manager.read().await;
                                 let mut blocks = Vec::new();
@@ -696,9 +763,15 @@ impl Node {
                                         tip_height: tip,
                                         genesis_hash: self.genesis_hash,
                                     };
-                                    tokio::spawn(async move {
-                                        let _ = h.broadcast(resp).await;
-                                    });
+                                    if let Some(peer_id) = source_peer {
+                                        tokio::spawn(async move {
+                                            let _ = h.send_to_peer(peer_id, resp).await;
+                                        });
+                                    } else {
+                                        tokio::spawn(async move {
+                                            let _ = h.broadcast(resp).await;
+                                        });
+                                    }
                                 }
                             }
                         }
