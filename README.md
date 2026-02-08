@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="NORN Protocol" width="650">
+  <img src="assets/banner.png" alt="NORN Protocol" width="650">
 </p>
 
 <p align="center">

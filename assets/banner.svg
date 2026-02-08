@@ -1,14 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 130" width="620" height="130">
-  <!-- NORN ASCII Art — dark text on transparent background -->
-  <text font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace" font-size="14" font-weight="bold" xml:space="preserve">
-    <tspan x="110" y="22" fill="#2b1a4e">███╗   ██╗</tspan><tspan fill="#3b2366">  ██████╗ </tspan><tspan fill="#4b2d7e"> ██████╗ </tspan><tspan fill="#5a3796"> ███╗   ██╗</tspan>
-    <tspan x="110" y="40" fill="#2b1a4e">████╗  ██║</tspan><tspan fill="#3b2366"> ██╔═══██╗</tspan><tspan fill="#4b2d7e"> ██╔══██╗</tspan><tspan fill="#5a3796"> ████╗  ██║</tspan>
-    <tspan x="110" y="58" fill="#2b1a4e">██╔██╗ ██║</tspan><tspan fill="#3b2366"> ██║   ██║</tspan><tspan fill="#4b2d7e"> ██████╔╝</tspan><tspan fill="#5a3796"> ██╔██╗ ██║</tspan>
-    <tspan x="110" y="76" fill="#2b1a4e">██║╚██╗██║</tspan><tspan fill="#3b2366"> ██║   ██║</tspan><tspan fill="#4b2d7e"> ██╔══██╗</tspan><tspan fill="#5a3796"> ██║╚██╗██║</tspan>
-    <tspan x="110" y="94" fill="#2b1a4e">██║ ╚████║</tspan><tspan fill="#3b2366"> ╚██████╔╝</tspan><tspan fill="#4b2d7e"> ██║  ██║</tspan><tspan fill="#5a3796"> ██║ ╚████║</tspan>
-    <tspan x="110" y="112" fill="#2b1a4e">╚═╝  ╚═══╝</tspan><tspan fill="#3b2366">  ╚═════╝ </tspan><tspan fill="#4b2d7e"> ╚═╝  ╚═╝</tspan><tspan fill="#5a3796"> ╚═╝  ╚═══╝</tspan>
-  </text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="1200" height="420">
+  <defs>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="18" result="blur1"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur2"/>
+      <feMerge>
+        <feMergeNode in="blur1"/>
+        <feMergeNode in="blur2"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="420" fill="#0a0a14" rx="12"/>
+
+  <!-- NORN pixel text with glow -->
+  <path d="M294,103h18v18h-18Z M312,103h18v18h-18Z M384,103h18v18h-18Z M402,103h18v18h-18Z M294,121h18v18h-18Z M312,121h18v18h-18Z M330,121h18v18h-18Z M384,121h18v18h-18Z M402,121h18v18h-18Z M294,139h18v18h-18Z M312,139h18v18h-18Z M330,139h18v18h-18Z M348,139h18v18h-18Z M384,139h18v18h-18Z M402,139h18v18h-18Z M294,157h18v18h-18Z M312,157h18v18h-18Z M348,157h18v18h-18Z M366,157h18v18h-18Z M384,157h18v18h-18Z M402,157h18v18h-18Z M294,175h18v18h-18Z M312,175h18v18h-18Z M366,175h18v18h-18Z M384,175h18v18h-18Z M402,175h18v18h-18Z M294,193h18v18h-18Z M312,193h18v18h-18Z M384,193h18v18h-18Z M402,193h18v18h-18Z M294,211h18v18h-18Z M312,211h18v18h-18Z M384,211h18v18h-18Z M402,211h18v18h-18Z M294,229h18v18h-18Z M312,229h18v18h-18Z M384,229h18v18h-18Z M402,229h18v18h-18Z M474,103h18v18h-18Z M492,103h18v18h-18Z M510,103h18v18h-18Z M528,103h18v18h-18Z M546,103h18v18h-18Z M456,121h18v18h-18Z M474,121h18v18h-18Z M546,121h18v18h-18Z M564,121h18v18h-18Z M456,139h18v18h-18Z M474,139h18v18h-18Z M546,139h18v18h-18Z M564,139h18v18h-18Z M456,157h18v18h-18Z M474,157h18v18h-18Z M546,157h18v18h-18Z M564,157h18v18h-18Z M456,175h18v18h-18Z M474,175h18v18h-18Z M546,175h18v18h-18Z M564,175h18v18h-18Z M456,193h18v18h-18Z M474,193h18v18h-18Z M546,193h18v18h-18Z M564,193h18v18h-18Z M456,211h18v18h-18Z M474,211h18v18h-18Z M546,211h18v18h-18Z M564,211h18v18h-18Z M474,229h18v18h-18Z M492,229h18v18h-18Z M510,229h18v18h-18Z M528,229h18v18h-18Z M546,229h18v18h-18Z M618,103h18v18h-18Z M636,103h18v18h-18Z M654,103h18v18h-18Z M672,103h18v18h-18Z M690,103h18v18h-18Z M708,103h18v18h-18Z M618,121h18v18h-18Z M636,121h18v18h-18Z M708,121h18v18h-18Z M726,121h18v18h-18Z M618,139h18v18h-18Z M636,139h18v18h-18Z M708,139h18v18h-18Z M726,139h18v18h-18Z M618,157h18v18h-18Z M636,157h18v18h-18Z M654,157h18v18h-18Z M672,157h18v18h-18Z M690,157h18v18h-18Z M708,157h18v18h-18Z M618,175h18v18h-18Z M636,175h18v18h-18Z M654,175h18v18h-18Z M672,175h18v18h-18Z M618,193h18v18h-18Z M636,193h18v18h-18Z M690,193h18v18h-18Z M708,193h18v18h-18Z M618,211h18v18h-18Z M636,211h18v18h-18Z M708,211h18v18h-18Z M726,211h18v18h-18Z M618,229h18v18h-18Z M636,229h18v18h-18Z M708,229h18v18h-18Z M726,229h18v18h-18Z M780,103h18v18h-18Z M798,103h18v18h-18Z M870,103h18v18h-18Z M888,103h18v18h-18Z M780,121h18v18h-18Z M798,121h18v18h-18Z M816,121h18v18h-18Z M870,121h18v18h-18Z M888,121h18v18h-18Z M780,139h18v18h-18Z M798,139h18v18h-18Z M816,139h18v18h-18Z M834,139h18v18h-18Z M870,139h18v18h-18Z M888,139h18v18h-18Z M780,157h18v18h-18Z M798,157h18v18h-18Z M834,157h18v18h-18Z M852,157h18v18h-18Z M870,157h18v18h-18Z M888,157h18v18h-18Z M780,175h18v18h-18Z M798,175h18v18h-18Z M852,175h18v18h-18Z M870,175h18v18h-18Z M888,175h18v18h-18Z M780,193h18v18h-18Z M798,193h18v18h-18Z M870,193h18v18h-18Z M888,193h18v18h-18Z M780,211h18v18h-18Z M798,211h18v18h-18Z M870,211h18v18h-18Z M888,211h18v18h-18Z M780,229h18v18h-18Z M798,229h18v18h-18Z M870,229h18v18h-18Z M888,229h18v18h-18Z" fill="#a855f7" filter="url(#glow)"/>
 
   <!-- Tagline -->
-  <text x="310" y="130" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace" font-size="11" fill="#6e7681" letter-spacing="0.5" font-style="italic">Your thread. Your fate. The chain just watches.</text>
+  <text x="600" y="302" text-anchor="middle"
+        font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace"
+        font-size="14" fill="#6e7681" letter-spacing="1.5"
+        font-style="italic">Your thread. Your fate. The chain just watches.</text>
 </svg>
