@@ -12,7 +12,7 @@ use norn_weave::engine::WeaveEngine;
 
 use super::types::{
     BlockInfo, CommitmentProofInfo, FeeEstimateInfo, HealthInfo, NameInfo, NameResolution,
-    SubmitResult, ThreadInfo, ThreadStateInfo, TransactionHistoryEntry, ValidatorInfo,
+    SubmitResult, ThreadInfo, ThreadStateInfo, TokenInfo, TransactionHistoryEntry, ValidatorInfo,
     ValidatorSetInfo, WeaveStateInfo,
 };
 use crate::metrics::NodeMetrics;
@@ -132,6 +132,40 @@ pub trait NornRpc {
         &self,
         fraud_proof_hex: String,
     ) -> Result<SubmitResult, ErrorObjectOwned>;
+
+    /// Create a new token (hex-encoded borsh TokenDefinition).
+    #[method(name = "norn_createToken")]
+    async fn create_token(&self, token_def_hex: String) -> Result<SubmitResult, ErrorObjectOwned>;
+
+    /// Mint tokens (hex-encoded borsh TokenMint).
+    #[method(name = "norn_mintToken")]
+    async fn mint_token(&self, token_mint_hex: String) -> Result<SubmitResult, ErrorObjectOwned>;
+
+    /// Burn tokens (hex-encoded borsh TokenBurn).
+    #[method(name = "norn_burnToken")]
+    async fn burn_token(&self, token_burn_hex: String) -> Result<SubmitResult, ErrorObjectOwned>;
+
+    /// Get token info by token ID (hex).
+    #[method(name = "norn_getTokenInfo")]
+    async fn get_token_info(
+        &self,
+        token_id_hex: String,
+    ) -> Result<Option<TokenInfo>, ErrorObjectOwned>;
+
+    /// Get token info by symbol.
+    #[method(name = "norn_getTokenBySymbol")]
+    async fn get_token_by_symbol(
+        &self,
+        symbol: String,
+    ) -> Result<Option<TokenInfo>, ErrorObjectOwned>;
+
+    /// List all tokens with pagination.
+    #[method(name = "norn_listTokens")]
+    async fn list_tokens(
+        &self,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<TokenInfo>, ErrorObjectOwned>;
 }
 
 /// Implementation of the NornRpc trait.
@@ -197,6 +231,9 @@ impl NornRpcServer for NornRpcImpl {
                 fraud_proof_count: block.fraud_proofs.len(),
                 name_registration_count: block.name_registrations.len(),
                 transfer_count: block.transfers.len(),
+                token_definition_count: block.token_definitions.len(),
+                token_mint_count: block.token_mints.len(),
+                token_burn_count: block.token_burns.len(),
             }));
         }
         drop(sm);
@@ -217,6 +254,9 @@ impl NornRpcServer for NornRpcImpl {
                 fraud_proof_count: 0,
                 name_registration_count: 0,
                 transfer_count: 0,
+                token_definition_count: 0,
+                token_mint_count: 0,
+                token_burn_count: 0,
             }))
         } else {
             Ok(None)
@@ -239,6 +279,9 @@ impl NornRpcServer for NornRpcImpl {
                 fraud_proof_count: block.fraud_proofs.len(),
                 name_registration_count: block.name_registrations.len(),
                 transfer_count: block.transfers.len(),
+                token_definition_count: block.token_definitions.len(),
+                token_mint_count: block.token_mints.len(),
+                token_burn_count: block.token_burns.len(),
             }))
         } else {
             let state = engine.weave_state();
@@ -254,6 +297,9 @@ impl NornRpcServer for NornRpcImpl {
                 fraud_proof_count: 0,
                 name_registration_count: 0,
                 transfer_count: 0,
+                token_definition_count: 0,
+                token_mint_count: 0,
+                token_burn_count: 0,
             }))
         }
     }
@@ -966,6 +1012,185 @@ impl NornRpcServer for NornRpcImpl {
             },
         })
     }
+
+    async fn create_token(&self, token_def_hex: String) -> Result<SubmitResult, ErrorObjectOwned> {
+        let bytes = hex::decode(&token_def_hex).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>)
+        })?;
+
+        let token_def: norn_types::weave::TokenDefinition =
+            borsh::from_slice(&bytes).map_err(|e| {
+                ErrorObjectOwned::owned(
+                    -32602,
+                    format!("invalid token definition: {}", e),
+                    None::<()>,
+                )
+            })?;
+
+        // Add to WeaveEngine mempool (validates signature, symbol, duplicates).
+        let mut engine = self.weave_engine.write().await;
+        match engine.add_token_definition(token_def.clone()) {
+            Ok(_) => {
+                // Broadcast to P2P network.
+                if let Some(ref handle) = self.relay_handle {
+                    let h = handle.clone();
+                    let msg = NornMessage::TokenDefinition(token_def);
+                    tokio::spawn(async move {
+                        let _ = h.broadcast(msg).await;
+                    });
+                }
+                Ok(SubmitResult {
+                    success: true,
+                    reason: Some(
+                        "token definition submitted (will be included in next block)".to_string(),
+                    ),
+                })
+            }
+            Err(e) => Ok(SubmitResult {
+                success: false,
+                reason: Some(e.to_string()),
+            }),
+        }
+    }
+
+    async fn mint_token(&self, token_mint_hex: String) -> Result<SubmitResult, ErrorObjectOwned> {
+        let bytes = hex::decode(&token_mint_hex).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>)
+        })?;
+
+        let token_mint: norn_types::weave::TokenMint = borsh::from_slice(&bytes).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid token mint: {}", e), None::<()>)
+        })?;
+
+        // Add to WeaveEngine mempool (validates authority, supply cap, etc.).
+        let mut engine = self.weave_engine.write().await;
+        match engine.add_token_mint(token_mint.clone()) {
+            Ok(_) => {
+                // Broadcast to P2P network.
+                if let Some(ref handle) = self.relay_handle {
+                    let h = handle.clone();
+                    let msg = NornMessage::TokenMint(token_mint);
+                    tokio::spawn(async move {
+                        let _ = h.broadcast(msg).await;
+                    });
+                }
+                Ok(SubmitResult {
+                    success: true,
+                    reason: Some(
+                        "token mint submitted (will be included in next block)".to_string(),
+                    ),
+                })
+            }
+            Err(e) => Ok(SubmitResult {
+                success: false,
+                reason: Some(e.to_string()),
+            }),
+        }
+    }
+
+    async fn burn_token(&self, token_burn_hex: String) -> Result<SubmitResult, ErrorObjectOwned> {
+        let bytes = hex::decode(&token_burn_hex).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>)
+        })?;
+
+        let token_burn: norn_types::weave::TokenBurn = borsh::from_slice(&bytes).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid token burn: {}", e), None::<()>)
+        })?;
+
+        // Add to WeaveEngine mempool (validates signature, token exists, etc.).
+        let mut engine = self.weave_engine.write().await;
+        match engine.add_token_burn(token_burn.clone()) {
+            Ok(_) => {
+                // Broadcast to P2P network.
+                if let Some(ref handle) = self.relay_handle {
+                    let h = handle.clone();
+                    let msg = NornMessage::TokenBurn(token_burn);
+                    tokio::spawn(async move {
+                        let _ = h.broadcast(msg).await;
+                    });
+                }
+                Ok(SubmitResult {
+                    success: true,
+                    reason: Some(
+                        "token burn submitted (will be included in next block)".to_string(),
+                    ),
+                })
+            }
+            Err(e) => Ok(SubmitResult {
+                success: false,
+                reason: Some(e.to_string()),
+            }),
+        }
+    }
+
+    async fn get_token_info(
+        &self,
+        token_id_hex: String,
+    ) -> Result<Option<TokenInfo>, ErrorObjectOwned> {
+        let token_id = parse_token_hex(&token_id_hex)?;
+        let sm = self.state_manager.read().await;
+        Ok(sm.get_token(&token_id).map(|record| TokenInfo {
+            token_id: token_id_hex,
+            name: record.name.clone(),
+            symbol: record.symbol.clone(),
+            decimals: record.decimals,
+            max_supply: record.max_supply.to_string(),
+            current_supply: record.current_supply.to_string(),
+            creator: format_address(&record.creator),
+            created_at: record.created_at,
+        }))
+    }
+
+    async fn get_token_by_symbol(
+        &self,
+        symbol: String,
+    ) -> Result<Option<TokenInfo>, ErrorObjectOwned> {
+        let sm = self.state_manager.read().await;
+        let (token_id, record) = match sm.get_token_by_symbol(&symbol) {
+            Some(pair) => pair,
+            None => return Ok(None),
+        };
+        Ok(Some(TokenInfo {
+            token_id: hex::encode(token_id),
+            name: record.name.clone(),
+            symbol: record.symbol.clone(),
+            decimals: record.decimals,
+            max_supply: record.max_supply.to_string(),
+            current_supply: record.current_supply.to_string(),
+            creator: format_address(&record.creator),
+            created_at: record.created_at,
+        }))
+    }
+
+    async fn list_tokens(
+        &self,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<TokenInfo>, ErrorObjectOwned> {
+        let limit = if limit == 0 { 50 } else { limit.min(200) } as usize;
+        let offset = offset as usize;
+
+        let sm = self.state_manager.read().await;
+        let tokens = sm.list_tokens();
+
+        let result = tokens
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .map(|(token_id, record)| TokenInfo {
+                token_id: hex::encode(token_id),
+                name: record.name.clone(),
+                symbol: record.symbol.clone(),
+                decimals: record.decimals,
+                max_supply: record.max_supply.to_string(),
+                current_supply: record.current_supply.to_string(),
+                creator: format_address(&record.creator),
+                created_at: record.created_at,
+            })
+            .collect();
+
+        Ok(result)
+    }
 }
 
 #[cfg(test)]
@@ -988,6 +1213,9 @@ mod tests {
             fraud_proof_count: 0,
             name_registration_count: 0,
             transfer_count: 0,
+            token_definition_count: 0,
+            token_mint_count: 0,
+            token_burn_count: 0,
         };
     }
 }

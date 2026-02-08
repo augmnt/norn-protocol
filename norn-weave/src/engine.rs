@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use norn_crypto::keys::Keypair;
 use norn_crypto::merkle::SparseMerkleTree;
@@ -6,8 +6,8 @@ use norn_types::constants::MAX_COMMITMENTS_PER_BLOCK;
 use norn_types::network::NornMessage;
 use norn_types::primitives::*;
 use norn_types::weave::{
-    BlockTransfer, CommitmentUpdate, NameRegistration, Registration, ValidatorSet, WeaveBlock,
-    WeaveState,
+    BlockTransfer, CommitmentUpdate, NameRegistration, Registration, TokenBurn, TokenDefinition,
+    TokenMint, ValidatorSet, WeaveBlock, WeaveState,
 };
 use rayon::prelude::*;
 
@@ -30,6 +30,10 @@ pub struct WeaveEngine {
     known_threads: HashSet<[u8; 20]>,
     /// Known names for duplicate detection.
     known_names: HashSet<String>,
+    /// Known tokens for duplicate detection and validation.
+    known_tokens: HashMap<TokenId, crate::token::TokenMeta>,
+    /// Known token symbols for uniqueness enforcement.
+    known_symbols: HashSet<String>,
     /// Last committed block (for RPC queries).
     last_block: Option<WeaveBlock>,
     /// Current timestamp, set by the node before each tick.
@@ -54,6 +58,8 @@ impl WeaveEngine {
             keypair,
             known_threads: HashSet::new(),
             known_names: HashSet::new(),
+            known_tokens: HashMap::new(),
+            known_symbols: HashSet::new(),
             last_block: None,
             current_timestamp: 0,
         }
@@ -88,6 +94,33 @@ impl WeaveEngine {
             NornMessage::FraudProof(fp) => {
                 if crate::fraud::validate_fraud_proof(&fp).is_ok() {
                     let _ = self.mempool.add_fraud_proof(*fp);
+                }
+                vec![]
+            }
+
+            NornMessage::TokenDefinition(td) => {
+                if crate::token::validate_token_definition(
+                    &td,
+                    &self.known_tokens,
+                    &self.known_symbols,
+                )
+                .is_ok()
+                {
+                    let _ = self.mempool.add_token_definition(td);
+                }
+                vec![]
+            }
+
+            NornMessage::TokenMint(tm) => {
+                if crate::token::validate_token_mint(&tm, &self.known_tokens).is_ok() {
+                    let _ = self.mempool.add_token_mint(tm);
+                }
+                vec![]
+            }
+
+            NornMessage::TokenBurn(tb) => {
+                if crate::token::validate_token_burn(&tb, &self.known_tokens).is_ok() {
+                    let _ = self.mempool.add_token_burn(tb);
                 }
                 vec![]
             }
@@ -145,6 +178,33 @@ impl WeaveEngine {
                     }
                 }
 
+                // Reject block if any token definition is invalid.
+                for td in &weave_block.token_definitions {
+                    if crate::token::validate_token_definition(
+                        td,
+                        &self.known_tokens,
+                        &self.known_symbols,
+                    )
+                    .is_err()
+                    {
+                        return vec![];
+                    }
+                }
+
+                // Reject block if any token mint is invalid.
+                for tm in &weave_block.token_mints {
+                    if crate::token::validate_token_mint(tm, &self.known_tokens).is_err() {
+                        return vec![];
+                    }
+                }
+
+                // Reject block if any token burn is invalid.
+                for tb in &weave_block.token_burns {
+                    if crate::token::validate_token_burn(tb, &self.known_tokens).is_err() {
+                        return vec![];
+                    }
+                }
+
                 // All content is valid — apply commitments.
                 for c in &weave_block.commitments {
                     let _ = commitment::apply_commitment(
@@ -165,6 +225,42 @@ impl WeaveEngine {
                 // Apply name registrations.
                 for nr in &weave_block.name_registrations {
                     self.known_names.insert(nr.name.clone());
+                }
+                // Apply token definitions.
+                for td in &weave_block.token_definitions {
+                    let token_id = norn_types::token::compute_token_id(
+                        &td.creator,
+                        &td.name,
+                        &td.symbol,
+                        td.decimals,
+                        td.max_supply,
+                        td.timestamp,
+                    );
+                    self.known_symbols.insert(td.symbol.clone());
+                    self.known_tokens.insert(
+                        token_id,
+                        crate::token::TokenMeta {
+                            name: td.name.clone(),
+                            symbol: td.symbol.clone(),
+                            decimals: td.decimals,
+                            max_supply: td.max_supply,
+                            current_supply: td.initial_supply,
+                            creator: td.creator,
+                            created_at: td.timestamp,
+                        },
+                    );
+                }
+                // Apply token mints (update supply tracking).
+                for tm in &weave_block.token_mints {
+                    if let Some(meta) = self.known_tokens.get_mut(&tm.token_id) {
+                        meta.current_supply = meta.current_supply.saturating_add(tm.amount);
+                    }
+                }
+                // Apply token burns (update supply tracking).
+                for tb in &weave_block.token_burns {
+                    if let Some(meta) = self.known_tokens.get_mut(&tb.token_id) {
+                        meta.current_supply = meta.current_supply.saturating_sub(tb.amount);
+                    }
                 }
                 // Update state.
                 self.weave_state.height = weave_block.height;
@@ -271,6 +367,43 @@ impl WeaveEngine {
             self.known_names.insert(nr.name.clone());
         }
 
+        // Apply token definitions to state.
+        for td in &weave_block.token_definitions {
+            let token_id = norn_types::token::compute_token_id(
+                &td.creator,
+                &td.name,
+                &td.symbol,
+                td.decimals,
+                td.max_supply,
+                td.timestamp,
+            );
+            self.known_symbols.insert(td.symbol.clone());
+            self.known_tokens.insert(
+                token_id,
+                crate::token::TokenMeta {
+                    name: td.name.clone(),
+                    symbol: td.symbol.clone(),
+                    decimals: td.decimals,
+                    max_supply: td.max_supply,
+                    current_supply: td.initial_supply,
+                    creator: td.creator,
+                    created_at: td.timestamp,
+                },
+            );
+        }
+        // Apply token mints to state.
+        for tm in &weave_block.token_mints {
+            if let Some(meta) = self.known_tokens.get_mut(&tm.token_id) {
+                meta.current_supply = meta.current_supply.saturating_add(tm.amount);
+            }
+        }
+        // Apply token burns to state.
+        for tb in &weave_block.token_burns {
+            if let Some(meta) = self.known_tokens.get_mut(&tb.token_id) {
+                meta.current_supply = meta.current_supply.saturating_sub(tb.amount);
+            }
+        }
+
         // Update state.
         self.weave_state.height = weave_block.height;
         self.weave_state.latest_hash = weave_block.hash;
@@ -344,6 +477,41 @@ impl WeaveEngine {
         &self.known_names
     }
 
+    /// Validate and add a token definition to the mempool.
+    pub fn add_token_definition(
+        &mut self,
+        td: TokenDefinition,
+    ) -> Result<TokenId, crate::error::WeaveError> {
+        let token_id =
+            crate::token::validate_token_definition(&td, &self.known_tokens, &self.known_symbols)?;
+        self.mempool.add_token_definition(td)?;
+        Ok(token_id)
+    }
+
+    /// Validate and add a token mint to the mempool.
+    pub fn add_token_mint(&mut self, tm: TokenMint) -> Result<bool, crate::error::WeaveError> {
+        crate::token::validate_token_mint(&tm, &self.known_tokens)?;
+        self.mempool.add_token_mint(tm)?;
+        Ok(true)
+    }
+
+    /// Validate and add a token burn to the mempool.
+    pub fn add_token_burn(&mut self, tb: TokenBurn) -> Result<bool, crate::error::WeaveError> {
+        crate::token::validate_token_burn(&tb, &self.known_tokens)?;
+        self.mempool.add_token_burn(tb)?;
+        Ok(true)
+    }
+
+    /// Get the known tokens map.
+    pub fn known_tokens(&self) -> &HashMap<TokenId, crate::token::TokenMeta> {
+        &self.known_tokens
+    }
+
+    /// Get the known symbols set.
+    pub fn known_symbols(&self) -> &HashSet<String> {
+        &self.known_symbols
+    }
+
     /// Seed known names and threads from persisted state.
     /// Called once at startup so WeaveEngine is in sync with StateManager.
     pub fn seed_known_state(
@@ -353,6 +521,18 @@ impl WeaveEngine {
     ) {
         self.known_names.extend(names);
         self.known_threads.extend(threads);
+    }
+
+    /// Seed known tokens from persisted state.
+    /// Called once at startup so WeaveEngine is in sync with StateManager.
+    pub fn seed_known_tokens(
+        &mut self,
+        tokens: impl IntoIterator<Item = (TokenId, crate::token::TokenMeta)>,
+    ) {
+        for (id, meta) in tokens {
+            self.known_symbols.insert(meta.symbol.clone());
+            self.known_tokens.insert(id, meta);
+        }
     }
 
     /// Get the last committed block.

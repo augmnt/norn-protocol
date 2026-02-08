@@ -27,6 +27,15 @@ pub enum WeaveError {
     #[error("duplicate name: {name}")]
     DuplicateName { name: String },
 
+    #[error("invalid token definition: {reason}")]
+    InvalidTokenDefinition { reason: String },
+
+    #[error("invalid token mint: {reason}")]
+    InvalidTokenMint { reason: String },
+
+    #[error("invalid token burn: {reason}")]
+    InvalidTokenBurn { reason: String },
+
     #[error("consensus error: {reason}")]
     ConsensusError { reason: String },
 

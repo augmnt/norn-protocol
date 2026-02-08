@@ -286,4 +286,84 @@ pub enum WalletCommand {
         #[arg(long)]
         to: String,
     },
+    /// Create a new fungible token (costs 10 NORN)
+    CreateToken {
+        /// Token name (e.g., "My Token")
+        #[arg(long)]
+        name: String,
+        /// Token symbol (e.g., "MTK", uppercase, 1-12 chars)
+        #[arg(long)]
+        symbol: String,
+        /// Decimal places (0-18)
+        #[arg(long, default_value = "18")]
+        decimals: u8,
+        /// Maximum supply (0 = unlimited)
+        #[arg(long, default_value = "0")]
+        max_supply: String,
+        /// Initial supply minted to creator
+        #[arg(long, default_value = "0")]
+        initial_supply: String,
+        /// Skip confirmation prompt
+        #[arg(long)]
+        yes: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
+    /// Mint tokens (creator only)
+    MintToken {
+        /// Token symbol or hex ID
+        #[arg(long)]
+        token: String,
+        /// Recipient address
+        #[arg(long)]
+        to: String,
+        /// Amount to mint
+        #[arg(long)]
+        amount: String,
+        /// Skip confirmation prompt
+        #[arg(long)]
+        yes: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
+    /// Burn tokens from your balance
+    BurnToken {
+        /// Token symbol or hex ID
+        #[arg(long)]
+        token: String,
+        /// Amount to burn
+        #[arg(long)]
+        amount: String,
+        /// Skip confirmation prompt
+        #[arg(long)]
+        yes: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
+    /// Get information about a token
+    TokenInfo {
+        /// Token symbol or hex ID
+        token: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
+    /// List all registered tokens
+    ListTokens {
+        /// Maximum tokens to show
+        #[arg(long, default_value = "50")]
+        limit: u64,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
 }

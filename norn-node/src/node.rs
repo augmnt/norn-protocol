@@ -253,6 +253,35 @@ impl Node {
             }
         }
 
+        // Seed WeaveEngine with persisted tokens from StateManager.
+        {
+            let tokens: Vec<_> = sm
+                .registered_tokens()
+                .map(|(id, rec)| {
+                    (
+                        *id,
+                        norn_weave::token::TokenMeta {
+                            name: rec.name.clone(),
+                            symbol: rec.symbol.clone(),
+                            decimals: rec.decimals,
+                            max_supply: rec.max_supply,
+                            current_supply: rec.current_supply,
+                            creator: rec.creator,
+                            created_at: rec.created_at,
+                        },
+                    )
+                })
+                .collect();
+            if !tokens.is_empty() {
+                tracing::info!(
+                    tokens = tokens.len(),
+                    "seeding WeaveEngine with persisted tokens"
+                );
+                let mut engine = weave_engine.write().await;
+                engine.seed_known_tokens(tokens);
+            }
+        }
+
         let state_manager = Arc::new(RwLock::new(sm));
 
         // Initialize the relay if networking is configured (before RPC, so handle is available).
@@ -503,6 +532,38 @@ impl Node {
                                     tracing::debug!("skipping known name registration: {}", e);
                                 }
                             }
+                            // Apply token operations from synced block.
+                            for td in &block.token_definitions {
+                                if let Err(e) = sm.apply_peer_token_creation(
+                                    &td.name,
+                                    &td.symbol,
+                                    td.decimals,
+                                    td.max_supply,
+                                    td.initial_supply,
+                                    td.creator,
+                                    td.creator_pubkey,
+                                    td.timestamp,
+                                ) {
+                                    tracing::debug!("skipping known token definition: {}", e);
+                                }
+                            }
+                            for tm in &block.token_mints {
+                                if let Err(e) =
+                                    sm.apply_peer_token_mint(tm.token_id, tm.to, tm.amount)
+                                {
+                                    tracing::debug!("peer token mint failed: {}", e);
+                                }
+                            }
+                            for tb in &block.token_burns {
+                                if let Err(e) = sm.apply_peer_token_burn(
+                                    tb.token_id,
+                                    tb.burner,
+                                    tb.burner_pubkey,
+                                    tb.amount,
+                                ) {
+                                    tracing::debug!("peer token burn failed: {}", e);
+                                }
+                            }
                             for bt in &block.transfers {
                                 if !sm.has_transfer(&bt.knot_id) {
                                     sm.auto_register_if_needed(bt.from);
@@ -693,6 +754,38 @@ impl Node {
                                         tracing::debug!("skipping known name registration: {}", e);
                                     }
                                 }
+                                // Apply token operations from peer block.
+                                for td in &block.token_definitions {
+                                    if let Err(e) = sm.apply_peer_token_creation(
+                                        &td.name,
+                                        &td.symbol,
+                                        td.decimals,
+                                        td.max_supply,
+                                        td.initial_supply,
+                                        td.creator,
+                                        td.creator_pubkey,
+                                        td.timestamp,
+                                    ) {
+                                        tracing::debug!("skipping known token definition: {}", e);
+                                    }
+                                }
+                                for tm in &block.token_mints {
+                                    if let Err(e) =
+                                        sm.apply_peer_token_mint(tm.token_id, tm.to, tm.amount)
+                                    {
+                                        tracing::debug!("peer token mint failed: {}", e);
+                                    }
+                                }
+                                for tb in &block.token_burns {
+                                    if let Err(e) = sm.apply_peer_token_burn(
+                                        tb.token_id,
+                                        tb.burner,
+                                        tb.burner_pubkey,
+                                        tb.amount,
+                                    ) {
+                                        tracing::debug!("peer token burn failed: {}", e);
+                                    }
+                                }
                                 for bt in &block.transfers {
                                     if !sm.has_transfer(&bt.knot_id) {
                                         sm.auto_register_if_needed(bt.from);
@@ -813,6 +906,41 @@ impl Node {
                                             );
                                         }
                                     }
+                                    // Apply token operations from state response block.
+                                    for td in &block.token_definitions {
+                                        if let Err(e) = sm.apply_peer_token_creation(
+                                            &td.name,
+                                            &td.symbol,
+                                            td.decimals,
+                                            td.max_supply,
+                                            td.initial_supply,
+                                            td.creator,
+                                            td.creator_pubkey,
+                                            td.timestamp,
+                                        ) {
+                                            tracing::debug!(
+                                                "skipping known token definition: {}",
+                                                e
+                                            );
+                                        }
+                                    }
+                                    for tm in &block.token_mints {
+                                        if let Err(e) =
+                                            sm.apply_peer_token_mint(tm.token_id, tm.to, tm.amount)
+                                        {
+                                            tracing::debug!("peer token mint failed: {}", e);
+                                        }
+                                    }
+                                    for tb in &block.token_burns {
+                                        if let Err(e) = sm.apply_peer_token_burn(
+                                            tb.token_id,
+                                            tb.burner,
+                                            tb.burner_pubkey,
+                                            tb.amount,
+                                        ) {
+                                            tracing::debug!("peer token burn failed: {}", e);
+                                        }
+                                    }
                                     for bt in &block.transfers {
                                         if !sm.has_transfer(&bt.knot_id) {
                                             sm.auto_register_if_needed(bt.from);
@@ -918,6 +1046,25 @@ impl Node {
                                             tracing::debug!("solo name registration skipped: {}", e);
                                         }
                                     }
+                                    // Apply token operations (solo — deduct creation fee locally).
+                                    for td in &block.token_definitions {
+                                        if let Err(e) = sm.create_token(
+                                            &td.name, &td.symbol, td.decimals, td.max_supply,
+                                            td.initial_supply, td.creator, td.timestamp,
+                                        ) {
+                                            tracing::debug!("solo token creation skipped: {}", e);
+                                        }
+                                    }
+                                    for tm in &block.token_mints {
+                                        if let Err(e) = sm.mint_token(tm.token_id, tm.to, tm.amount) {
+                                            tracing::debug!("solo token mint skipped: {}", e);
+                                        }
+                                    }
+                                    for tb in &block.token_burns {
+                                        if let Err(e) = sm.burn_token(tb.token_id, tb.burner, tb.amount) {
+                                            tracing::debug!("solo token burn skipped: {}", e);
+                                        }
+                                    }
                                     // Note: transfers are NOT re-applied here — they were
                                     // already applied by the KnotProposal handler above.
                                     // Deduct commitment fees from committers.
@@ -962,6 +1109,9 @@ impl Node {
                                         fraud_proof_count: block.fraud_proofs.len(),
                                         name_registration_count: block.name_registrations.len(),
                                         transfer_count: block.transfers.len(),
+                                        token_definition_count: block.token_definitions.len(),
+                                        token_mint_count: block.token_mints.len(),
+                                        token_burn_count: block.token_burns.len(),
                                     };
                                     let _ = tx.send(info);
                                 }

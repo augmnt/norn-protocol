@@ -15,3 +15,4 @@ pub mod mempool;
 pub mod name;
 pub mod registration;
 pub mod staking;
+pub mod token;

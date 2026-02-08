@@ -95,6 +95,9 @@ mod auth_middleware {
         "norn_listNames",
         "norn_getMetrics",
         "norn_getNodeInfo",
+        "norn_getTokenInfo",
+        "norn_getTokenBySymbol",
+        "norn_listTokens",
     ];
 
     /// Tower layer that wraps services with API key authentication.

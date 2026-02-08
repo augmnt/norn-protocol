@@ -76,6 +76,68 @@ pub struct NameRegistration {
     pub signature: Signature,
 }
 
+/// A token definition — creates a new fungible token on the network.
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+pub struct TokenDefinition {
+    /// Human-readable name (e.g. "Wrapped Bitcoin").
+    pub name: String,
+    /// Ticker symbol (e.g. "WBTC"), uppercase alphanumeric, 1-12 chars.
+    pub symbol: String,
+    /// Number of decimal places (0-18).
+    pub decimals: u8,
+    /// Maximum supply (0 = unlimited).
+    pub max_supply: Amount,
+    /// Initial supply minted to creator on creation.
+    pub initial_supply: Amount,
+    /// Creator's address.
+    pub creator: Address,
+    /// Creator's public key (needed for signature verification).
+    pub creator_pubkey: PublicKey,
+    /// Timestamp of creation.
+    pub timestamp: Timestamp,
+    /// Signature by the creator.
+    #[serde(with = "crate::primitives::serde_sig")]
+    pub signature: Signature,
+}
+
+/// A token mint operation — creates new tokens (creator-only).
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+pub struct TokenMint {
+    /// The token to mint.
+    pub token_id: TokenId,
+    /// Recipient of the minted tokens.
+    pub to: Address,
+    /// Amount to mint.
+    pub amount: Amount,
+    /// Authority (must be token creator).
+    pub authority: Address,
+    /// Authority's public key.
+    pub authority_pubkey: PublicKey,
+    /// Timestamp.
+    pub timestamp: Timestamp,
+    /// Signature by the authority.
+    #[serde(with = "crate::primitives::serde_sig")]
+    pub signature: Signature,
+}
+
+/// A token burn operation — destroys tokens from the burner's balance.
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+pub struct TokenBurn {
+    /// The token to burn.
+    pub token_id: TokenId,
+    /// The burner's address.
+    pub burner: Address,
+    /// The burner's public key.
+    pub burner_pubkey: PublicKey,
+    /// Amount to burn.
+    pub amount: Amount,
+    /// Timestamp.
+    pub timestamp: Timestamp,
+    /// Signature by the burner.
+    #[serde(with = "crate::primitives::serde_sig")]
+    pub signature: Signature,
+}
+
 /// A transfer record included in a weave block for cross-node balance sync.
 #[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 pub struct BlockTransfer {
@@ -144,6 +206,18 @@ pub struct WeaveBlock {
     pub transfers: Vec<BlockTransfer>,
     /// Merkle root of all transfers in this block.
     pub transfers_root: Hash,
+    /// Token definitions included in this block.
+    pub token_definitions: Vec<TokenDefinition>,
+    /// Merkle root of all token definitions in this block.
+    pub token_definitions_root: Hash,
+    /// Token mints included in this block.
+    pub token_mints: Vec<TokenMint>,
+    /// Merkle root of all token mints in this block.
+    pub token_mints_root: Hash,
+    /// Token burns included in this block.
+    pub token_burns: Vec<TokenBurn>,
+    /// Merkle root of all token burns in this block.
+    pub token_burns_root: Hash,
     /// Block timestamp.
     pub timestamp: Timestamp,
     /// Block proposer's public key.

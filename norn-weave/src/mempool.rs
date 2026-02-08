@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use norn_types::fraud::FraudProofSubmission;
 use norn_types::primitives::ThreadId;
 use norn_types::weave::{
-    BlockTransfer, CommitmentUpdate, LoomAnchor, NameRegistration, Registration,
+    BlockTransfer, CommitmentUpdate, LoomAnchor, NameRegistration, Registration, TokenBurn,
+    TokenDefinition, TokenMint,
 };
 
 use crate::error::WeaveError;
@@ -17,6 +18,9 @@ pub struct BlockContents {
     pub name_registrations: Vec<NameRegistration>,
     pub fraud_proofs: Vec<FraudProofSubmission>,
     pub transfers: Vec<BlockTransfer>,
+    pub token_definitions: Vec<TokenDefinition>,
+    pub token_mints: Vec<TokenMint>,
+    pub token_burns: Vec<TokenBurn>,
 }
 
 /// Transaction mempool for pending weave transactions.
@@ -33,6 +37,12 @@ pub struct Mempool {
     fraud_proofs: Vec<FraudProofSubmission>,
     /// Pending transfers (from verified knots, for inclusion in blocks).
     transfers: Vec<BlockTransfer>,
+    /// Pending token definitions.
+    token_definitions: Vec<TokenDefinition>,
+    /// Pending token mints.
+    token_mints: Vec<TokenMint>,
+    /// Pending token burns.
+    token_burns: Vec<TokenBurn>,
     /// Maximum total number of items in the mempool.
     max_size: usize,
 }
@@ -47,6 +57,9 @@ impl Mempool {
             name_registrations: Vec::new(),
             fraud_proofs: Vec::new(),
             transfers: Vec::new(),
+            token_definitions: Vec::new(),
+            token_mints: Vec::new(),
+            token_burns: Vec::new(),
             max_size,
         }
     }
@@ -59,6 +72,9 @@ impl Mempool {
             + self.name_registrations.len()
             + self.fraud_proofs.len()
             + self.transfers.len()
+            + self.token_definitions.len()
+            + self.token_mints.len()
+            + self.token_burns.len()
     }
 
     /// Add a commitment update (deduplicates by thread_id; latest wins).
@@ -116,6 +132,33 @@ impl Mempool {
         Ok(())
     }
 
+    /// Add a token definition for block inclusion.
+    pub fn add_token_definition(&mut self, td: TokenDefinition) -> Result<(), WeaveError> {
+        if self.total_size() >= self.max_size {
+            return Err(WeaveError::MempoolFull);
+        }
+        self.token_definitions.push(td);
+        Ok(())
+    }
+
+    /// Add a token mint for block inclusion.
+    pub fn add_token_mint(&mut self, tm: TokenMint) -> Result<(), WeaveError> {
+        if self.total_size() >= self.max_size {
+            return Err(WeaveError::MempoolFull);
+        }
+        self.token_mints.push(tm);
+        Ok(())
+    }
+
+    /// Add a token burn for block inclusion.
+    pub fn add_token_burn(&mut self, tb: TokenBurn) -> Result<(), WeaveError> {
+        if self.total_size() >= self.max_size {
+            return Err(WeaveError::MempoolFull);
+        }
+        self.token_burns.push(tb);
+        Ok(())
+    }
+
     /// Drain items from the mempool for block building.
     /// Takes up to `max_commitments` commitment updates, and all registrations,
     /// anchors, and fraud proofs.
@@ -141,6 +184,9 @@ impl Mempool {
         let name_registrations = std::mem::take(&mut self.name_registrations);
         let fraud_proofs = std::mem::take(&mut self.fraud_proofs);
         let transfers = std::mem::take(&mut self.transfers);
+        let token_definitions = std::mem::take(&mut self.token_definitions);
+        let token_mints = std::mem::take(&mut self.token_mints);
+        let token_burns = std::mem::take(&mut self.token_burns);
 
         BlockContents {
             commitments,
@@ -149,6 +195,9 @@ impl Mempool {
             name_registrations,
             fraud_proofs,
             transfers,
+            token_definitions,
+            token_mints,
+            token_burns,
         }
     }
 

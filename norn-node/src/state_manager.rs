@@ -7,6 +7,7 @@ use norn_types::error::NornError;
 use norn_types::name::NAME_REGISTRATION_FEE;
 use norn_types::primitives::{Address, Amount, Hash, PublicKey, TokenId, NATIVE_TOKEN_ID};
 use norn_types::thread::ThreadState;
+use norn_types::token::TOKEN_CREATION_FEE;
 use norn_types::weave::WeaveBlock;
 
 // Re-export for backward compatibility (used by wallet CLI and state_store).
@@ -18,6 +19,18 @@ pub struct NameRecord {
     pub owner: Address,
     pub registered_at: u64,
     pub fee_paid: Amount,
+}
+
+/// A record of a registered token (NT-1).
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct TokenRecord {
+    pub name: String,
+    pub symbol: String,
+    pub decimals: u8,
+    pub max_supply: Amount,
+    pub current_supply: Amount,
+    pub creator: Address,
+    pub created_at: u64,
 }
 
 /// Metadata tracked per thread beyond its ThreadState.
@@ -65,6 +78,10 @@ pub struct StateManager {
     known_knot_ids: HashSet<Hash>,
     /// Cached total supply of native tokens (updated on credit/debit).
     total_supply_cache: Amount,
+    /// Registry of NT-1 tokens by token_id.
+    token_registry: HashMap<TokenId, TokenRecord>,
+    /// Index from symbol to token_id for symbol-based lookups.
+    symbol_index: HashMap<String, TokenId>,
 }
 
 impl Default for StateManager {
@@ -85,6 +102,8 @@ impl StateManager {
             state_store: None,
             known_knot_ids: HashSet::new(),
             total_supply_cache: 0,
+            token_registry: HashMap::new(),
+            symbol_index: HashMap::new(),
         }
     }
 
@@ -113,6 +132,8 @@ impl StateManager {
             state_store: None,
             known_knot_ids,
             total_supply_cache,
+            token_registry: HashMap::new(),
+            symbol_index: HashMap::new(),
         }
     }
 
@@ -781,6 +802,351 @@ impl StateManager {
             .map(|names| names.iter().map(|s| s.as_str()).collect())
             .unwrap_or_default()
     }
+
+    // ─── Token Operations (NT-1) ─────────────────────────────────────────────
+
+    /// Create a new token (solo path — deducts creation fee from creator).
+    /// Returns the computed token_id.
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_token(
+        &mut self,
+        name: &str,
+        symbol: &str,
+        decimals: u8,
+        max_supply: Amount,
+        initial_supply: Amount,
+        creator: Address,
+        timestamp: u64,
+    ) -> Result<TokenId, NornError> {
+        let token_id = norn_types::token::compute_token_id(
+            &creator, name, symbol, decimals, max_supply, timestamp,
+        );
+
+        if self.token_registry.contains_key(&token_id) {
+            return Err(NornError::TokenAlreadyExists(hex::encode(token_id)));
+        }
+        if self.symbol_index.contains_key(symbol) {
+            return Err(NornError::TokenSymbolTaken(symbol.to_string()));
+        }
+
+        // Deduct creation fee.
+        let sender_state = self
+            .thread_states
+            .get(&creator)
+            .ok_or(NornError::ThreadNotFound(creator))?;
+        if !sender_state.has_balance(&NATIVE_TOKEN_ID, TOKEN_CREATION_FEE) {
+            return Err(NornError::InsufficientBalance {
+                available: sender_state.balance(&NATIVE_TOKEN_ID),
+                required: TOKEN_CREATION_FEE,
+            });
+        }
+
+        let sender_state = self.thread_states.get_mut(&creator).unwrap();
+        sender_state.debit(&NATIVE_TOKEN_ID, TOKEN_CREATION_FEE);
+        self.total_supply_cache = self.total_supply_cache.saturating_sub(TOKEN_CREATION_FEE);
+
+        // Mint initial supply to creator.
+        if initial_supply > 0 {
+            let sender_state = self.thread_states.get_mut(&creator).unwrap();
+            sender_state.credit(token_id, initial_supply)?;
+        }
+
+        // Update state hash.
+        if let Some(meta) = self.thread_meta.get_mut(&creator) {
+            meta.state_hash =
+                norn_thread::state::compute_state_hash(self.thread_states.get(&creator).unwrap());
+        }
+
+        // Register the token.
+        let record = TokenRecord {
+            name: name.to_string(),
+            symbol: symbol.to_string(),
+            decimals,
+            max_supply,
+            current_supply: initial_supply,
+            creator,
+            created_at: timestamp,
+        };
+        self.token_registry.insert(token_id, record.clone());
+        self.symbol_index.insert(symbol.to_string(), token_id);
+
+        // Persist.
+        if let Some(ref store) = self.state_store {
+            if let Err(e) =
+                store.save_thread_state(&creator, self.thread_states.get(&creator).unwrap())
+            {
+                tracing::warn!(
+                    "Failed to persist creator state after token creation: {}",
+                    e
+                );
+            }
+            if let Some(meta) = self.thread_meta.get(&creator) {
+                if let Err(e) = store.save_thread_meta(&creator, meta) {
+                    tracing::warn!("Failed to persist creator meta after token creation: {}", e);
+                }
+            }
+            if let Err(e) = store.save_token(&token_id, &record) {
+                tracing::warn!("Failed to persist token record: {}", e);
+            }
+        }
+
+        Ok(token_id)
+    }
+
+    /// Apply a token creation from a peer block (skips fee deduction).
+    #[allow(clippy::too_many_arguments)]
+    pub fn apply_peer_token_creation(
+        &mut self,
+        name: &str,
+        symbol: &str,
+        decimals: u8,
+        max_supply: Amount,
+        initial_supply: Amount,
+        creator: Address,
+        creator_pubkey: PublicKey,
+        timestamp: u64,
+    ) -> Result<TokenId, NornError> {
+        let token_id = norn_types::token::compute_token_id(
+            &creator, name, symbol, decimals, max_supply, timestamp,
+        );
+
+        if self.token_registry.contains_key(&token_id) {
+            return Err(NornError::TokenAlreadyExists(hex::encode(token_id)));
+        }
+
+        // Auto-register creator with real pubkey.
+        self.auto_register_with_pubkey(creator, creator_pubkey);
+
+        // Mint initial supply to creator.
+        if initial_supply > 0 {
+            let state = self
+                .thread_states
+                .get_mut(&creator)
+                .ok_or(NornError::ThreadNotFound(creator))?;
+            state.credit(token_id, initial_supply)?;
+
+            // Update state hash.
+            if let Some(meta) = self.thread_meta.get_mut(&creator) {
+                meta.state_hash = norn_thread::state::compute_state_hash(
+                    self.thread_states.get(&creator).unwrap(),
+                );
+            }
+        }
+
+        let record = TokenRecord {
+            name: name.to_string(),
+            symbol: symbol.to_string(),
+            decimals,
+            max_supply,
+            current_supply: initial_supply,
+            creator,
+            created_at: timestamp,
+        };
+        self.token_registry.insert(token_id, record.clone());
+        self.symbol_index.insert(symbol.to_string(), token_id);
+
+        // Persist.
+        if let Some(ref store) = self.state_store {
+            if let Err(e) = store.save_token(&token_id, &record) {
+                tracing::warn!("Failed to persist token record: {}", e);
+            }
+            if let Err(e) =
+                store.save_thread_state(&creator, self.thread_states.get(&creator).unwrap())
+            {
+                tracing::warn!(
+                    "Failed to persist creator state after peer token creation: {}",
+                    e
+                );
+            }
+        }
+
+        Ok(token_id)
+    }
+
+    /// Mint tokens (solo path — credits to recipient, updates supply).
+    pub fn mint_token(
+        &mut self,
+        token_id: TokenId,
+        to: Address,
+        amount: Amount,
+    ) -> Result<(), NornError> {
+        let record = self
+            .token_registry
+            .get(&token_id)
+            .ok_or_else(|| NornError::TokenNotFound(hex::encode(token_id)))?;
+
+        // Check supply cap.
+        if record.max_supply > 0 {
+            let new_supply = record.current_supply.saturating_add(amount);
+            if new_supply > record.max_supply {
+                return Err(NornError::TokenSupplyCapExceeded {
+                    current: record.current_supply,
+                    requested: amount,
+                    max: record.max_supply,
+                });
+            }
+        }
+
+        // Credit recipient.
+        self.auto_register_if_needed(to);
+        let state = self
+            .thread_states
+            .get_mut(&to)
+            .ok_or(NornError::ThreadNotFound(to))?;
+        state.credit(token_id, amount)?;
+
+        // Update state hash.
+        if let Some(meta) = self.thread_meta.get_mut(&to) {
+            meta.state_hash =
+                norn_thread::state::compute_state_hash(self.thread_states.get(&to).unwrap());
+        }
+
+        // Update supply.
+        let record = self.token_registry.get_mut(&token_id).unwrap();
+        record.current_supply = record.current_supply.saturating_add(amount);
+
+        // Persist.
+        if let Some(ref store) = self.state_store {
+            if let Err(e) = store.save_thread_state(&to, self.thread_states.get(&to).unwrap()) {
+                tracing::warn!("Failed to persist recipient state after mint: {}", e);
+            }
+            if let Err(e) = store.save_token(&token_id, self.token_registry.get(&token_id).unwrap())
+            {
+                tracing::warn!("Failed to persist token record after mint: {}", e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Apply a token mint from a peer block (same logic, just different call context).
+    pub fn apply_peer_token_mint(
+        &mut self,
+        token_id: TokenId,
+        to: Address,
+        amount: Amount,
+    ) -> Result<(), NornError> {
+        self.mint_token(token_id, to, amount)
+    }
+
+    /// Burn tokens (solo path — debits from burner, updates supply).
+    pub fn burn_token(
+        &mut self,
+        token_id: TokenId,
+        burner: Address,
+        amount: Amount,
+    ) -> Result<(), NornError> {
+        if !self.token_registry.contains_key(&token_id) {
+            return Err(NornError::TokenNotFound(hex::encode(token_id)));
+        }
+
+        // Check balance.
+        let state = self
+            .thread_states
+            .get(&burner)
+            .ok_or(NornError::ThreadNotFound(burner))?;
+        if !state.has_balance(&token_id, amount) {
+            return Err(NornError::InsufficientBalance {
+                available: state.balance(&token_id),
+                required: amount,
+            });
+        }
+
+        // Debit burner.
+        let state = self.thread_states.get_mut(&burner).unwrap();
+        state.debit(&token_id, amount);
+
+        // Update state hash.
+        if let Some(meta) = self.thread_meta.get_mut(&burner) {
+            meta.state_hash =
+                norn_thread::state::compute_state_hash(self.thread_states.get(&burner).unwrap());
+        }
+
+        // Update supply.
+        let record = self.token_registry.get_mut(&token_id).unwrap();
+        record.current_supply = record.current_supply.saturating_sub(amount);
+
+        // Persist.
+        if let Some(ref store) = self.state_store {
+            if let Err(e) =
+                store.save_thread_state(&burner, self.thread_states.get(&burner).unwrap())
+            {
+                tracing::warn!("Failed to persist burner state after burn: {}", e);
+            }
+            if let Err(e) = store.save_token(&token_id, self.token_registry.get(&token_id).unwrap())
+            {
+                tracing::warn!("Failed to persist token record after burn: {}", e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Apply a token burn from a peer block.
+    /// Warns on insufficient balance (best-effort, like peer transfers).
+    pub fn apply_peer_token_burn(
+        &mut self,
+        token_id: TokenId,
+        burner: Address,
+        burner_pubkey: PublicKey,
+        amount: Amount,
+    ) -> Result<(), NornError> {
+        self.auto_register_with_pubkey(burner, burner_pubkey);
+
+        if let Some(state) = self.thread_states.get(&burner) {
+            if state.has_balance(&token_id, amount) {
+                let state = self.thread_states.get_mut(&burner).unwrap();
+                state.debit(&token_id, amount);
+
+                if let Some(meta) = self.thread_meta.get_mut(&burner) {
+                    meta.state_hash = norn_thread::state::compute_state_hash(
+                        self.thread_states.get(&burner).unwrap(),
+                    );
+                }
+            } else {
+                tracing::warn!(
+                    "peer token burn: burner {} has insufficient balance for {}",
+                    hex::encode(burner),
+                    amount,
+                );
+            }
+        }
+
+        // Update supply.
+        if let Some(record) = self.token_registry.get_mut(&token_id) {
+            record.current_supply = record.current_supply.saturating_sub(amount);
+        }
+
+        Ok(())
+    }
+
+    /// Get a token record by ID.
+    pub fn get_token(&self, token_id: &TokenId) -> Option<&TokenRecord> {
+        self.token_registry.get(token_id)
+    }
+
+    /// Get a token ID by symbol.
+    pub fn get_token_by_symbol(&self, symbol: &str) -> Option<(&TokenId, &TokenRecord)> {
+        self.symbol_index
+            .get(symbol)
+            .and_then(|id| self.token_registry.get(id).map(|r| (id, r)))
+    }
+
+    /// List all tokens (for RPC).
+    pub fn list_tokens(&self) -> Vec<(&TokenId, &TokenRecord)> {
+        self.token_registry.iter().collect()
+    }
+
+    /// Iterate over registered tokens for WeaveEngine seeding.
+    pub fn registered_tokens(&self) -> impl Iterator<Item = (&TokenId, &TokenRecord)> {
+        self.token_registry.iter()
+    }
+
+    /// Seed a token into the registry (used during state rebuild).
+    pub fn seed_token(&mut self, token_id: TokenId, record: TokenRecord) {
+        self.symbol_index.insert(record.symbol.clone(), token_id);
+        self.token_registry.insert(token_id, record);
+    }
 }
 
 #[cfg(test)]
@@ -927,6 +1293,12 @@ mod tests {
             fraud_proofs_root: [0u8; 32],
             transfers: vec![],
             transfers_root: [0u8; 32],
+            token_definitions: vec![],
+            token_definitions_root: [0u8; 32],
+            token_mints: vec![],
+            token_mints_root: [0u8; 32],
+            token_burns: vec![],
+            token_burns_root: [0u8; 32],
             timestamp: 1000,
             proposer: [0u8; 32],
             validator_signatures: vec![],
@@ -1119,5 +1491,195 @@ mod tests {
             HashMap::new(),
         );
         assert_eq!(sm.total_supply(), 800);
+    }
+
+    // ── Token tests ───────────────────────────────────
+
+    #[test]
+    fn test_create_token() {
+        let mut sm = StateManager::new();
+        let creator = test_address(1);
+        let creator_pk = test_pubkey(1);
+        sm.register_thread(creator, creator_pk);
+        sm.credit(creator, NATIVE_TOKEN_ID, 100 * ONE_NORN).unwrap();
+
+        let token_id = sm
+            .create_token("Test", "TST", 8, 1_000_000, 100, creator, 12345)
+            .unwrap();
+
+        assert_ne!(token_id, [0u8; 32]);
+        let record = sm.get_token(&token_id).expect("token should exist");
+        assert_eq!(record.name, "Test");
+        assert_eq!(record.symbol, "TST");
+        assert_eq!(record.decimals, 8);
+        assert_eq!(record.max_supply, 1_000_000);
+        assert_eq!(record.current_supply, 100);
+        assert_eq!(record.creator, creator);
+
+        // Creator should have initial supply credited.
+        assert_eq!(sm.get_balance(&creator, &token_id), 100);
+
+        // Fee should be deducted.
+        let expected_balance = 100 * ONE_NORN - norn_types::token::TOKEN_CREATION_FEE;
+        assert_eq!(sm.get_balance(&creator, &NATIVE_TOKEN_ID), expected_balance);
+    }
+
+    #[test]
+    fn test_create_token_duplicate_symbol() {
+        let mut sm = StateManager::new();
+        let creator = test_address(1);
+        sm.register_thread(creator, test_pubkey(1));
+        sm.credit(creator, NATIVE_TOKEN_ID, 200 * ONE_NORN).unwrap();
+
+        sm.create_token("Test1", "TST", 8, 0, 0, creator, 100)
+            .unwrap();
+        let result = sm.create_token("Test2", "TST", 8, 0, 0, creator, 200);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_token_insufficient_balance() {
+        let mut sm = StateManager::new();
+        let creator = test_address(1);
+        sm.register_thread(creator, test_pubkey(1));
+        sm.credit(creator, NATIVE_TOKEN_ID, ONE_NORN).unwrap(); // Only 1 NORN, need 10
+
+        let result = sm.create_token("Test", "TST", 8, 0, 0, creator, 100);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_mint_token() {
+        let mut sm = StateManager::new();
+        let creator = test_address(1);
+        let recipient = test_address(2);
+        sm.register_thread(creator, test_pubkey(1));
+        sm.register_thread(recipient, test_pubkey(2));
+        sm.credit(creator, NATIVE_TOKEN_ID, 100 * ONE_NORN).unwrap();
+
+        let token_id = sm
+            .create_token("Test", "TST", 8, 10_000, 0, creator, 100)
+            .unwrap();
+
+        sm.mint_token(token_id, recipient, 500).unwrap();
+        assert_eq!(sm.get_balance(&recipient, &token_id), 500);
+
+        let record = sm.get_token(&token_id).unwrap();
+        assert_eq!(record.current_supply, 500);
+    }
+
+    #[test]
+    fn test_mint_token_supply_cap() {
+        let mut sm = StateManager::new();
+        let creator = test_address(1);
+        sm.register_thread(creator, test_pubkey(1));
+        sm.credit(creator, NATIVE_TOKEN_ID, 100 * ONE_NORN).unwrap();
+
+        let token_id = sm
+            .create_token("Test", "TST", 8, 100, 50, creator, 100)
+            .unwrap();
+
+        // Try to mint more than remaining capacity (50 remaining).
+        let result = sm.mint_token(token_id, creator, 51);
+        assert!(result.is_err());
+
+        // Mint exactly remaining capacity.
+        sm.mint_token(token_id, creator, 50).unwrap();
+        assert_eq!(sm.get_balance(&creator, &token_id), 100);
+    }
+
+    #[test]
+    fn test_mint_token_nonexistent() {
+        let mut sm = StateManager::new();
+        let addr = test_address(1);
+        sm.register_thread(addr, test_pubkey(1));
+
+        let fake_token = [99u8; 32];
+        let result = sm.mint_token(fake_token, addr, 100);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_burn_token() {
+        let mut sm = StateManager::new();
+        let creator = test_address(1);
+        sm.register_thread(creator, test_pubkey(1));
+        sm.credit(creator, NATIVE_TOKEN_ID, 100 * ONE_NORN).unwrap();
+
+        let token_id = sm
+            .create_token("Test", "TST", 8, 0, 1000, creator, 100)
+            .unwrap();
+
+        sm.burn_token(token_id, creator, 300).unwrap();
+        assert_eq!(sm.get_balance(&creator, &token_id), 700);
+
+        let record = sm.get_token(&token_id).unwrap();
+        assert_eq!(record.current_supply, 700);
+    }
+
+    #[test]
+    fn test_get_token_by_symbol() {
+        let mut sm = StateManager::new();
+        let creator = test_address(1);
+        sm.register_thread(creator, test_pubkey(1));
+        sm.credit(creator, NATIVE_TOKEN_ID, 100 * ONE_NORN).unwrap();
+
+        let token_id = sm
+            .create_token("Test", "TST", 8, 0, 0, creator, 100)
+            .unwrap();
+
+        let (found_id, found_record) = sm.get_token_by_symbol("TST").unwrap();
+        assert_eq!(*found_id, token_id);
+        assert_eq!(found_record.symbol, "TST");
+
+        assert!(sm.get_token_by_symbol("NONEXISTENT").is_none());
+    }
+
+    #[test]
+    fn test_list_tokens() {
+        let mut sm = StateManager::new();
+        let creator = test_address(1);
+        sm.register_thread(creator, test_pubkey(1));
+        sm.credit(creator, NATIVE_TOKEN_ID, 200 * ONE_NORN).unwrap();
+
+        sm.create_token("Alpha", "ALPHA", 18, 0, 0, creator, 100)
+            .unwrap();
+        sm.create_token("Beta", "BETA", 8, 0, 0, creator, 200)
+            .unwrap();
+
+        let tokens = sm.list_tokens();
+        assert_eq!(tokens.len(), 2);
+    }
+
+    #[test]
+    fn test_apply_peer_token_creation() {
+        let mut sm = StateManager::new();
+        let creator = test_address(1);
+        sm.register_thread(creator, test_pubkey(1));
+        sm.credit(creator, NATIVE_TOKEN_ID, 100 * ONE_NORN).unwrap();
+        let original_balance = sm.get_balance(&creator, &NATIVE_TOKEN_ID);
+
+        let token_id = sm
+            .apply_peer_token_creation(
+                "Peer Token",
+                "PTK",
+                18,
+                0,
+                500,
+                creator,
+                test_pubkey(1),
+                100,
+            )
+            .unwrap();
+
+        // Peer path should NOT deduct fee.
+        assert_eq!(sm.get_balance(&creator, &NATIVE_TOKEN_ID), original_balance);
+
+        // But should credit initial supply.
+        assert_eq!(sm.get_balance(&creator, &token_id), 500);
+
+        let record = sm.get_token(&token_id).unwrap();
+        assert_eq!(record.symbol, "PTK");
+        assert_eq!(record.current_supply, 500);
     }
 }

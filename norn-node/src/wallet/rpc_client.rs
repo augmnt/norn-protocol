@@ -4,7 +4,7 @@ use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use jsonrpsee::rpc_params;
 
 use crate::rpc::types::{
-    BlockInfo, FeeEstimateInfo, HealthInfo, NameInfo, NameResolution, SubmitResult,
+    BlockInfo, FeeEstimateInfo, HealthInfo, NameInfo, NameResolution, SubmitResult, TokenInfo,
     TransactionHistoryEntry, ValidatorSetInfo, WeaveStateInfo,
 };
 
@@ -271,6 +271,88 @@ impl RpcClient {
         let result: FeeEstimateInfo = self
             .client
             .request("norn_getFeeEstimate", rpc_params![])
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Create a new token (hex-encoded borsh TokenDefinition).
+    pub async fn create_token(&self, hex_data: &str) -> Result<SubmitResult, WalletError> {
+        let pb = Self::spinner("Creating token...");
+        let result: SubmitResult = self
+            .client
+            .request("norn_createToken", rpc_params![hex_data])
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Mint tokens (hex-encoded borsh TokenMint).
+    pub async fn mint_token(&self, hex_data: &str) -> Result<SubmitResult, WalletError> {
+        let pb = Self::spinner("Minting tokens...");
+        let result: SubmitResult = self
+            .client
+            .request("norn_mintToken", rpc_params![hex_data])
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Burn tokens (hex-encoded borsh TokenBurn).
+    pub async fn burn_token(&self, hex_data: &str) -> Result<SubmitResult, WalletError> {
+        let pb = Self::spinner("Burning tokens...");
+        let result: SubmitResult = self
+            .client
+            .request("norn_burnToken", rpc_params![hex_data])
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Get token info by token ID (hex).
+    pub async fn get_token_info(
+        &self,
+        token_id_hex: &str,
+    ) -> Result<Option<TokenInfo>, WalletError> {
+        let pb = Self::spinner("Fetching token info...");
+        let result: Option<TokenInfo> = self
+            .client
+            .request("norn_getTokenInfo", rpc_params![token_id_hex])
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Get token info by symbol.
+    pub async fn get_token_by_symbol(
+        &self,
+        symbol: &str,
+    ) -> Result<Option<TokenInfo>, WalletError> {
+        let pb = Self::spinner("Looking up token...");
+        let result: Option<TokenInfo> = self
+            .client
+            .request("norn_getTokenBySymbol", rpc_params![symbol])
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// List all tokens with pagination.
+    pub async fn list_tokens(
+        &self,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<TokenInfo>, WalletError> {
+        let pb = Self::spinner("Fetching tokens...");
+        let result: Vec<TokenInfo> = self
+            .client
+            .request("norn_listTokens", rpc_params![limit, offset])
             .await
             .map_err(|e| Self::map_rpc_error(&e))?;
         pb.finish_and_clear();

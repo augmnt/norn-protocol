@@ -40,6 +40,15 @@ pub struct BlockInfo {
     /// Number of transfers in this block.
     #[serde(default)]
     pub transfer_count: usize,
+    /// Number of token definitions in this block.
+    #[serde(default)]
+    pub token_definition_count: usize,
+    /// Number of token mints in this block.
+    #[serde(default)]
+    pub token_mint_count: usize,
+    /// Number of token burns in this block.
+    #[serde(default)]
+    pub token_burn_count: usize,
 }
 
 /// Information about the current weave state.
@@ -199,6 +208,27 @@ pub struct NameResolution {
     pub fee_paid: String,
 }
 
+/// Information about a token.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenInfo {
+    /// Token ID as hex string.
+    pub token_id: String,
+    /// Human-readable name (e.g., "Wrapped Bitcoin").
+    pub name: String,
+    /// Ticker symbol (e.g., "WBTC").
+    pub symbol: String,
+    /// Decimal places.
+    pub decimals: u8,
+    /// Maximum supply (0 = unlimited), as string.
+    pub max_supply: String,
+    /// Current circulating supply, as string.
+    pub current_supply: String,
+    /// Creator address as hex string.
+    pub creator: String,
+    /// Creation timestamp.
+    pub created_at: u64,
+}
+
 /// Information about a name owned by an address.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NameInfo {
@@ -226,12 +256,18 @@ mod tests {
             fraud_proof_count: 0,
             name_registration_count: 3,
             transfer_count: 5,
+            token_definition_count: 1,
+            token_mint_count: 2,
+            token_burn_count: 0,
         };
         let json = serde_json::to_string(&info).unwrap();
         let deserialized: BlockInfo = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.height, 42);
         assert_eq!(deserialized.name_registration_count, 3);
         assert_eq!(deserialized.transfer_count, 5);
+        assert_eq!(deserialized.token_definition_count, 1);
+        assert_eq!(deserialized.token_mint_count, 2);
+        assert_eq!(deserialized.token_burn_count, 0);
     }
 
     #[test]

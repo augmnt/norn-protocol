@@ -5,7 +5,10 @@ use crate::consensus::ConsensusMessage;
 use crate::fraud::FraudProofSubmission;
 use crate::knot::Knot;
 use crate::primitives::*;
-use crate::weave::{CommitmentUpdate, NameRegistration, Registration, WeaveBlock};
+use crate::weave::{
+    CommitmentUpdate, NameRegistration, Registration, TokenBurn, TokenDefinition, TokenMint,
+    WeaveBlock,
+};
 
 /// Network identifier for distinguishing dev, testnet, and mainnet environments.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -236,6 +239,12 @@ pub enum NornMessage {
     NameRegistration(NameRegistration),
     /// An upgrade notice from a peer that detected a newer protocol version.
     UpgradeNotice(UpgradeNotice),
+    /// A token definition (NT-1 create).
+    TokenDefinition(TokenDefinition),
+    /// A token mint operation (NT-1 mint).
+    TokenMint(TokenMint),
+    /// A token burn operation (NT-1 burn).
+    TokenBurn(TokenBurn),
 }
 
 impl NornMessage {
@@ -258,6 +267,9 @@ impl NornMessage {
             NornMessage::StateResponse { .. } => 12,
             NornMessage::NameRegistration(_) => 13,
             NornMessage::UpgradeNotice(_) => 14,
+            NornMessage::TokenDefinition(_) => 15,
+            NornMessage::TokenMint(_) => 16,
+            NornMessage::TokenBurn(_) => 17,
         }
     }
 }

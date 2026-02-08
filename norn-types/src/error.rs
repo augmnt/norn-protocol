@@ -106,6 +106,29 @@ pub enum NornError {
     #[error("invalid name: {0}")]
     InvalidName(String),
 
+    // ─── Token Errors ─────────────────────────────────────────────────────────
+    #[error("token already exists: {0}")]
+    TokenAlreadyExists(String),
+
+    #[error("token not found: {0}")]
+    TokenNotFound(String),
+
+    #[error("not token authority: only the creator can perform this operation")]
+    NotTokenAuthority,
+
+    #[error("token supply cap exceeded: current {current} + requested {requested} > max {max}")]
+    TokenSupplyCapExceeded {
+        current: u128,
+        requested: u128,
+        max: u128,
+    },
+
+    #[error("invalid token definition: {0}")]
+    InvalidTokenDefinition(String),
+
+    #[error("token symbol already taken: {0}")]
+    TokenSymbolTaken(String),
+
     // ─── Serialization Errors ────────────────────────────────────────────────
     #[error("serialization error: {reason}")]
     SerializationError { reason: String },

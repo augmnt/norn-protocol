@@ -15,6 +15,7 @@ pub mod name;
 pub mod network;
 pub mod primitives;
 pub mod thread;
+pub mod token;
 pub mod weave;
 
 #[cfg(test)]
@@ -356,5 +357,87 @@ mod tests {
         borsh_roundtrip(&KnotType::Transfer);
         borsh_roundtrip(&KnotType::MultiTransfer);
         borsh_roundtrip(&KnotType::LoomInteraction);
+    }
+
+    #[test]
+    fn test_token_definition_roundtrip() {
+        let def = crate::weave::TokenDefinition {
+            name: "Test Token".to_string(),
+            symbol: "TST".to_string(),
+            decimals: 8,
+            max_supply: 1_000_000,
+            initial_supply: 100_000,
+            creator: [1u8; 20],
+            creator_pubkey: [2u8; 32],
+            timestamp: 12345,
+            signature: [3u8; 64],
+        };
+        borsh_roundtrip(&def);
+    }
+
+    #[test]
+    fn test_token_mint_roundtrip() {
+        let mint = crate::weave::TokenMint {
+            token_id: [4u8; 32],
+            to: [5u8; 20],
+            amount: 500,
+            authority: [6u8; 20],
+            authority_pubkey: [7u8; 32],
+            timestamp: 12345,
+            signature: [8u8; 64],
+        };
+        borsh_roundtrip(&mint);
+    }
+
+    #[test]
+    fn test_token_burn_roundtrip() {
+        let burn = crate::weave::TokenBurn {
+            token_id: [9u8; 32],
+            burner: [10u8; 20],
+            burner_pubkey: [11u8; 32],
+            amount: 250,
+            timestamp: 12345,
+            signature: [12u8; 64],
+        };
+        borsh_roundtrip(&burn);
+    }
+
+    #[test]
+    fn test_norn_message_token_discriminants() {
+        use crate::network::NornMessage;
+
+        let def_msg = NornMessage::TokenDefinition(crate::weave::TokenDefinition {
+            name: "T".to_string(),
+            symbol: "T".to_string(),
+            decimals: 0,
+            max_supply: 0,
+            initial_supply: 0,
+            creator: [0u8; 20],
+            creator_pubkey: [0u8; 32],
+            timestamp: 0,
+            signature: [0u8; 64],
+        });
+        assert_eq!(def_msg.discriminant(), 15);
+
+        let mint_msg = NornMessage::TokenMint(crate::weave::TokenMint {
+            token_id: [0u8; 32],
+            to: [0u8; 20],
+            amount: 0,
+            authority: [0u8; 20],
+            authority_pubkey: [0u8; 32],
+            timestamp: 0,
+            signature: [0u8; 64],
+        });
+        assert_eq!(mint_msg.discriminant(), 16);
+
+        let burn_msg = NornMessage::TokenBurn(crate::weave::TokenBurn {
+            token_id: [0u8; 32],
+            burner: [0u8; 20],
+            burner_pubkey: [0u8; 32],
+            amount: 0,
+            timestamp: 0,
+            signature: [0u8; 64],
+        });
+        assert_eq!(burn_msg.discriminant(), 17);
     }
 }

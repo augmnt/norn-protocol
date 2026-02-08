@@ -132,5 +132,48 @@ pub async fn run(command: WalletCommand) -> Result<(), WalletError> {
             pubkey,
         } => commands::verify_message::run(&message, &signature, &pubkey),
         WalletCommand::Rename { from, to } => commands::rename::run(&from, &to),
+        WalletCommand::CreateToken {
+            name,
+            symbol,
+            decimals,
+            max_supply,
+            initial_supply,
+            yes,
+            rpc_url,
+        } => {
+            commands::create_token::run(
+                &name,
+                &symbol,
+                decimals,
+                &max_supply,
+                &initial_supply,
+                yes,
+                rpc_url.as_deref(),
+            )
+            .await
+        }
+        WalletCommand::MintToken {
+            token,
+            to,
+            amount,
+            yes,
+            rpc_url,
+        } => commands::mint_token::run(&token, &to, &amount, yes, rpc_url.as_deref()).await,
+        WalletCommand::BurnToken {
+            token,
+            amount,
+            yes,
+            rpc_url,
+        } => commands::burn_token::run(&token, &amount, yes, rpc_url.as_deref()).await,
+        WalletCommand::TokenInfo {
+            token,
+            json,
+            rpc_url,
+        } => commands::token_info::run(&token, json, rpc_url.as_deref()).await,
+        WalletCommand::ListTokens {
+            limit,
+            json,
+            rpc_url,
+        } => commands::list_tokens::run(limit, json, rpc_url.as_deref()).await,
     }
 }

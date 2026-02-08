@@ -8,7 +8,9 @@ use norn_types::primitives::Address;
 use norn_types::thread::ThreadState;
 use norn_types::weave::WeaveBlock;
 
-use crate::state_manager::{NameRecord, ThreadMeta, TransferRecord};
+use norn_types::primitives::TokenId;
+
+use crate::state_manager::{NameRecord, ThreadMeta, TokenRecord, TransferRecord};
 
 // Key prefixes for each data bucket.
 const THREAD_STATE_PREFIX: &[u8] = b"state:thread:";
@@ -18,11 +20,12 @@ const TRANSFER_COUNT_KEY: &[u8] = b"state:transfer_count";
 const NAME_PREFIX: &[u8] = b"state:name:";
 const ADDR_NAMES_PREFIX: &[u8] = b"state:addr_names:";
 const BLOCK_PREFIX: &[u8] = b"state:block:";
+const TOKEN_PREFIX: &[u8] = b"state:token:";
 const SCHEMA_VERSION_KEY: &[u8] = b"meta:schema_version";
 
 /// Current schema version. Bump this whenever a breaking change is made to any
 /// borsh-serialized type persisted through StateStore.
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 
 /// Persistent store for StateManager data backed by a KvStore.
 pub struct StateStore {
@@ -257,6 +260,31 @@ impl StateStore {
         Ok(results)
     }
 
+    // ── Tokens ──────────────────────────────────────────────────────────
+
+    pub fn save_token(&self, token_id: &TokenId, record: &TokenRecord) -> Result<(), StorageError> {
+        let key = self.token_key(token_id);
+        let value = borsh::to_vec(record).map_err(|e| StorageError::SerializationError {
+            reason: e.to_string(),
+        })?;
+        self.store.put(&key, &value)
+    }
+
+    pub fn load_all_tokens(&self) -> Result<Vec<(TokenId, TokenRecord)>, StorageError> {
+        let pairs = self.store.prefix_scan(TOKEN_PREFIX)?;
+        let mut results = Vec::with_capacity(pairs.len());
+        for (key, value) in pairs {
+            let token_id = self.token_id_from_key(&key, TOKEN_PREFIX.len());
+            let record = TokenRecord::try_from_slice(&value).map_err(|e| {
+                StorageError::DeserializationError {
+                    reason: e.to_string(),
+                }
+            })?;
+            results.push((token_id, record));
+        }
+        Ok(results)
+    }
+
     // ── Rebuild ─────────────────────────────────────────────────────────
 
     /// Rebuild a full StateManager from persisted data.
@@ -267,13 +295,15 @@ impl StateStore {
         let names = self.load_all_names()?;
         let address_names = self.load_all_address_names()?;
         let blocks = self.load_all_blocks()?;
+        let tokens = self.load_all_tokens()?;
 
         let state_count = thread_states.len();
         let transfer_count = transfers.len();
         let name_count = names.len();
         let block_count = blocks.len();
+        let token_count = tokens.len();
 
-        let sm = crate::state_manager::StateManager::from_parts(
+        let mut sm = crate::state_manager::StateManager::from_parts(
             thread_states.into_iter().collect(),
             thread_metas.into_iter().collect(),
             transfers,
@@ -282,12 +312,23 @@ impl StateStore {
             address_names.into_iter().collect(),
         );
 
-        if state_count > 0 || transfer_count > 0 || name_count > 0 || block_count > 0 {
+        // Seed token registry from persisted data.
+        for (token_id, record) in tokens {
+            sm.seed_token(token_id, record);
+        }
+
+        if state_count > 0
+            || transfer_count > 0
+            || name_count > 0
+            || block_count > 0
+            || token_count > 0
+        {
             tracing::info!(
                 threads = state_count,
                 transfers = transfer_count,
                 names = name_count,
                 blocks = block_count,
+                tokens = token_count,
                 "state rebuilt from disk"
             );
         }
@@ -337,6 +378,22 @@ impl StateStore {
         key.extend_from_slice(BLOCK_PREFIX);
         key.extend_from_slice(&height.to_be_bytes());
         key
+    }
+
+    fn token_key(&self, token_id: &TokenId) -> Vec<u8> {
+        let mut key = Vec::with_capacity(TOKEN_PREFIX.len() + 32);
+        key.extend_from_slice(TOKEN_PREFIX);
+        key.extend_from_slice(token_id);
+        key
+    }
+
+    fn token_id_from_key(&self, key: &[u8], prefix_len: usize) -> TokenId {
+        let mut id = [0u8; 32];
+        let data = &key[prefix_len..];
+        if data.len() >= 32 {
+            id.copy_from_slice(&data[..32]);
+        }
+        id
     }
 
     fn address_from_key(&self, key: &[u8], prefix_len: usize) -> Address {
@@ -477,6 +534,12 @@ mod tests {
             fraud_proofs_root: [0u8; 32],
             transfers: vec![],
             transfers_root: [0u8; 32],
+            token_definitions: vec![],
+            token_definitions_root: [0u8; 32],
+            token_mints: vec![],
+            token_mints_root: [0u8; 32],
+            token_burns: vec![],
+            token_burns_root: [0u8; 32],
             timestamp: 1000,
             proposer: [0u8; 32],
             validator_signatures: vec![],
