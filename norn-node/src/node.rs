@@ -682,7 +682,10 @@ impl Node {
                                             name_reg.timestamp,
                                             name_reg.fee_paid,
                                         ) {
-                                            tracing::debug!("skipping known name registration: {}", e);
+                                            tracing::debug!(
+                                                "skipping known name registration: {}",
+                                                e
+                                            );
                                         }
                                     }
                                     for bt in &block.transfers {
