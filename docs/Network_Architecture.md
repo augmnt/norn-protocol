@@ -55,7 +55,7 @@ This means:
 | Bootstrap | Connects to `seed.norn.network:9740` (`DEFAULT_BOOT_NODES`) |
 | Validator | Yes (solo mode, produces blocks every ~3s) |
 | Storage | Memory by default (or SQLite with `--storage sqlite`) |
-| Wallet | `~/.norn/wallets/founder.json` — holds the founder private key |
+| Wallet | `~/.norn/wallets/founder.json` (or whatever name was chosen at creation) — holds the founder private key |
 | Genesis | Creates its own identical genesis block on startup |
 
 This is where you run all `norn wallet` commands. The wallet talks to Alice's local node via RPC (`localhost:9741`). The local node handles the transaction and gossips it to the network.
