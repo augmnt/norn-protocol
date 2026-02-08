@@ -1,11 +1,13 @@
-# Norn Protocol
+<p align="center">
+  <img src="assets/banner.svg" alt="NORN Protocol" width="650">
+</p>
 
-[![CI](https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml/badge.svg)](https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org/)
-[![Version](https://img.shields.io/badge/version-0.7.0-green.svg)](https://github.com/augmnt/norn-protocol/releases/tag/v0.7.0)
-
-**Your thread. Your fate. The chain just watches.**
+<p align="center">
+  <a href="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml"><img src="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-stable-orange.svg" alt="Rust"></a>
+  <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.7.0"><img src="https://img.shields.io/badge/version-0.7.0-green.svg" alt="Version"></a>
+</p>
 
 ---
 
