@@ -6,9 +6,47 @@ use norn_types::primitives::*;
 
 use crate::error::LoomError;
 use crate::gas::DEFAULT_GAS_LIMIT;
-use crate::host::LoomHostState;
+use crate::host::{LoomHostState, PendingTransfer};
 use crate::runtime::LoomRuntime;
 use crate::state::LoomState;
+
+/// Result of a state-changing loom execution, wrapping the consensus-level
+/// `LoomStateTransition` with runtime-level data (gas, logs, events, transfers).
+#[derive(Debug)]
+pub struct ExecutionOutcome {
+    /// The state transition (consensus-level).
+    pub transition: LoomStateTransition,
+    /// Gas consumed during execution.
+    pub gas_used: u64,
+    /// Log messages emitted during execution.
+    pub logs: Vec<String>,
+    /// Pending token transfers from the contract.
+    pub pending_transfers: Vec<PendingTransfer>,
+    /// Structured events emitted during execution.
+    pub events: Vec<LoomEvent>,
+}
+
+/// Result of a read-only loom query.
+#[derive(Debug)]
+pub struct QueryOutcome {
+    /// Output bytes from the query.
+    pub output: Vec<u8>,
+    /// Gas consumed during query.
+    pub gas_used: u64,
+    /// Log messages emitted during query.
+    pub logs: Vec<String>,
+    /// Structured events emitted during query.
+    pub events: Vec<LoomEvent>,
+}
+
+/// A structured event emitted by a loom contract.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoomEvent {
+    /// Event type name (e.g., "Transfer", "Approval").
+    pub ty: String,
+    /// Key-value attributes.
+    pub attributes: Vec<(String, String)>,
+}
 
 /// Manages the lifecycle of looms: deployment, participant management,
 /// execution, and state anchoring.
@@ -141,8 +179,9 @@ impl LoomManager {
 
     /// Execute a transaction against a loom contract.
     ///
-    /// Runs the Wasm bytecode with the given input and returns a
-    /// `LoomStateTransition` capturing the before/after state hashes.
+    /// Runs the Wasm bytecode with the given input and returns an
+    /// `ExecutionOutcome` containing the state transition, gas usage, logs,
+    /// events, and pending transfers.
     pub fn execute(
         &mut self,
         loom_id: &LoomId,
@@ -150,7 +189,7 @@ impl LoomManager {
         sender: Address,
         block_height: u64,
         timestamp: u64,
-    ) -> Result<LoomStateTransition, LoomError> {
+    ) -> Result<ExecutionOutcome, LoomError> {
         // Validate loom exists.
         let loom = self
             .looms
@@ -188,8 +227,21 @@ impl LoomManager {
         let mut instance = runtime.instantiate(&bytecode_entry.bytecode, host_state)?;
         let outputs = instance.call_execute(input)?;
 
+        // Capture gas BEFORE consuming the instance.
+        let gas_used = instance.gas_used();
+
         // Extract updated state from the host.
         let host_state = instance.into_host_state();
+        let logs = host_state.logs.clone();
+        let pending_transfers = host_state.pending_transfers.clone();
+        let events = host_state
+            .events
+            .iter()
+            .map(|e| LoomEvent {
+                ty: e.ty.clone(),
+                attributes: e.attributes.clone(),
+            })
+            .collect();
 
         // Update the loom's stored state.
         let loom_state = self
@@ -208,12 +260,18 @@ impl LoomManager {
         loom.version += 1;
         loom.last_updated = timestamp;
 
-        Ok(LoomStateTransition {
-            loom_id: *loom_id,
-            prev_state_hash,
-            new_state_hash,
-            inputs: input.to_vec(),
-            outputs,
+        Ok(ExecutionOutcome {
+            transition: LoomStateTransition {
+                loom_id: *loom_id,
+                prev_state_hash,
+                new_state_hash,
+                inputs: input.to_vec(),
+                outputs,
+            },
+            gas_used,
+            logs,
+            pending_transfers,
+            events,
         })
     }
 
@@ -269,7 +327,7 @@ impl LoomManager {
         sender: Address,
         block_height: u64,
         timestamp: u64,
-    ) -> Result<Vec<u8>, LoomError> {
+    ) -> Result<QueryOutcome, LoomError> {
         // Validate loom exists.
         let _loom = self
             .looms
@@ -297,17 +355,40 @@ impl LoomManager {
         let mut instance = runtime.instantiate(&bytecode_entry.bytecode, host_state)?;
         let outputs = instance.call_query(input)?;
 
-        Ok(outputs)
+        // Capture gas and logs before discarding state.
+        let gas_used = instance.gas_used();
+        let host_state = instance.into_host_state();
+        let logs = host_state.logs;
+        let events = host_state
+            .events
+            .iter()
+            .map(|e| LoomEvent {
+                ty: e.ty.clone(),
+                attributes: e.attributes.clone(),
+            })
+            .collect();
+
+        Ok(QueryOutcome {
+            output: outputs,
+            gas_used,
+            logs,
+            events,
+        })
     }
 
     /// Upload bytecode to an existing loom and run init().
     ///
     /// Unlike `deploy()`, this attaches bytecode to a loom that was registered
     /// on-chain but didn't have bytecode yet (Phase 1 → Phase 2 bridge).
+    ///
+    /// If `init_msg` is provided, it is passed to the init function (new SDK
+    /// v0.13+ contracts). If `None`, an empty byte slice is used (compatible
+    /// with both old `()->()` and new `(i32,i32)->i32` init signatures).
     pub fn upload_bytecode(
         &mut self,
         loom_id: &LoomId,
         bytecode: Vec<u8>,
+        init_msg: Option<Vec<u8>>,
     ) -> Result<(), LoomError> {
         // Validate loom exists.
         let _loom = self
@@ -341,7 +422,8 @@ impl LoomManager {
         // Instantiate and call init().
         let runtime = LoomRuntime::new()?;
         let mut instance = runtime.instantiate(&loom_bytecode.bytecode, host_state)?;
-        instance.call_init()?;
+        let init_input = init_msg.as_deref().unwrap_or(&[]);
+        instance.call_init(init_input)?;
 
         // Save the state from init.
         let host_state = instance.into_host_state();
@@ -503,9 +585,10 @@ mod tests {
         let sender = [3u8; 20];
         manager.join(&loom_id, [3u8; 32], sender, 1001).unwrap();
 
-        let transition = manager.execute(&loom_id, &[], sender, 100, 1002).unwrap();
-        assert_eq!(transition.loom_id, loom_id);
-        assert_eq!(transition.outputs, 42i32.to_le_bytes().to_vec());
+        let outcome = manager.execute(&loom_id, &[], sender, 100, 1002).unwrap();
+        assert_eq!(outcome.transition.loom_id, loom_id);
+        assert_eq!(outcome.transition.outputs, 42i32.to_le_bytes().to_vec());
+        assert!(outcome.gas_used > 0);
     }
 
     #[test]
@@ -555,8 +638,8 @@ mod tests {
         manager.join(&loom_id, [20u8; 32], addr_b, 1002).unwrap();
 
         // Execute.
-        let transition = manager.execute(&loom_id, &[], addr_a, 50, 1003).unwrap();
-        assert_eq!(transition.loom_id, loom_id);
+        let outcome = manager.execute(&loom_id, &[], addr_a, 50, 1003).unwrap();
+        assert_eq!(outcome.transition.loom_id, loom_id);
 
         // Anchor.
         let (hash, version) = manager.anchor(&loom_id).unwrap();

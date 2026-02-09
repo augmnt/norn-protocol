@@ -1,5 +1,5 @@
 [package]
-name = "norn-token-vault"
+name = "norn20-token"
 version = "0.13.0"
 edition = "2021"
 

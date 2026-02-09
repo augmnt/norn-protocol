@@ -23,6 +23,9 @@ pub const GAS_TRANSFER: u64 = 500;
 /// Cost for a single log emission.
 pub const GAS_LOG: u64 = 50;
 
+/// Cost for emitting a structured event.
+pub const GAS_EMIT_EVENT: u64 = 75;
+
 /// Default gas limit when none is specified.
 pub const DEFAULT_GAS_LIMIT: u64 = 10_000_000;
 

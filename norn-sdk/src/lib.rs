@@ -9,25 +9,33 @@
 //! ```ignore
 //! use norn_sdk::prelude::*;
 //!
-//! const OWNER: Item<Address> = Item::new("owner");
-//! const BALANCES: Map<Address, u128> = Map::new("bal");
-//!
 //! #[derive(BorshSerialize, BorshDeserialize)]
 //! pub struct MyToken;
 //!
+//! #[derive(BorshSerialize, BorshDeserialize)]
+//! pub struct InitMsg { name: String, symbol: String, decimals: u8, initial_supply: u128 }
+//!
 //! impl Contract for MyToken {
+//!     type Init = InitMsg;
 //!     type Exec = Exec;
 //!     type Query = Query;
-//!     fn init(ctx: &Context) -> Self {
-//!         OWNER.save(&ctx.sender()).unwrap();
+//!     fn init(ctx: &Context, msg: InitMsg) -> Self {
+//!         Ownable::init(&ctx.sender()).unwrap();
+//!         Norn20::init(&msg.name, &msg.symbol, msg.decimals).unwrap();
+//!         if msg.initial_supply > 0 {
+//!             Norn20::mint(&ctx.sender(), msg.initial_supply).unwrap();
+//!         }
 //!         MyToken
 //!     }
 //!     fn execute(&mut self, ctx: &Context, msg: Exec) -> ContractResult {
-//!         // ...
-//!         Ok(Response::new().add_attribute("action", "transfer"))
+//!         match msg {
+//!             Exec::Transfer { to, amount } => Norn20::transfer(ctx, &to, amount),
+//!         }
 //!     }
 //!     fn query(&self, _ctx: &Context, msg: Query) -> ContractResult {
-//!         ok(BALANCES.load_or(&[0u8; 20], 0u128))
+//!         match msg {
+//!             Query::Balance { addr } => ok(Norn20::balance_of(&addr)),
+//!         }
 //!     }
 //! }
 //!
@@ -63,6 +71,9 @@ pub mod types;
 pub mod addr;
 pub mod guard;
 pub mod storage;
+
+// -- SDK v3 standard library --
+pub mod stdlib;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod testing;

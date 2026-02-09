@@ -28,10 +28,11 @@ pub enum Query {
 }
 
 impl Contract for Counter {
+    type Init = Empty;
     type Exec = Execute;
     type Query = Query;
 
-    fn init(_ctx: &Context) -> Self {
+    fn init(_ctx: &Context, _msg: Empty) -> Self {
         Counter { value: 0 }
     }
 
@@ -78,14 +79,14 @@ mod tests {
     #[test]
     fn test_init() {
         let env = TestEnv::new();
-        let counter = Counter::init(&env.ctx());
+        let counter = Counter::init(&env.ctx(), Empty);
         assert_eq!(counter.value, 0);
     }
 
     #[test]
     fn test_increment() {
         let env = TestEnv::new();
-        let mut counter = Counter::init(&env.ctx());
+        let mut counter = Counter::init(&env.ctx(), Empty);
         let resp = counter.execute(&env.ctx(), Execute::Increment).unwrap();
         assert_attribute(&resp, "action", "increment");
         let val: u64 = from_response(&resp).unwrap();
@@ -95,7 +96,7 @@ mod tests {
     #[test]
     fn test_decrement() {
         let env = TestEnv::new();
-        let mut counter = Counter::init(&env.ctx());
+        let mut counter = Counter::init(&env.ctx(), Empty);
         counter.execute(&env.ctx(), Execute::Increment).unwrap();
         let resp = counter.execute(&env.ctx(), Execute::Decrement).unwrap();
         assert_attribute(&resp, "action", "decrement");
@@ -106,7 +107,7 @@ mod tests {
     #[test]
     fn test_decrement_at_zero_fails() {
         let env = TestEnv::new();
-        let mut counter = Counter::init(&env.ctx());
+        let mut counter = Counter::init(&env.ctx(), Empty);
         let err = counter.execute(&env.ctx(), Execute::Decrement).unwrap_err();
         assert_eq!(err.message(), "counter is already zero");
     }
@@ -114,7 +115,7 @@ mod tests {
     #[test]
     fn test_reset() {
         let env = TestEnv::new();
-        let mut counter = Counter::init(&env.ctx());
+        let mut counter = Counter::init(&env.ctx(), Empty);
         counter.execute(&env.ctx(), Execute::Increment).unwrap();
         counter.execute(&env.ctx(), Execute::Increment).unwrap();
         let resp = counter.execute(&env.ctx(), Execute::Reset).unwrap();
@@ -125,7 +126,7 @@ mod tests {
     #[test]
     fn test_query() {
         let env = TestEnv::new();
-        let mut counter = Counter::init(&env.ctx());
+        let mut counter = Counter::init(&env.ctx(), Empty);
         counter.execute(&env.ctx(), Execute::Increment).unwrap();
         let resp = counter.query(&env.ctx(), Query::GetValue).unwrap();
         let val: u64 = from_response(&resp).unwrap();

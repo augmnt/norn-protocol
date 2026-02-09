@@ -9,8 +9,8 @@
 use alloc::vec::Vec;
 use core::cell::UnsafeCell;
 
-/// Maximum output buffer size (4 KiB).
-const OUTPUT_BUF_SIZE: usize = 4096;
+/// Maximum output buffer size (16 KiB).
+const OUTPUT_BUF_SIZE: usize = 16384;
 
 struct OutputBuffer {
     buf: [u8; OUTPUT_BUF_SIZE],
@@ -29,7 +29,7 @@ static OUTPUT: SyncOutputBuffer = SyncOutputBuffer(UnsafeCell::new(OutputBuffer 
 
 /// Set the output data that the runtime will read after the call.
 ///
-/// If `data` exceeds 4096 bytes, it is truncated.
+/// If `data` exceeds 16384 bytes, it is truncated.
 pub fn set_output(data: &[u8]) {
     unsafe {
         let out = &mut *OUTPUT.0.get();

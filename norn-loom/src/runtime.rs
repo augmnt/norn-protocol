@@ -247,6 +247,49 @@ impl LoomRuntime {
                 reason: format!("failed to register norn_transfer: {e}"),
             })?;
 
+        // ── Host function: norn_emit_event ────────────────────────────────
+        // Signature: (type_ptr, type_len, data_ptr, data_len) -> ()
+        // type is a UTF-8 string, data is borsh-encoded Vec<(String, String)>
+        linker
+            .func_wrap(
+                "norn",
+                "norn_emit_event",
+                |mut caller: wasmtime::Caller<'_, LoomHostState>,
+                 type_ptr: i32,
+                 type_len: i32,
+                 data_ptr: i32,
+                 data_len: i32|
+                 -> Result<(), wasmtime::Error> {
+                    let memory = caller
+                        .get_export("memory")
+                        .and_then(|e| e.into_memory())
+                        .ok_or(wasmtime::Error::msg("missing memory export"))?;
+                    let mem_data = memory.data(&caller);
+                    let type_start = type_ptr as usize;
+                    let type_end = type_start + type_len as usize;
+                    let data_start = data_ptr as usize;
+                    let data_end = data_start + data_len as usize;
+                    if type_end > mem_data.len() || data_end > mem_data.len() {
+                        return Err(wasmtime::Error::msg("out of bounds memory access"));
+                    }
+                    let type_bytes = mem_data[type_start..type_end].to_vec();
+                    let data_bytes = mem_data[data_start..data_end].to_vec();
+                    let ty = std::str::from_utf8(&type_bytes)
+                        .unwrap_or("<invalid utf8>")
+                        .to_string();
+                    let attributes: Vec<(String, String)> =
+                        borsh::from_slice(&data_bytes).unwrap_or_default();
+                    caller
+                        .data_mut()
+                        .emit_event(ty, attributes)
+                        .map_err(|e| wasmtime::Error::msg(format!("host emit_event error: {e}")))?;
+                    Ok(())
+                },
+            )
+            .map_err(|e| LoomError::RuntimeError {
+                reason: format!("failed to register norn_emit_event: {e}"),
+            })?;
+
         // ── Host function: norn_sender ───────────────────────────────────
         linker
             .func_wrap(
@@ -383,19 +426,45 @@ impl LoomInstance {
         }
     }
 
-    /// Call the exported `init` function (no arguments, no return).
-    pub fn call_init(&mut self) -> Result<(), LoomError> {
-        let init = self
+    /// Call the exported `init` function with optional input.
+    ///
+    /// Tries `(i32, i32) -> i32` first (new SDK v0.13+ contracts), then
+    /// falls back to `() -> ()` for legacy WAT modules.
+    pub fn call_init(&mut self, input: &[u8]) -> Result<(), LoomError> {
+        // Try new signature: (ptr, len) -> i32
+        if let Ok(init) = self
+            .instance
+            .get_typed_func::<(i32, i32), i32>(&mut self.store, "init")
+        {
+            let (ptr, len) = self.write_input(input);
+            let result =
+                init.call(&mut self.store, (ptr, len))
+                    .map_err(|e| LoomError::RuntimeError {
+                        reason: format!("init execution failed: {e}"),
+                    })?;
+            if result != 0 {
+                return Err(LoomError::RuntimeError {
+                    reason: "init returned error".to_string(),
+                });
+            }
+            return Ok(());
+        }
+
+        // Fallback: legacy () -> () signature
+        if let Ok(init) = self
             .instance
             .get_typed_func::<(), ()>(&mut self.store, "init")
-            .map_err(|e| LoomError::RuntimeError {
-                reason: format!("init function not found or wrong signature: {e}"),
-            })?;
-        init.call(&mut self.store, ())
-            .map_err(|e| LoomError::RuntimeError {
-                reason: format!("init execution failed: {e}"),
-            })?;
-        Ok(())
+        {
+            init.call(&mut self.store, ())
+                .map_err(|e| LoomError::RuntimeError {
+                    reason: format!("init execution failed: {e}"),
+                })?;
+            return Ok(());
+        }
+
+        Err(LoomError::RuntimeError {
+            reason: "init function not found or has unsupported signature".to_string(),
+        })
     }
 
     /// Call the exported `execute` function.
@@ -556,7 +625,7 @@ mod tests {
         let host_state = LoomHostState::new([1u8; 20], 100, 1_000_000, DEFAULT_GAS_LIMIT);
         let mut instance = runtime.instantiate(&bytecode, host_state).unwrap();
 
-        instance.call_init().unwrap();
+        instance.call_init(&[]).unwrap();
         let result = instance.call_execute(&[]).unwrap();
         assert_eq!(result, 99i32.to_le_bytes().to_vec());
     }

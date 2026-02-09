@@ -8,9 +8,9 @@
 ///
 /// Expands to:
 /// - `#[global_allocator]` with `dlmalloc` (wasm32 only)
-/// - `#[no_mangle] pub extern "C" fn init()` — initializes state
-/// - `#[no_mangle] pub extern "C" fn execute(ptr, len)` — state-changing call
-/// - `#[no_mangle] pub extern "C" fn query(ptr, len)` — read-only call
+/// - `#[no_mangle] pub extern "C" fn init(ptr, len) -> i32` — initializes state
+/// - `#[no_mangle] pub extern "C" fn execute(ptr, len) -> i32` — state-changing call
+/// - `#[no_mangle] pub extern "C" fn query(ptr, len) -> i32` — read-only call
 ///
 /// # Example
 ///
@@ -27,9 +27,10 @@
 /// pub enum Query { GetValue }
 ///
 /// impl Contract for MyContract {
+///     type Init = Empty;
 ///     type Exec = Exec;
 ///     type Query = Query;
-///     fn init(_ctx: &Context) -> Self { MyContract { value: 0 } }
+///     fn init(_ctx: &Context, _msg: Empty) -> Self { MyContract { value: 0 } }
 ///     fn execute(&mut self, _ctx: &Context, _msg: Exec) -> ContractResult { ok_empty() }
 ///     fn query(&self, _ctx: &Context, _msg: Query) -> ContractResult { ok(self.value) }
 /// }
@@ -54,12 +55,22 @@ macro_rules! norn_entry {
         const __NORN_STATE_KEY: &[u8] = b"__norn_contract_state";
 
         #[no_mangle]
-        pub extern "C" fn init() {
+        pub extern "C" fn init(ptr: i32, len: i32) -> i32 {
+            let input = $crate::output::read_input(ptr, len);
+            let msg: <$contract as $crate::contract::Contract>::Init =
+                match ::borsh::BorshDeserialize::try_from_slice(&input) {
+                    Ok(m) => m,
+                    Err(_) => {
+                        $crate::output::set_output(b"failed to deserialize init message");
+                        return 1;
+                    }
+                };
             let ctx = $crate::contract::Context::new();
-            let state = <$contract as $crate::contract::Contract>::init(&ctx);
+            let state = <$contract as $crate::contract::Contract>::init(&ctx, msg);
             if let Ok(bytes) = ::borsh::to_vec(&state) {
                 $crate::host::state_set(__NORN_STATE_KEY, &bytes);
             }
+            0
         }
 
         #[no_mangle]

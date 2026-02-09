@@ -253,6 +253,25 @@ pub struct LoomInfo {
     pub participant_count: usize,
 }
 
+/// A key-value attribute in a structured event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AttributeInfo {
+    /// Attribute key.
+    pub key: String,
+    /// Attribute value.
+    pub value: String,
+}
+
+/// A structured event emitted by a loom contract.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventInfo {
+    /// Event type (e.g., "Transfer", "Approval").
+    #[serde(rename = "type")]
+    pub ty: String,
+    /// Key-value attributes.
+    pub attributes: Vec<AttributeInfo>,
+}
+
 /// Result of executing a loom contract.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionResult {
@@ -264,6 +283,9 @@ pub struct ExecutionResult {
     pub gas_used: u64,
     /// Log messages from execution.
     pub logs: Vec<String>,
+    /// Structured events from execution.
+    #[serde(default)]
+    pub events: Vec<EventInfo>,
     /// Reason for failure, if any.
     pub reason: Option<String>,
 }
@@ -279,6 +301,9 @@ pub struct QueryResult {
     pub gas_used: u64,
     /// Log messages from query.
     pub logs: Vec<String>,
+    /// Structured events from query.
+    #[serde(default)]
+    pub events: Vec<EventInfo>,
     /// Reason for failure, if any.
     pub reason: Option<String>,
 }

@@ -13,9 +13,10 @@ use norn_weave::engine::WeaveEngine;
 use norn_loom::lifecycle::LoomManager;
 
 use super::types::{
-    BlockInfo, CommitmentProofInfo, ExecutionResult, FeeEstimateInfo, HealthInfo, LoomInfo,
-    NameInfo, NameResolution, QueryResult, SubmitResult, ThreadInfo, ThreadStateInfo, TokenInfo,
-    TransactionHistoryEntry, ValidatorInfo, ValidatorSetInfo, WeaveStateInfo,
+    AttributeInfo, BlockInfo, CommitmentProofInfo, EventInfo, ExecutionResult, FeeEstimateInfo,
+    HealthInfo, LoomInfo, NameInfo, NameResolution, QueryResult, SubmitResult, ThreadInfo,
+    ThreadStateInfo, TokenInfo, TransactionHistoryEntry, ValidatorInfo, ValidatorSetInfo,
+    WeaveStateInfo,
 };
 use crate::metrics::NodeMetrics;
 use crate::state_manager::StateManager;
@@ -203,11 +204,13 @@ pub trait NornRpc {
     async fn list_looms(&self, limit: u64, offset: u64) -> Result<Vec<LoomInfo>, ErrorObjectOwned>;
 
     /// Upload bytecode to a deployed loom and initialize it.
+    /// Optionally pass init_msg_hex for typed constructor parameters.
     #[method(name = "norn_uploadLoomBytecode")]
     async fn upload_loom_bytecode(
         &self,
         loom_id_hex: String,
         bytecode_hex: String,
+        init_msg_hex: Option<String>,
     ) -> Result<SubmitResult, ErrorObjectOwned>;
 
     /// Execute a loom contract (state-mutating).
@@ -1379,11 +1382,18 @@ impl NornRpcServer for NornRpcImpl {
         &self,
         loom_id_hex: String,
         bytecode_hex: String,
+        init_msg_hex: Option<String>,
     ) -> Result<SubmitResult, ErrorObjectOwned> {
         let loom_id = parse_loom_hex(&loom_id_hex)?;
         let bytecode = hex::decode(&bytecode_hex).map_err(|e| {
             ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>)
         })?;
+        let init_msg = match init_msg_hex {
+            Some(hex_str) => Some(hex::decode(&hex_str).map_err(|e| {
+                ErrorObjectOwned::owned(-32602, format!("invalid init_msg hex: {}", e), None::<()>)
+            })?),
+            None => None,
+        };
 
         // Verify loom exists in StateManager.
         {
@@ -1397,7 +1407,7 @@ impl NornRpcServer for NornRpcImpl {
         }
 
         let mut loom_mgr = self.loom_manager.write().await;
-        match loom_mgr.upload_bytecode(&loom_id, bytecode.clone()) {
+        match loom_mgr.upload_bytecode(&loom_id, bytecode.clone(), init_msg) {
             Ok(()) => {
                 // Persist bytecode and initial state.
                 let sm = self.state_manager.read().await;
@@ -1452,9 +1462,9 @@ impl NornRpcServer for NornRpcImpl {
 
         let mut loom_mgr = self.loom_manager.write().await;
         match loom_mgr.execute(&loom_id, &input, sender, block_height, timestamp) {
-            Ok(transition) => {
+            Ok(outcome) => {
                 // Persist updated state.
-                let sm = self.state_manager.read().await;
+                let mut sm = self.state_manager.write().await;
                 if let Some(store) = sm.store() {
                     if let Some(state_data) = loom_mgr.get_state_data(&loom_id) {
                         let state_bytes = borsh::to_vec(state_data).unwrap_or_default();
@@ -1464,12 +1474,55 @@ impl NornRpcServer for NornRpcImpl {
                     }
                 }
 
-                // Get logs from the loom (not available via transition, return empty).
+                // Apply pending transfers to account balances.
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                for pt in &outcome.pending_transfers {
+                    sm.auto_register_if_needed(pt.from);
+                    sm.auto_register_if_needed(pt.to);
+                    if let Err(e) = sm.apply_transfer(
+                        pt.from,
+                        pt.to,
+                        pt.token_id,
+                        pt.amount,
+                        [0u8; 32], // synthetic knot_id for loom transfers
+                        None,
+                        now,
+                    ) {
+                        tracing::warn!(
+                            "failed to apply loom transfer from {:?} to {:?}: {}",
+                            pt.from,
+                            pt.to,
+                            e
+                        );
+                    }
+                }
+
+                // Build event info for response.
+                let events: Vec<EventInfo> = outcome
+                    .events
+                    .iter()
+                    .map(|e| EventInfo {
+                        ty: e.ty.clone(),
+                        attributes: e
+                            .attributes
+                            .iter()
+                            .map(|(k, v)| AttributeInfo {
+                                key: k.clone(),
+                                value: v.clone(),
+                            })
+                            .collect(),
+                    })
+                    .collect();
+
                 Ok(ExecutionResult {
                     success: true,
-                    output_hex: Some(hex::encode(&transition.outputs)),
-                    gas_used: 0, // Gas tracking is at fuel level, not exposed in transition.
-                    logs: Vec::new(),
+                    output_hex: Some(hex::encode(&outcome.transition.outputs)),
+                    gas_used: outcome.gas_used,
+                    logs: outcome.logs,
+                    events,
                     reason: None,
                 })
             }
@@ -1478,6 +1531,7 @@ impl NornRpcServer for NornRpcImpl {
                 output_hex: None,
                 gas_used: 0,
                 logs: Vec::new(),
+                events: Vec::new(),
                 reason: Some(e.to_string()),
             }),
         }
@@ -1507,18 +1561,37 @@ impl NornRpcServer for NornRpcImpl {
 
         let loom_mgr = self.loom_manager.read().await;
         match loom_mgr.query(&loom_id, &input, [0u8; 20], block_height, timestamp) {
-            Ok(output) => Ok(QueryResult {
-                success: true,
-                output_hex: Some(hex::encode(&output)),
-                gas_used: 0,
-                logs: Vec::new(),
-                reason: None,
-            }),
+            Ok(outcome) => {
+                let events: Vec<EventInfo> = outcome
+                    .events
+                    .iter()
+                    .map(|e| EventInfo {
+                        ty: e.ty.clone(),
+                        attributes: e
+                            .attributes
+                            .iter()
+                            .map(|(k, v)| AttributeInfo {
+                                key: k.clone(),
+                                value: v.clone(),
+                            })
+                            .collect(),
+                    })
+                    .collect();
+                Ok(QueryResult {
+                    success: true,
+                    output_hex: Some(hex::encode(&outcome.output)),
+                    gas_used: outcome.gas_used,
+                    logs: outcome.logs,
+                    events,
+                    reason: None,
+                })
+            }
             Err(e) => Ok(QueryResult {
                 success: false,
                 output_hex: None,
                 gas_used: 0,
                 logs: Vec::new(),
+                events: Vec::new(),
                 reason: Some(e.to_string()),
             }),
         }

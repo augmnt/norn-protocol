@@ -80,10 +80,11 @@ pub struct TokenInfo {
 }
 
 impl Contract for NornToken {
+    type Init = Empty;
     type Exec = Execute;
     type Query = Query;
 
-    fn init(ctx: &Context) -> Self {
+    fn init(ctx: &Context, _msg: Empty) -> Self {
         OWNER.save(&ctx.sender()).unwrap();
         TOKEN_NAME.save(&String::from("Norn Token")).unwrap();
         SYMBOL.save(&String::from("NORN")).unwrap();
@@ -218,7 +219,7 @@ mod tests {
 
     fn setup() -> (TestEnv, NornToken) {
         let env = TestEnv::new().with_sender(ALICE);
-        let token = NornToken::init(&env.ctx());
+        let token = NornToken::init(&env.ctx(), Empty);
         (env, token)
     }
 

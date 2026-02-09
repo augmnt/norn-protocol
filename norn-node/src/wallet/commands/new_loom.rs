@@ -39,7 +39,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-norn-sdk = {{ git = "https://github.com/augmnt/norn-protocol", tag = "v0.12.0" }}
+norn-sdk = {{ git = "https://github.com/augmnt/norn-protocol", tag = "v0.13.0" }}
 borsh = {{ version = "1.5", default-features = false, features = ["derive"] }}
 
 [profile.release]
@@ -87,10 +87,11 @@ pub enum Query {{
 }}
 
 impl Contract for MyContract {{
+    type Init = Empty;
     type Exec = Execute;
     type Query = Query;
 
-    fn init(ctx: &Context) -> Self {{
+    fn init(ctx: &Context, _msg: Empty) -> Self {{
         OWNER.save(&ctx.sender()).unwrap();
         VALUE.save(&0u64).unwrap();
         MyContract
@@ -131,7 +132,7 @@ mod tests {{
     #[test]
     fn test_set_and_get() {{
         let env = TestEnv::new().with_sender(ALICE);
-        let mut contract = MyContract::init(&env.ctx());
+        let mut contract = MyContract::init(&env.ctx(), Empty);
 
         let resp = contract
             .execute(&env.ctx(), Execute::SetValue {{ value: 42 }})
@@ -146,7 +147,7 @@ mod tests {{
     #[test]
     fn test_unauthorized() {{
         let env = TestEnv::new().with_sender(ALICE);
-        let mut contract = MyContract::init(&env.ctx());
+        let mut contract = MyContract::init(&env.ctx(), Empty);
 
         env.set_sender([2u8; 20]); // different sender
         let err = contract

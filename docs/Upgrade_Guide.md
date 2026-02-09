@@ -11,6 +11,9 @@
 | v0.8.0      | v0.8.1     | Yes            | Yes              | Restart node (CLI-only changes, no protocol/schema bump) |
 | v0.8.x      | v0.9.0     | No             | No               | `--reset-state` (PROTOCOL_VERSION 5→6, SCHEMA_VERSION 4→5) |
 | v0.9.x      | v0.10.0    | Yes            | No               | `--reset-state` (SCHEMA_VERSION 5→6, P2P compatible) |
+| v0.10.x     | v0.11.0    | Yes            | Yes              | Restart node (SDK-only changes, no protocol/schema bump) |
+| v0.11.x     | v0.12.0    | Yes            | Yes              | Restart node (SDK-only changes, no protocol/schema bump) |
+| v0.12.x     | v0.13.0    | Yes            | Yes              | Restart node (SDK + runtime internal changes, no protocol/schema bump) |
 
 \* Within a minor version line, compatibility depends on whether PROTOCOL_VERSION or SCHEMA_VERSION was bumped. Check the release notes.
 
@@ -336,3 +339,86 @@ Five new wallet subcommands: `upload-bytecode`, `execute-loom`, `query-loom`, `j
 ### LoomManager Node Integration
 
 `LoomManager` from `norn-loom` is now wired into the node with `Arc<RwLock<LoomManager>>`. On startup, the node restores loom metadata, bytecodes, and contract state from persistent storage. Execution results are persisted via write-through to the state store.
+
+## Changelog: v0.12.0 (SDK v3 — Developer Experience)
+
+### Upgrading from v0.11.x to v0.12.0
+
+**No `--reset-state` required.** PROTOCOL_VERSION and SCHEMA_VERSION are unchanged. Simply pull, build, and restart.
+
+```bash
+git pull && cargo build --release
+# Restart your node
+```
+
+### SDK Changes
+
+SDK v3 adds typed storage primitives, a Response builder, guard macros, and a native test harness:
+
+- **`Item<T>` / `Map<K, V>`** — Type-safe storage with `save()`, `load()`, `load_or()`, `remove()`
+- **`Response` builder** — `Response::new().add_attribute("k", "v").set_data(&val)`
+- **`ContractResult`** changed from `Result<Vec<u8>, ContractError>` to `Result<Response, ContractError>`
+- **Guard macros** — `ensure!`, `ensure_eq!`, `ensure_ne!` for concise validation
+- **`TestEnv`** — Native test harness with mock contexts (no Wasm runtime needed for testing)
+- **`addr` module** — `addr_to_hex()`, `hex_to_addr()`, `ZERO_ADDRESS`
+
+### Contract Migration
+
+Existing v0.11.x contracts continue to work unchanged. To adopt v3 features:
+
+1. Replace raw `host::state_set` / `host::state_get` with `Item<T>` / `Map<K, V>`
+2. Return `Response` from execute/query instead of raw bytes
+3. Use `ensure!` macros instead of manual `if` checks
+4. Add native tests with `TestEnv`
+
+## Changelog: v0.13.0 (SDK v4 — Solidity Parity)
+
+### Upgrading from v0.12.x to v0.13.0
+
+**No `--reset-state` required.** PROTOCOL_VERSION and SCHEMA_VERSION are unchanged. Simply pull, build, and restart.
+
+```bash
+git pull && cargo build --release
+# Restart your node
+```
+
+### Breaking SDK Changes
+
+The `Contract` trait signature changed:
+
+```rust
+// v0.12.0
+impl Contract for MyContract {
+    type Exec = Execute;
+    type Query = Query;
+    fn init(ctx: &Context) -> Self { ... }
+}
+
+// v0.13.0
+impl Contract for MyContract {
+    type Init = Empty;       // NEW: required associated type
+    type Exec = Execute;
+    type Query = Query;
+    fn init(ctx: &Context, _msg: Empty) -> Self { ... }  // NEW: second parameter
+}
+```
+
+**Migration steps for existing contracts:**
+
+1. Add `type Init = Empty;` to your `Contract` impl
+2. Change `fn init(ctx: &Context) -> Self` to `fn init(ctx: &Context, _msg: Empty) -> Self`
+3. Update test calls: `MyContract::init(&env.ctx())` → `MyContract::init(&env.ctx(), Empty)`
+4. `Empty` is available from `use norn_sdk::prelude::*;`
+
+### New Features
+
+- **Typed InitMsg** — Contracts can define constructor parameters via `type Init = MyInitMsg`
+- **Structured Events** — `Event::new("Transfer").add_attribute("from", hex)` with `Response::add_event()`
+- **Standard Library** — `Ownable`, `Pausable`, `Norn20` (ERC20-equivalent) composable modules
+- **IndexedMap** — Iterable map with `keys()`, `range()`, `len()` — uses client-side key index
+- **Runtime fixes** — `execute_loom` RPC now returns real gas, logs, events, and applies pending transfers
+- **Output buffer** — Bumped from 4KB to 16KB
+
+### Scaffolding
+
+`norn wallet new-loom` now generates v0.13.0 templates with `type Init = Empty`.

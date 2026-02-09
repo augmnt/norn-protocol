@@ -16,13 +16,17 @@ use crate::types::{Address, TokenId};
 /// `execute`, `query`) that deserialize messages, manage state persistence,
 /// and call your trait methods.
 pub trait Contract: BorshSerialize + BorshDeserialize {
+    /// The message type for initialization (constructor parameters).
+    /// Use [`Empty`](crate::types::Empty) if no init params are needed.
+    type Init: BorshDeserialize;
     /// The message type for state-changing operations.
     type Exec: BorshDeserialize;
     /// The message type for read-only queries.
     type Query: BorshDeserialize;
 
-    /// Initialize the contract. Called once when the loom is first set up.
-    fn init(ctx: &Context) -> Self;
+    /// Initialize the contract with the given init message.
+    /// Called once when the loom is first set up.
+    fn init(ctx: &Context, msg: Self::Init) -> Self;
 
     /// Handle a state-changing execution message.
     fn execute(&mut self, ctx: &Context, msg: Self::Exec) -> ContractResult;

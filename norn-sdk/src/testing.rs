@@ -91,6 +91,16 @@ impl TestEnv {
     pub fn clear_logs(&self) {
         host::mock_reset_logs();
     }
+
+    /// Get all events captured since the last reset.
+    pub fn events(&self) -> Vec<host::MockEvent> {
+        host::mock_get_events()
+    }
+
+    /// Clear captured events.
+    pub fn clear_events(&self) {
+        host::mock_reset_events();
+    }
 }
 
 impl Default for TestEnv {
@@ -125,4 +135,60 @@ pub fn assert_attribute(response: &Response, key: &str, value: &str) {
 pub fn from_response<T: BorshDeserialize>(response: &Response) -> Result<T, ContractError> {
     BorshDeserialize::try_from_slice(response.data())
         .map_err(|e| ContractError::Custom(alloc::format!("deserialize response: {e}")))
+}
+
+/// Assert that a `Response` contains an event with the given type name.
+///
+/// Panics with a descriptive message if the event is not found.
+pub fn assert_event(response: &Response, ty: &str) {
+    for event in response.events() {
+        if event.ty == ty {
+            return;
+        }
+    }
+    panic!(
+        "expected event '{}', found: [{}]",
+        ty,
+        response
+            .events()
+            .iter()
+            .map(|e| e.ty.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+}
+
+/// Assert that a `Response` contains an event with the given type and attribute.
+///
+/// Panics with a descriptive message if the event/attribute is not found.
+pub fn assert_event_attribute(response: &Response, ty: &str, key: &str, value: &str) {
+    for event in response.events() {
+        if event.ty == ty {
+            for attr in &event.attributes {
+                if attr.key == key && attr.value == value {
+                    return;
+                }
+            }
+        }
+    }
+    panic!(
+        "expected event '{}' with attribute {}={}, found events: [{}]",
+        ty,
+        key,
+        value,
+        response
+            .events()
+            .iter()
+            .map(|e| alloc::format!(
+                "{}({})",
+                e.ty,
+                e.attributes
+                    .iter()
+                    .map(|a| alloc::format!("{}={}", a.key, a.value))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
 }

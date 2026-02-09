@@ -401,13 +401,14 @@ impl RpcClient {
         &self,
         loom_id_hex: &str,
         bytecode_hex: &str,
+        init_msg_hex: Option<&str>,
     ) -> Result<SubmitResult, WalletError> {
         let pb = Self::spinner("Uploading bytecode...");
         let result: SubmitResult = self
             .client
             .request(
                 "norn_uploadLoomBytecode",
-                rpc_params![loom_id_hex, bytecode_hex],
+                rpc_params![loom_id_hex, bytecode_hex, init_msg_hex],
             )
             .await
             .map_err(|e| Self::map_rpc_error(&e))?;

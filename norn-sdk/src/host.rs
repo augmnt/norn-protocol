@@ -20,6 +20,7 @@ extern "C" {
     fn norn_sender(out_ptr: i32);
     fn norn_block_height() -> i64;
     fn norn_timestamp() -> i64;
+    fn norn_emit_event(type_ptr: i32, type_len: i32, data_ptr: i32, data_len: i32);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -114,6 +115,27 @@ pub fn timestamp() -> u64 {
     unsafe { norn_timestamp() as u64 }
 }
 
+/// Emit a structured event with key-value attributes.
+///
+/// The type name is passed as a string, and the attributes are borsh-serialized
+/// as `Vec<(String, String)>`.
+#[cfg(target_arch = "wasm32")]
+pub fn emit_event(ty: &str, attributes: &[crate::response::Attribute]) {
+    let pairs: Vec<(alloc::string::String, alloc::string::String)> = attributes
+        .iter()
+        .map(|a| (a.key.clone(), a.value.clone()))
+        .collect();
+    let data = borsh::to_vec(&pairs).unwrap_or_default();
+    unsafe {
+        norn_emit_event(
+            ty.as_ptr() as i32,
+            ty.len() as i32,
+            data.as_ptr() as i32,
+            data.len() as i32,
+        );
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Native implementations — thread-local mock storage for `cargo test`
 // ═══════════════════════════════════════════════════════════════════════════
@@ -127,6 +149,13 @@ mod mock {
 
     type TransferRecord = (Vec<u8>, Vec<u8>, Vec<u8>, u128);
 
+    /// A captured structured event (type + attributes).
+    #[derive(Debug, Clone)]
+    pub struct MockEvent {
+        pub ty: String,
+        pub attributes: Vec<(String, String)>,
+    }
+
     std::thread_local! {
         static STATE: RefCell<BTreeMap<Vec<u8>, Vec<u8>>> = const { RefCell::new(BTreeMap::new()) };
         static LOGS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
@@ -134,6 +163,7 @@ mod mock {
         static BLOCK_HEIGHT: RefCell<u64> = const { RefCell::new(0) };
         static TIMESTAMP: RefCell<u64> = const { RefCell::new(0) };
         static TRANSFERS: RefCell<Vec<TransferRecord>> = const { RefCell::new(Vec::new()) };
+        static EVENTS: RefCell<Vec<MockEvent>> = const { RefCell::new(Vec::new()) };
     }
 
     // ── Host function implementations ──────────────────────────────────────
@@ -181,6 +211,19 @@ mod mock {
         TIMESTAMP.with(|t| *t.borrow())
     }
 
+    pub fn emit_event(ty: &str, attributes: &[crate::response::Attribute]) {
+        let pairs: Vec<(String, String)> = attributes
+            .iter()
+            .map(|a| (a.key.clone(), a.value.clone()))
+            .collect();
+        EVENTS.with(|e| {
+            e.borrow_mut().push(MockEvent {
+                ty: String::from(ty),
+                attributes: pairs,
+            })
+        });
+    }
+
     // ── Mock control functions ─────────────────────────────────────────────
 
     pub fn mock_reset() {
@@ -190,6 +233,7 @@ mod mock {
         BLOCK_HEIGHT.with(|h| *h.borrow_mut() = 0);
         TIMESTAMP.with(|t| *t.borrow_mut() = 0);
         TRANSFERS.with(|t| t.borrow_mut().clear());
+        EVENTS.with(|e| e.borrow_mut().clear());
     }
 
     pub fn mock_set_sender(addr: [u8; 20]) {
@@ -210,6 +254,14 @@ mod mock {
 
     pub fn mock_reset_logs() {
         LOGS.with(|l| l.borrow_mut().clear());
+    }
+
+    pub fn mock_get_events() -> Vec<MockEvent> {
+        EVENTS.with(|e| e.borrow().clone())
+    }
+
+    pub fn mock_reset_events() {
+        EVENTS.with(|e| e.borrow_mut().clear());
     }
 }
 
@@ -285,4 +337,23 @@ pub fn mock_get_logs() -> Vec<alloc::string::String> {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn mock_reset_logs() {
     mock::mock_reset_logs();
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn emit_event(ty: &str, attributes: &[crate::response::Attribute]) {
+    mock::emit_event(ty, attributes);
+}
+
+/// Event captured during mock execution.
+#[cfg(not(target_arch = "wasm32"))]
+pub use mock::MockEvent;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn mock_get_events() -> alloc::vec::Vec<MockEvent> {
+    mock::mock_get_events()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn mock_reset_events() {
+    mock::mock_reset_events();
 }

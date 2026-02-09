@@ -44,10 +44,11 @@ pub struct VaultInfo {
 }
 
 impl Contract for TokenVault {
+    type Init = Empty;
     type Exec = Execute;
     type Query = Query;
 
-    fn init(ctx: &Context) -> Self {
+    fn init(ctx: &Context, _msg: Empty) -> Self {
         OWNER.save(&ctx.sender()).unwrap();
         NAME.save(&String::from("vault")).unwrap();
         BALANCE.save(&0u128).unwrap();
@@ -119,7 +120,7 @@ mod tests {
     #[test]
     fn test_init_sets_owner() {
         let env = TestEnv::new().with_sender(ALICE);
-        TokenVault::init(&env.ctx());
+        TokenVault::init(&env.ctx(), Empty);
         assert_eq!(OWNER.load().unwrap(), ALICE);
         assert_eq!(BALANCE.load().unwrap(), 0);
     }
@@ -127,7 +128,7 @@ mod tests {
     #[test]
     fn test_deposit() {
         let env = TestEnv::new().with_sender(ALICE);
-        let mut vault = TokenVault::init(&env.ctx());
+        let mut vault = TokenVault::init(&env.ctx(), Empty);
         let resp = vault
             .execute(&env.ctx(), Execute::Deposit { amount: 500 })
             .unwrap();
@@ -140,7 +141,7 @@ mod tests {
     #[test]
     fn test_deposit_zero_fails() {
         let env = TestEnv::new().with_sender(ALICE);
-        let mut vault = TokenVault::init(&env.ctx());
+        let mut vault = TokenVault::init(&env.ctx(), Empty);
         let err = vault
             .execute(&env.ctx(), Execute::Deposit { amount: 0 })
             .unwrap_err();
@@ -150,7 +151,7 @@ mod tests {
     #[test]
     fn test_withdraw_owner_only() {
         let env = TestEnv::new().with_sender(ALICE);
-        let mut vault = TokenVault::init(&env.ctx());
+        let mut vault = TokenVault::init(&env.ctx(), Empty);
         vault
             .execute(&env.ctx(), Execute::Deposit { amount: 100 })
             .unwrap();
@@ -186,7 +187,7 @@ mod tests {
     #[test]
     fn test_withdraw_insufficient() {
         let env = TestEnv::new().with_sender(ALICE);
-        let mut vault = TokenVault::init(&env.ctx());
+        let mut vault = TokenVault::init(&env.ctx(), Empty);
         vault
             .execute(&env.ctx(), Execute::Deposit { amount: 10 })
             .unwrap();
@@ -205,7 +206,7 @@ mod tests {
     #[test]
     fn test_set_name() {
         let env = TestEnv::new().with_sender(ALICE);
-        let mut vault = TokenVault::init(&env.ctx());
+        let mut vault = TokenVault::init(&env.ctx(), Empty);
         let resp = vault
             .execute(
                 &env.ctx(),
@@ -222,7 +223,7 @@ mod tests {
     #[test]
     fn test_query_info() {
         let env = TestEnv::new().with_sender(ALICE);
-        let mut vault = TokenVault::init(&env.ctx());
+        let mut vault = TokenVault::init(&env.ctx(), Empty);
         vault
             .execute(&env.ctx(), Execute::Deposit { amount: 42 })
             .unwrap();

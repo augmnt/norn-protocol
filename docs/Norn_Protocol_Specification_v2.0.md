@@ -3015,6 +3015,89 @@ cargo build --release
 # Produces target/wasm32-unknown-unknown/release/my_contract.wasm
 ```
 
+### 32.12 v0.12.0 Updates (SDK v3 — Developer Experience)
+
+Protocol version 0.12.0 adds typed storage primitives, a Response builder, guard macros, and a native test harness to the contract SDK:
+
+| Feature | Description |
+|---------|-------------|
+| `Item<T>` storage | Type-safe single-value storage with `save()`, `load()`, `load_or()`, `remove()` |
+| `Map<K, V>` storage | Type-safe key-value storage with namespace isolation |
+| `StorageKey` trait | Auto-implemented for `[u8; N]`, `u64`, `u128`, `&str`, `String`, `&[u8]` |
+| `Response` builder | `Response::new().add_attribute("k", "v").set_data(&val)` — replaces raw byte returns |
+| `ContractResult` change | Now `Result<Response, ContractError>` (was `Result<Vec<u8>, ContractError>`) |
+| `ensure!` / `ensure_eq!` / `ensure_ne!` | Guard macros for concise validation |
+| `TestEnv` | Native test harness with `with_sender()`, `set_sender()`, `ctx()` — no Wasm runtime needed |
+| `assert_attribute()` / `from_response()` | Test helpers for inspecting responses |
+| `Context::require_sender()` | Shorthand for sender authorization checks |
+| `addr` module | `addr_to_hex()`, `hex_to_addr()`, `ZERO_ADDRESS` constant |
+| norn-token example | ERC20-style token with Mint, Burn, Transfer, Approve, TransferFrom (13 tests) |
+
+No PROTOCOL_VERSION or SCHEMA_VERSION change — SDK-only improvements.
+
+### 32.13 v0.13.0 Updates (SDK v4 — Solidity Parity)
+
+Protocol version 0.13.0 closes the gap with Solidity by adding typed constructors, structured events, a standard library, and iterable maps:
+
+| Feature | Description |
+|---------|-------------|
+| **Typed InitMsg** | `Contract` trait requires `type Init: BorshDeserialize` and `fn init(ctx, msg: Self::Init)` — parameterized constructors |
+| `Empty` unit struct | Use `type Init = Empty` for contracts needing no constructor params |
+| **Structured Events** | `Event::new("Transfer").add_attribute("from", hex)` — emitted via `norn_emit_event` host function |
+| `Response::add_event()` | Builder method for attaching events to responses |
+| `norn_emit_event` host fn | New host function registered in "norn" namespace; data = borsh `Vec<(String, String)>` |
+| **Runtime bug fixes** | `execute_loom` RPC returns real `gas_used`, `logs`, `events`; applies `pending_transfers` to state |
+| `ExecutionOutcome` / `QueryOutcome` | New wrapper structs in `norn-loom` capturing gas, logs, events, transfers |
+| `EventInfo` / `AttributeInfo` | New RPC response types for structured event data |
+| **stdlib: Ownable** | Single-owner access control: `init()`, `owner()`, `require_owner()`, `transfer_ownership()`, `renounce_ownership()` |
+| **stdlib: Pausable** | Emergency pause/unpause (depends on Ownable): `init()`, `is_paused()`, `require_not_paused()`, `pause()`, `unpause()` |
+| **stdlib: Norn20** | ERC20-equivalent: `init()`, `mint()`, `burn()`, `transfer()`, `approve()`, `transfer_from()`, `balance_of()`, `allowance()`, `info()` |
+| **IndexedMap** | Iterable `Map` variant with client-side key index: `keys()`, `range()`, `len()`, `remove()` (swap-and-pop O(1)) |
+| Output buffer bump | 4KB → 16KB to accommodate contracts with many events |
+| norn20-token example | Full stdlib showcase: Ownable + Pausable + Norn20 + typed InitMsg (11 tests) |
+| Test helpers | `assert_event()`, `assert_event_attribute()`, `TestEnv::events()`, `TestEnv::clear_events()` |
+
+No PROTOCOL_VERSION or SCHEMA_VERSION change — SDK-level and runtime-internal improvements only.
+
+#### Before vs After (v0.12.0 → v0.13.0)
+
+```rust
+// BEFORE: ~100 lines of manual ownership, pausability, ERC20 logic
+impl Contract for MyToken {
+    type Exec = Exec;
+    type Query = Query;
+    fn init(ctx: &Context) -> Self { /* manual setup */ }
+    fn execute(&mut self, ctx: &Context, msg: Exec) -> ContractResult {
+        match msg {
+            Exec::Transfer { to, amount } => {
+                // Manual balance check, debit, credit, flat log strings
+            }
+        }
+    }
+}
+
+// AFTER: ~30 lines, structured events, stdlib composition
+impl Contract for MyToken {
+    type Init = InitMsg;  // Typed constructor!
+    type Exec = Exec;
+    type Query = Query;
+    fn init(ctx: &Context, msg: InitMsg) -> Self {
+        Ownable::init(&ctx.sender()).unwrap();
+        Pausable::init().unwrap();
+        Norn20::init(&msg.name, &msg.symbol, msg.decimals).unwrap();
+        if msg.initial_supply > 0 { Norn20::mint(&ctx.sender(), msg.initial_supply).unwrap(); }
+        MyToken
+    }
+    fn execute(&mut self, ctx: &Context, msg: Exec) -> ContractResult {
+        Pausable::require_not_paused()?;
+        match msg {
+            Exec::Transfer { to, amount } => Norn20::transfer(ctx, &to, amount),
+            Exec::Pause => Pausable::pause(ctx),
+        }
+    }
+}
+```
+
 ---
 
 *End of Norn Protocol Specification v2.0.*

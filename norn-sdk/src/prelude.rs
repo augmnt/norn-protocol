@@ -7,12 +7,15 @@
 // SDK v2 — core types
 pub use crate::contract::{Context, Contract};
 pub use crate::error::ContractError;
-pub use crate::response::{ok, ok_bytes, ok_empty, Attribute, ContractResult, Response};
-pub use crate::types::{Address, TokenId};
+pub use crate::response::{ok, ok_bytes, ok_empty, Attribute, ContractResult, Event, Response};
+pub use crate::types::{Address, Empty, TokenId};
 
 // SDK v3 — storage, guards, address helpers
 pub use crate::addr::{addr_to_hex, hex_to_addr, ZERO_ADDRESS};
-pub use crate::storage::{Item, Map, StorageKey};
+pub use crate::storage::{IndexedMap, Item, Map, StorageKey};
+
+// SDK v3 — standard library
+pub use crate::stdlib::{Norn20, Norn20Info, Ownable, Pausable};
 
 // Guard macros (exported at crate root by #[macro_export])
 #[doc(hidden)]

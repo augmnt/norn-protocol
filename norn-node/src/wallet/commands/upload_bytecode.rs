@@ -29,7 +29,9 @@ pub async fn run(loom_id: &str, path: &str, rpc_url: Option<&str>) -> Result<(),
 
     let bytecode_hex = hex::encode(&bytecode);
 
-    let result = rpc.upload_loom_bytecode(loom_id, &bytecode_hex).await?;
+    let result = rpc
+        .upload_loom_bytecode(loom_id, &bytecode_hex, None)
+        .await?;
 
     if result.success {
         print_success("Bytecode uploaded and initialized!");

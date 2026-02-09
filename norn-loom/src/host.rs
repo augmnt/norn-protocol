@@ -22,6 +22,15 @@ pub struct PendingTransfer {
     pub amount: Amount,
 }
 
+/// A structured event emitted by a loom contract via the `norn_emit_event` host function.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostEvent {
+    /// Event type name (e.g., "Transfer", "Approval").
+    pub ty: String,
+    /// Key-value attributes.
+    pub attributes: Vec<(String, String)>,
+}
+
 /// Host-side state accessible to Wasm loom contracts via host functions.
 ///
 /// This struct is owned by the wasmtime `Store` and provides the backing
@@ -35,6 +44,8 @@ pub struct LoomHostState {
     pub pending_transfers: Vec<PendingTransfer>,
     /// Log messages emitted during execution.
     pub logs: Vec<String>,
+    /// Structured events emitted during execution.
+    pub events: Vec<HostEvent>,
     /// The address that initiated the current execution.
     pub sender: Address,
     /// Current block height.
@@ -54,6 +65,7 @@ impl LoomHostState {
             state: HashMap::new(),
             pending_transfers: Vec::new(),
             logs: Vec::new(),
+            events: Vec::new(),
             sender,
             block_height,
             timestamp,
@@ -109,6 +121,18 @@ impl LoomHostState {
     pub fn log(&mut self, message: &str) -> Result<(), LoomError> {
         self.gas_meter.charge(GAS_LOG)?;
         self.logs.push(message.to_string());
+        Ok(())
+    }
+
+    /// Emit a structured event.
+    /// Charges GAS_EMIT_EVENT.
+    pub fn emit_event(
+        &mut self,
+        ty: String,
+        attributes: Vec<(String, String)>,
+    ) -> Result<(), LoomError> {
+        self.gas_meter.charge(GAS_EMIT_EVENT)?;
+        self.events.push(HostEvent { ty, attributes });
         Ok(())
     }
 }

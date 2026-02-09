@@ -246,3 +246,245 @@ impl<K: StorageKey, V: BorshSerialize + BorshDeserialize> Map<K, V> {
         Ok(updated)
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IndexedMap<K, V> — keyed storage with iteration
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Like [`Map`], but maintains a client-side index so keys can be enumerated.
+///
+/// This uses 3 extra storage writes per insert (key-at-index, reverse-index,
+/// count) and swap-and-pop for O(1) removal. Use `Map` when iteration is not
+/// needed; use `IndexedMap` when you need `keys()` or `range()`.
+///
+/// Storage layout:
+/// - `{ns}\x00{key_bytes}` → borsh(V) (same as Map)
+/// - `{ns}\x01idx\x00{index_le_u64}` → borsh(K)
+/// - `{ns}\x01count` → borsh(u64)
+/// - `{ns}\x01rev\x00{key_bytes}` → borsh(u64)
+///
+/// ```ignore
+/// const HOLDERS: IndexedMap<Address, u128> = IndexedMap::new("holders");
+///
+/// HOLDERS.save(&addr, &1000u128)?;
+/// let all_keys = HOLDERS.keys();
+/// let page = HOLDERS.range(0, 10);
+/// ```
+pub struct IndexedMap<K, V> {
+    namespace: &'static str,
+    _marker: PhantomData<(K, V)>,
+}
+
+impl<K, V> IndexedMap<K, V> {
+    /// Create a new `IndexedMap` with the given namespace.
+    pub const fn new(namespace: &'static str) -> Self {
+        IndexedMap {
+            namespace,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<K: StorageKey + BorshSerialize + BorshDeserialize, V: BorshSerialize + BorshDeserialize>
+    IndexedMap<K, V>
+{
+    // ── Internal key builders ──────────────────────────────────────────
+
+    /// Value key: `{ns}\x00{key_bytes}`
+    fn value_key(&self, key: &K) -> Vec<u8> {
+        let ns = self.namespace.as_bytes();
+        let k = key.storage_key();
+        let mut full = Vec::with_capacity(ns.len() + 1 + k.len());
+        full.extend_from_slice(ns);
+        full.push(0x00);
+        full.extend_from_slice(&k);
+        full
+    }
+
+    /// Index → key: `{ns}\x01idx\x00{index_le_u64}`
+    fn idx_key(&self, index: u64) -> Vec<u8> {
+        let ns = self.namespace.as_bytes();
+        let idx_bytes = index.to_le_bytes();
+        let mut full = Vec::with_capacity(ns.len() + 5 + 8);
+        full.extend_from_slice(ns);
+        full.extend_from_slice(b"\x01idx\x00");
+        full.extend_from_slice(&idx_bytes);
+        full
+    }
+
+    /// Count key: `{ns}\x01count`
+    fn count_key(&self) -> Vec<u8> {
+        let ns = self.namespace.as_bytes();
+        let mut full = Vec::with_capacity(ns.len() + 6);
+        full.extend_from_slice(ns);
+        full.extend_from_slice(b"\x01count");
+        full
+    }
+
+    /// Reverse index (key → index): `{ns}\x01rev\x00{key_bytes}`
+    fn rev_key(&self, key: &K) -> Vec<u8> {
+        let ns = self.namespace.as_bytes();
+        let k = key.storage_key();
+        let mut full = Vec::with_capacity(ns.len() + 5 + k.len());
+        full.extend_from_slice(ns);
+        full.extend_from_slice(b"\x01rev\x00");
+        full.extend_from_slice(&k);
+        full
+    }
+
+    // ── Internal helpers ───────────────────────────────────────────────
+
+    fn read_count(&self) -> u64 {
+        match host::state_get(&self.count_key()) {
+            Some(bytes) if !bytes.is_empty() => u64::try_from_slice(&bytes).unwrap_or(0),
+            _ => 0,
+        }
+    }
+
+    fn write_count(&self, count: u64) {
+        let bytes = borsh::to_vec(&count).unwrap_or_default();
+        host::state_set(&self.count_key(), &bytes);
+    }
+
+    fn read_key_at(&self, index: u64) -> Option<K> {
+        match host::state_get(&self.idx_key(index)) {
+            Some(bytes) if !bytes.is_empty() => K::try_from_slice(&bytes).ok(),
+            _ => None,
+        }
+    }
+
+    fn write_key_at(&self, index: u64, key: &K) {
+        let bytes = borsh::to_vec(key).unwrap_or_default();
+        host::state_set(&self.idx_key(index), &bytes);
+    }
+
+    fn read_rev(&self, key: &K) -> Option<u64> {
+        match host::state_get(&self.rev_key(key)) {
+            Some(bytes) if !bytes.is_empty() => u64::try_from_slice(&bytes).ok(),
+            _ => None,
+        }
+    }
+
+    fn write_rev(&self, key: &K, index: u64) {
+        let bytes = borsh::to_vec(&index).unwrap_or_default();
+        host::state_set(&self.rev_key(key), &bytes);
+    }
+
+    fn remove_rev(&self, key: &K) {
+        host::state_remove(&self.rev_key(key));
+    }
+
+    fn remove_idx(&self, index: u64) {
+        host::state_remove(&self.idx_key(index));
+    }
+
+    // ── Public API ─────────────────────────────────────────────────────
+
+    /// Save a value at the given key. If the key is new, adds it to the index.
+    pub fn save(&self, key: &K, value: &V) -> Result<(), ContractError> {
+        let bytes = borsh::to_vec(value)
+            .map_err(|e| ContractError::Custom(alloc::format!("serialize: {e}")))?;
+        host::state_set(&self.value_key(key), &bytes);
+
+        // Only add to index if key is not already tracked.
+        if self.read_rev(key).is_none() {
+            let count = self.read_count();
+            self.write_key_at(count, key);
+            self.write_rev(key, count);
+            self.write_count(count + 1);
+        }
+        Ok(())
+    }
+
+    /// Load the value at the given key, returning `NotFound` if absent.
+    pub fn load(&self, key: &K) -> Result<V, ContractError> {
+        match host::state_get(&self.value_key(key)) {
+            Some(bytes) if !bytes.is_empty() => BorshDeserialize::try_from_slice(&bytes)
+                .map_err(|e| ContractError::Custom(alloc::format!("deserialize: {e}"))),
+            _ => Err(ContractError::NotFound(alloc::format!(
+                "indexed_map '{}' key not found",
+                self.namespace
+            ))),
+        }
+    }
+
+    /// Load the value at the given key, returning `default` if absent.
+    pub fn load_or(&self, key: &K, default: V) -> V {
+        self.load(key).unwrap_or(default)
+    }
+
+    /// Check if a key exists.
+    pub fn has(&self, key: &K) -> bool {
+        self.read_rev(key).is_some()
+    }
+
+    /// Remove a key and its value. Uses swap-and-pop for O(1) removal.
+    pub fn remove(&self, key: &K) -> Result<(), ContractError> {
+        let index = match self.read_rev(key) {
+            Some(i) => i,
+            None => return Ok(()), // not present, no-op
+        };
+
+        let count = self.read_count();
+        let last_index = count - 1;
+
+        // If not the last entry, swap with last.
+        if index != last_index {
+            if let Some(last_key) = self.read_key_at(last_index) {
+                self.write_key_at(index, &last_key);
+                self.write_rev(&last_key, index);
+            }
+        }
+
+        // Remove the (now-last) index entry and reverse mapping.
+        self.remove_idx(last_index);
+        self.remove_rev(key);
+
+        // Remove the value.
+        host::state_remove(&self.value_key(key));
+
+        // Decrement count.
+        self.write_count(last_index);
+        Ok(())
+    }
+
+    /// Return the number of entries.
+    pub fn len(&self) -> u64 {
+        self.read_count()
+    }
+
+    /// Check if the map is empty.
+    pub fn is_empty(&self) -> bool {
+        self.read_count() == 0
+    }
+
+    /// Return all keys. For large maps, prefer `range()`.
+    pub fn keys(&self) -> Vec<K> {
+        let count = self.read_count();
+        let mut keys = Vec::with_capacity(count as usize);
+        for i in 0..count {
+            if let Some(key) = self.read_key_at(i) {
+                keys.push(key);
+            }
+        }
+        keys
+    }
+
+    /// Return a paginated slice of (key, value) pairs.
+    ///
+    /// `start` is the 0-based index, `end` is exclusive.
+    pub fn range(&self, start: u64, end: u64) -> Vec<(K, V)> {
+        let count = self.read_count();
+        let end = end.min(count);
+        let start = start.min(end);
+        let mut results = Vec::with_capacity((end - start) as usize);
+        for i in start..end {
+            if let Some(key) = self.read_key_at(i) {
+                if let Ok(value) = self.load(&key) {
+                    results.push((key, value));
+                }
+            }
+        }
+        results
+    }
+}
