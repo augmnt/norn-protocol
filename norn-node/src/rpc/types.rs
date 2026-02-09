@@ -245,6 +245,42 @@ pub struct LoomInfo {
     pub active: bool,
     /// Deployment timestamp.
     pub deployed_at: u64,
+    /// Whether bytecode has been uploaded.
+    #[serde(default)]
+    pub has_bytecode: bool,
+    /// Number of active participants.
+    #[serde(default)]
+    pub participant_count: usize,
+}
+
+/// Result of executing a loom contract.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionResult {
+    /// Whether execution succeeded.
+    pub success: bool,
+    /// Output data as hex string.
+    pub output_hex: Option<String>,
+    /// Gas consumed.
+    pub gas_used: u64,
+    /// Log messages from execution.
+    pub logs: Vec<String>,
+    /// Reason for failure, if any.
+    pub reason: Option<String>,
+}
+
+/// Result of querying a loom contract (read-only).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueryResult {
+    /// Whether query succeeded.
+    pub success: bool,
+    /// Output data as hex string.
+    pub output_hex: Option<String>,
+    /// Gas consumed.
+    pub gas_used: u64,
+    /// Log messages from query.
+    pub logs: Vec<String>,
+    /// Reason for failure, if any.
+    pub reason: Option<String>,
 }
 
 /// Information about a name owned by an address.

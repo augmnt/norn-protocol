@@ -310,6 +310,79 @@ impl LoomRuntime {
 }
 
 impl LoomInstance {
+    /// Try to read the output buffer from an SDK-based contract.
+    ///
+    /// Calls `__norn_output_ptr()` and `__norn_output_len()` exports.
+    /// Returns an empty vec if these exports are not present.
+    fn read_output_buffer(&mut self) -> Vec<u8> {
+        let output_ptr = self
+            .instance
+            .get_typed_func::<(), i32>(&mut self.store, "__norn_output_ptr")
+            .ok()
+            .and_then(|f| f.call(&mut self.store, ()).ok());
+        let output_len = self
+            .instance
+            .get_typed_func::<(), i32>(&mut self.store, "__norn_output_len")
+            .ok()
+            .and_then(|f| f.call(&mut self.store, ()).ok());
+
+        match (output_ptr, output_len) {
+            (Some(ptr), Some(len)) if len > 0 => {
+                let ptr = ptr as usize;
+                let len = len as usize;
+                if let Some(memory) = self.instance.get_memory(&mut self.store, "memory") {
+                    let data = memory.data(&self.store);
+                    if ptr + len <= data.len() {
+                        return data[ptr..ptr + len].to_vec();
+                    }
+                }
+                Vec::new()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// Write input into Wasm memory using `__norn_alloc` if available,
+    /// falling back to offset 1024 for legacy WAT modules.
+    fn write_input(&mut self, input: &[u8]) -> (i32, i32) {
+        if input.is_empty() {
+            return (0, 0);
+        }
+
+        let memory = match self.instance.get_memory(&mut self.store, "memory") {
+            Some(m) => m,
+            None => return (0, 0),
+        };
+
+        // Try __norn_alloc first (SDK-based contracts).
+        if let Ok(alloc_fn) = self
+            .instance
+            .get_typed_func::<i32, i32>(&mut self.store, "__norn_alloc")
+        {
+            if let Ok(ptr) = alloc_fn.call(&mut self.store, input.len() as i32) {
+                if ptr > 0 {
+                    let offset = ptr as usize;
+                    let mem_size = memory.data_size(&self.store);
+                    if offset + input.len() <= mem_size {
+                        memory.data_mut(&mut self.store)[offset..offset + input.len()]
+                            .copy_from_slice(input);
+                        return (ptr, input.len() as i32);
+                    }
+                }
+            }
+        }
+
+        // Fallback: write at offset 1024 for legacy WAT modules.
+        let mem_size = memory.data_size(&self.store);
+        let offset = 1024.min(mem_size.saturating_sub(input.len()));
+        if offset + input.len() <= mem_size {
+            memory.data_mut(&mut self.store)[offset..offset + input.len()].copy_from_slice(input);
+            (offset as i32, input.len() as i32)
+        } else {
+            (0, 0)
+        }
+    }
+
     /// Call the exported `init` function (no arguments, no return).
     pub fn call_init(&mut self) -> Result<(), LoomError> {
         let init = self
@@ -328,32 +401,15 @@ impl LoomInstance {
     /// Call the exported `execute` function.
     ///
     /// The function receives `(input_ptr, input_len)` and returns an `i32`
-    /// result code. The actual output data is communicated through the host
-    /// state (logs, transfers, state changes).
+    /// result code. Output is read from the SDK output buffer if available,
+    /// falling back to the i32 return value as little-endian bytes.
     pub fn call_execute(&mut self, input: &[u8]) -> Result<Vec<u8>, LoomError> {
         // Try the simple (i32, i32) -> i32 signature first.
         if let Ok(execute) = self
             .instance
             .get_typed_func::<(i32, i32), i32>(&mut self.store, "execute")
         {
-            // If the module exports memory we can write the input there.
-            // For simple test modules that ignore their input we just pass 0, 0.
-            let (ptr, len) = if input.is_empty() {
-                (0i32, 0i32)
-            } else if let Some(memory) = self.instance.get_memory(&mut self.store, "memory") {
-                let mem_size = memory.data_size(&self.store);
-                // Write input at the end of the first page (if it fits).
-                let offset = 1024.min(mem_size.saturating_sub(input.len()));
-                if offset + input.len() <= mem_size {
-                    memory.data_mut(&mut self.store)[offset..offset + input.len()]
-                        .copy_from_slice(input);
-                    (offset as i32, input.len() as i32)
-                } else {
-                    (0i32, 0i32)
-                }
-            } else {
-                (0i32, 0i32)
-            };
+            let (ptr, len) = self.write_input(input);
 
             let result =
                 execute
@@ -361,6 +417,12 @@ impl LoomInstance {
                     .map_err(|e| LoomError::RuntimeError {
                         reason: format!("execute failed: {e}"),
                     })?;
+
+            // Try SDK output buffer first; fall back to i32-as-bytes.
+            let output = self.read_output_buffer();
+            if !output.is_empty() {
+                return Ok(output);
+            }
             return Ok(result.to_le_bytes().to_vec());
         }
 
@@ -375,6 +437,11 @@ impl LoomInstance {
                     .map_err(|e| LoomError::RuntimeError {
                         reason: format!("execute failed: {e}"),
                     })?;
+
+            let output = self.read_output_buffer();
+            if !output.is_empty() {
+                return Ok(output);
+            }
             return Ok(result.to_le_bytes().to_vec());
         }
 
@@ -389,21 +456,7 @@ impl LoomInstance {
             .instance
             .get_typed_func::<(i32, i32), i32>(&mut self.store, "query")
         {
-            let (ptr, len) = if input.is_empty() {
-                (0i32, 0i32)
-            } else if let Some(memory) = self.instance.get_memory(&mut self.store, "memory") {
-                let mem_size = memory.data_size(&self.store);
-                let offset = 1024.min(mem_size.saturating_sub(input.len()));
-                if offset + input.len() <= mem_size {
-                    memory.data_mut(&mut self.store)[offset..offset + input.len()]
-                        .copy_from_slice(input);
-                    (offset as i32, input.len() as i32)
-                } else {
-                    (0i32, 0i32)
-                }
-            } else {
-                (0i32, 0i32)
-            };
+            let (ptr, len) = self.write_input(input);
 
             let result =
                 query
@@ -411,6 +464,12 @@ impl LoomInstance {
                     .map_err(|e| LoomError::RuntimeError {
                         reason: format!("query failed: {e}"),
                     })?;
+
+            // Try SDK output buffer first; fall back to i32-as-bytes.
+            let output = self.read_output_buffer();
+            if !output.is_empty() {
+                return Ok(output);
+            }
             return Ok(result.to_le_bytes().to_vec());
         }
 

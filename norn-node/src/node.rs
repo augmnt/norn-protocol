@@ -3,6 +3,7 @@ use tokio::sync::RwLock;
 
 use norn_crypto::address::pubkey_to_address;
 use norn_crypto::keys::Keypair;
+use norn_loom::lifecycle::LoomManager;
 use norn_relay::config::RelayConfig;
 use norn_relay::relay::{RelayHandle, RelayNode};
 use norn_relay::PeerId;
@@ -30,6 +31,7 @@ pub struct Node {
     metrics: Arc<NodeMetrics>,
     rpc_handle: Option<jsonrpsee::server::ServerHandle>,
     block_tx: Option<tokio::sync::broadcast::Sender<crate::rpc::types::BlockInfo>>,
+    loom_manager: Arc<RwLock<LoomManager>>,
     weave_store: WeaveStore<Arc<dyn KvStore>>,
     relay: Option<RelayNode>,
     relay_rx: Option<tokio::sync::broadcast::Receiver<(NornMessage, Option<PeerId>)>>,
@@ -295,6 +297,72 @@ impl Node {
             }
         }
 
+        // Initialize LoomManager and restore persisted bytecodes/states.
+        let mut loom_mgr = LoomManager::new();
+        {
+            // Register loom metadata from StateManager so LoomManager knows about them.
+            let sm_ref = &sm;
+            for (loom_id, record) in sm_ref.list_looms() {
+                let loom = norn_types::loom::Loom {
+                    config: norn_types::loom::LoomConfig {
+                        loom_id: *loom_id,
+                        name: record.name.clone(),
+                        max_participants: 1000,
+                        min_participants: 1,
+                        accepted_tokens: vec![norn_types::primitives::NATIVE_TOKEN_ID],
+                        config_data: vec![],
+                    },
+                    operator: record.operator,
+                    participants: Vec::new(),
+                    state_hash: [0u8; 32],
+                    version: 0,
+                    active: record.active,
+                    last_updated: record.deployed_at,
+                };
+                loom_mgr.register_loom(*loom_id, loom);
+            }
+
+            // Restore bytecodes and states from persistent storage.
+            let (bytecodes, loom_states) = if let Some(store) = sm.store() {
+                (
+                    store.load_all_loom_bytecodes().unwrap_or_default(),
+                    store.load_all_loom_states().unwrap_or_default(),
+                )
+            } else {
+                (vec![], vec![])
+            };
+            let state_map: std::collections::HashMap<[u8; 32], Vec<u8>> =
+                loom_states.into_iter().collect();
+
+            for (loom_id, bytecode_bytes) in &bytecodes {
+                let wasm_hash = norn_crypto::hash::blake3_hash(bytecode_bytes);
+                let loom_bytecode = norn_types::loom::LoomBytecode {
+                    loom_id: *loom_id,
+                    wasm_hash,
+                    bytecode: bytecode_bytes.clone(),
+                };
+                // Restore state data if available.
+                let state_data: std::collections::HashMap<Vec<u8>, Vec<u8>> =
+                    if let Some(state_bytes) = state_map.get(loom_id) {
+                        borsh::from_slice(state_bytes).unwrap_or_default()
+                    } else {
+                        std::collections::HashMap::new()
+                    };
+                // If loom was registered, use restore_loom to overwrite with full data.
+                if let Some(loom) = loom_mgr.get_loom(loom_id).cloned() {
+                    loom_mgr.restore_loom(*loom_id, loom, loom_bytecode, state_data);
+                }
+            }
+
+            if !bytecodes.is_empty() {
+                tracing::info!(
+                    looms_with_bytecode = bytecodes.len(),
+                    "restored loom bytecodes from disk"
+                );
+            }
+        }
+
+        let loom_manager = Arc::new(RwLock::new(loom_mgr));
         let state_manager = Arc::new(RwLock::new(sm));
 
         // Initialize the relay if networking is configured (before RPC, so handle is available).
@@ -402,6 +470,7 @@ impl Node {
                 &config.rpc.listen_addr,
                 weave_engine.clone(),
                 state_manager.clone(),
+                loom_manager.clone(),
                 metrics.clone(),
                 relay_handle.clone(),
                 network_id,
@@ -427,6 +496,7 @@ impl Node {
             genesis_hash,
             weave_engine,
             state_manager,
+            loom_manager,
             metrics,
             rpc_handle,
             block_tx,

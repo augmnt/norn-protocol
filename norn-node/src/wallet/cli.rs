@@ -410,4 +410,61 @@ pub enum WalletCommand {
         #[arg(long)]
         rpc_url: Option<String>,
     },
+    /// Upload bytecode to a deployed loom
+    UploadBytecode {
+        /// Loom ID (hex)
+        #[arg(long)]
+        loom_id: String,
+        /// Path to .wasm bytecode file
+        #[arg(long)]
+        bytecode: String,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
+    /// Execute a loom contract
+    ExecuteLoom {
+        /// Loom ID (hex)
+        #[arg(long)]
+        loom_id: String,
+        /// Input data as hex string
+        #[arg(long)]
+        input: String,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
+    /// Query a loom contract (read-only)
+    QueryLoom {
+        /// Loom ID (hex)
+        #[arg(long)]
+        loom_id: String,
+        /// Input data as hex string (optional)
+        #[arg(long)]
+        input: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
+    /// Join a loom as a participant
+    JoinLoom {
+        /// Loom ID (hex)
+        #[arg(long)]
+        loom_id: String,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
+    /// Leave a loom
+    LeaveLoom {
+        /// Loom ID (hex)
+        #[arg(long)]
+        loom_id: String,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
 }

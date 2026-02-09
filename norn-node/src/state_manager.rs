@@ -158,6 +158,11 @@ impl StateManager {
         self.state_store = Some(store);
     }
 
+    /// Get a reference to the underlying state store (if attached).
+    pub fn store(&self) -> Option<&crate::state_store::StateStore> {
+        self.state_store.as_ref()
+    }
+
     /// Register a thread with its owner public key.
     pub fn register_thread(&mut self, address: Address, pubkey: PublicKey) {
         if self.thread_states.contains_key(&address) {

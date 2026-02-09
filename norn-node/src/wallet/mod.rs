@@ -192,5 +192,27 @@ pub async fn run(command: WalletCommand) -> Result<(), WalletError> {
             json,
             rpc_url,
         } => commands::list_looms::run(limit, json, rpc_url.as_deref()).await,
+        WalletCommand::UploadBytecode {
+            loom_id,
+            bytecode,
+            rpc_url,
+        } => commands::upload_bytecode::run(&loom_id, &bytecode, rpc_url.as_deref()).await,
+        WalletCommand::ExecuteLoom {
+            loom_id,
+            input,
+            rpc_url,
+        } => commands::execute_loom::run(&loom_id, &input, rpc_url.as_deref()).await,
+        WalletCommand::QueryLoom {
+            loom_id,
+            input,
+            json,
+            rpc_url,
+        } => commands::query_loom::run(&loom_id, input.as_deref(), json, rpc_url.as_deref()).await,
+        WalletCommand::JoinLoom { loom_id, rpc_url } => {
+            commands::join_loom::run(&loom_id, rpc_url.as_deref()).await
+        }
+        WalletCommand::LeaveLoom { loom_id, rpc_url } => {
+            commands::leave_loom::run(&loom_id, rpc_url.as_deref()).await
+        }
     }
 }

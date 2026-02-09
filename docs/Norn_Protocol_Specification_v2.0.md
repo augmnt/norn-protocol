@@ -7,7 +7,7 @@
 | Version      | 2.0                           |
 | Status       | Living Document               |
 | Date         | 2026-02-08                    |
-| Code Version | 0.9.0                         |
+| Code Version | 0.10.0                        |
 | Supersedes   | v1.0                          |
 | Authors      | Norn Protocol Contributors    |
 
@@ -1745,6 +1745,11 @@ The RPC server uses `jsonrpsee` over HTTP. All methods use the `norn_` namespace
 | `norn_getTokenBySymbol` | `symbol: String` | `Option<TokenInfo>` | No |
 | `norn_listTokens` | `limit: u64`, `offset: u64` | `Vec<TokenInfo>` | No |
 | `norn_deployLoom` | `hex: String` (hex borsh `LoomRegistration`) | `SubmitResult` | Yes |
+| `norn_uploadLoomBytecode` | `loom_id: String` (hex), `bytecode_hex: String` | `SubmitResult` | Yes |
+| `norn_executeLoom` | `loom_id: String` (hex), `input_hex: String`, `sender_hex: String` | `ExecutionResult` | Yes |
+| `norn_queryLoom` | `loom_id: String` (hex), `input_hex: String` | `QueryResult` | No |
+| `norn_joinLoom` | `loom_id: String` (hex), `participant_hex: String`, `pubkey_hex: String` | `SubmitResult` | Yes |
+| `norn_leaveLoom` | `loom_id: String` (hex), `participant_hex: String` | `SubmitResult` | Yes |
 | `norn_getLoomInfo` | `loom_id: String` (hex) | `Option<LoomInfo>` | No |
 | `norn_listLooms` | `limit: u64`, `offset: u64` | `Vec<LoomInfo>` | No |
 
@@ -1885,6 +1890,24 @@ pub struct LoomInfo {
     pub operator: String,
     pub active: bool,
     pub deployed_at: u64,
+    pub has_bytecode: bool,
+    pub participant_count: usize,
+}
+
+pub struct ExecutionResult {
+    pub success: bool,
+    pub output_hex: Option<String>,
+    pub gas_used: u64,
+    pub logs: Vec<String>,
+    pub reason: Option<String>,
+}
+
+pub struct QueryResult {
+    pub success: bool,
+    pub output_hex: Option<String>,
+    pub gas_used: u64,
+    pub logs: Vec<String>,
+    pub reason: Option<String>,
 }
 ```
 
@@ -1907,8 +1930,6 @@ When `api_key` is set, mutation requests must include the header `Authorization:
 The following methods are planned but not yet implemented:
 
 - `norn_submitLoomAnchor` -- Submit a loom state anchor
-- `norn_executeLoom` -- Execute a loom state transition
-- `norn_queryLoom` -- Read-only loom query
 - `norn_subscribeCommitments` -- WebSocket subscription for commitment updates
 
 ---
@@ -2135,6 +2156,11 @@ norn wallet <COMMAND>
 | `list-tokens` | List all registered tokens on the network |
 | `token-balances` | Show all non-zero token holdings for the active wallet |
 | `deploy-loom` | Deploy a loom smart contract (costs 50 NORN, burned) |
+| `upload-bytecode` | Upload .wasm bytecode to a deployed loom and run init() |
+| `execute-loom` | Execute a loom contract with input data |
+| `query-loom` | Query a loom contract (read-only) |
+| `join-loom` | Join a loom as a participant |
+| `leave-loom` | Leave a loom |
 | `loom-info` | Query loom metadata by hex loom ID |
 | `list-looms` | List all deployed looms on the network |
 
@@ -2910,6 +2936,28 @@ Protocol version 0.9.0 introduced Loom smart contracts Phase 1 — consensus-lev
 | Protocol constants | `PROTOCOL_VERSION=6`, `SCHEMA_VERSION=5` |
 | Validation module | `norn-weave/src/loom.rs` — signature verification, name validation, duplicate detection |
 | State persistence | `state:loom:` key prefix in state store |
+
+### 32.10 v0.10.0 Updates (Loom Smart Contracts Phase 2 — Execution)
+
+Protocol version 0.10.0 completes Loom smart contracts with execution support — bytecode upload, contract execution/query, participant management, and a contract SDK:
+
+| Feature | Description |
+|---------|-------------|
+| `norn-sdk` crate | New `#![no_std]` contract SDK for writing looms in Rust targeting `wasm32-unknown-unknown` |
+| Counter example | Working counter contract in `examples/counter/` demonstrating init/execute/query |
+| Output buffer convention | SDK exports `__norn_output_ptr()`, `__norn_output_len()` for runtime to read output |
+| Input allocation | `__norn_alloc(len)` export with fallback to offset 1024 for legacy WAT modules |
+| LoomManager integration | `Arc<RwLock<LoomManager>>` wired into Node, shared with RPC handlers |
+| Bytecode persistence | `state:loom_bytecode:` and `state:loom_state:` prefixes now active |
+| Startup restoration | Node restores loom metadata, bytecodes, and contract state from disk on startup |
+| RPC endpoints | 5 new: `norn_uploadLoomBytecode`, `norn_executeLoom`, `norn_queryLoom`, `norn_joinLoom`, `norn_leaveLoom` |
+| Wallet commands | 5 new: `upload-bytecode`, `execute-loom`, `query-loom`, `join-loom`, `leave-loom` (41 total) |
+| `ExecutionResult` type | RPC response with `success`, `output_hex`, `gas_used`, `logs`, `reason` |
+| `QueryResult` type | RPC response for read-only queries (same shape as `ExecutionResult`) |
+| Enhanced `LoomInfo` | Added `has_bytecode: bool` and `participant_count: usize` fields |
+| Protocol constants | `PROTOCOL_VERSION=6` (unchanged), `SCHEMA_VERSION=6` (bumped from 5) |
+
+Execution is off-chain by design — bytecode upload and execution are local to each node and not broadcast or included in blocks. The PROTOCOL_VERSION remains at 6 (P2P compatible with v0.9.x).
 
 ---
 

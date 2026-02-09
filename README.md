@@ -6,7 +6,7 @@
   <a href="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml"><img src="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-stable-orange.svg" alt="Rust"></a>
-  <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.9.0"><img src="https://img.shields.io/badge/version-0.9.0-green.svg" alt="Version"></a>
+  <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.10.0"><img src="https://img.shields.io/badge/version-0.10.0-green.svg" alt="Version"></a>
 </p>
 
 ---
@@ -122,7 +122,8 @@ norn run --network mainnet --genesis genesis/mainnet.json
 | `norn-weave` | Anchor chain (block production, commitment processing, HotStuff consensus, dynamic fees, fraud proof verification, staking) |
 | `norn-loom` | Smart contract runtime (Wasm runtime, host functions, gas metering, Loom lifecycle, dispute resolution) |
 | `norn-spindle` | Watchtower service (Weave monitoring, fraud proof construction, rate limiting, service orchestration) |
-| `norn-node` | Full node binary (CLI, node configuration, genesis handling, JSON-RPC server with API key auth, wallet CLI, NornNames, NT-1 tokens, Loom smart contracts, Prometheus metrics endpoint, fraud proof submission, spindle watchtower integration) |
+| `norn-sdk` | Contract SDK for writing Norn loom smart contracts (`#![no_std]`, targets `wasm32-unknown-unknown`) |
+| `norn-node` | Full node binary (CLI, node configuration, genesis handling, JSON-RPC server with API key auth, wallet CLI, NornNames, NT-1 tokens, Loom smart contracts with execution, Prometheus metrics endpoint, fraud proof submission, spindle watchtower integration) |
 
 ## Getting Started
 
@@ -157,7 +158,7 @@ cargo run --example demo -p norn-node
 
 ## Wallet CLI
 
-The `norn` binary includes a full-featured wallet CLI with 36 subcommands for key management, transfers, NornNames, custom tokens, Loom smart contracts, Thread inspection, and encrypted keystore backup.
+The `norn` binary includes a full-featured wallet CLI with 41 subcommands for key management, transfers, NornNames, custom tokens, Loom smart contracts (deploy, upload, execute, query, join, leave), Thread inspection, and encrypted keystore backup.
 
 ```bash
 # Create a new wallet
@@ -344,6 +345,11 @@ Norn supports **off-chain smart contracts** called Looms -- WebAssembly programs
 | Operation | Who | Fee | Effect |
 |-----------|-----|-----|--------|
 | **Deploy** | Anyone | 50 NORN (burned) | Registers a new loom with metadata on the network |
+| **Upload Bytecode** | Loom operator | None | Uploads .wasm bytecode to the node and calls `init()` |
+| **Execute** | Any participant | None | Runs the contract with input data, mutates state |
+| **Query** | Anyone | None | Read-only contract execution, no state change |
+| **Join** | Anyone | None | Join a loom as a participant |
+| **Leave** | Participant | None | Leave a loom |
 
 **Loom ID** is deterministic: `BLAKE3(name ++ operator ++ timestamp)`.
 
@@ -355,11 +361,33 @@ Norn supports **off-chain smart contracts** called Looms -- WebAssembly programs
 | Character set | Lowercase ASCII letters (`a-z`), digits (`0-9`), hyphens (`-`) |
 | Hyphens | Must not start or end with a hyphen |
 
+### Contract SDK
+
+The `norn-sdk` crate provides the building blocks for writing loom contracts in Rust, targeting `wasm32-unknown-unknown`. Contracts export `init()`, `execute(ptr, len)`, and `query(ptr, len)` functions.
+
+```bash
+# Build a contract (see examples/counter/ for a working example)
+cargo build --target wasm32-unknown-unknown --release --manifest-path examples/counter/Cargo.toml
+```
+
 ### Wallet CLI Usage
 
 ```bash
 # Deploy a loom (costs 50 NORN, burned)
 norn wallet deploy-loom --name my-contract
+
+# Upload bytecode to a deployed loom
+norn wallet upload-bytecode --loom-id <LOOM_ID> --bytecode path/to/contract.wasm
+
+# Execute a loom contract
+norn wallet execute-loom --loom-id <LOOM_ID> --input 01
+
+# Query a loom contract (read-only)
+norn wallet query-loom --loom-id <LOOM_ID>
+
+# Join/leave a loom
+norn wallet join-loom --loom-id <LOOM_ID>
+norn wallet leave-loom --loom-id <LOOM_ID>
 
 # Query loom metadata
 norn wallet loom-info <LOOM_ID>
@@ -373,6 +401,11 @@ norn wallet list-looms
 | Method | Parameters | Returns | Auth |
 |--------|-----------|---------|------|
 | `norn_deployLoom` | `hex` (hex-encoded borsh `LoomRegistration`) | `SubmitResult` | Yes |
+| `norn_uploadLoomBytecode` | `loom_id` (hex), `bytecode_hex` | `SubmitResult` | Yes |
+| `norn_executeLoom` | `loom_id` (hex), `input_hex`, `sender_hex` | `ExecutionResult` | Yes |
+| `norn_queryLoom` | `loom_id` (hex), `input_hex` | `QueryResult` | No |
+| `norn_joinLoom` | `loom_id` (hex), `participant_hex`, `pubkey_hex` | `SubmitResult` | Yes |
+| `norn_leaveLoom` | `loom_id` (hex), `participant_hex` | `SubmitResult` | Yes |
 | `norn_getLoomInfo` | `loom_id` (hex) | `Option<LoomInfo>` | No |
 | `norn_listLooms` | `limit`, `offset` | `Vec<LoomInfo>` | No |
 

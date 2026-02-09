@@ -10,10 +10,12 @@ use jsonrpsee::PendingSubscriptionSink;
 use norn_types::network::NornMessage;
 use norn_weave::engine::WeaveEngine;
 
+use norn_loom::lifecycle::LoomManager;
+
 use super::types::{
-    BlockInfo, CommitmentProofInfo, FeeEstimateInfo, HealthInfo, LoomInfo, NameInfo,
-    NameResolution, SubmitResult, ThreadInfo, ThreadStateInfo, TokenInfo, TransactionHistoryEntry,
-    ValidatorInfo, ValidatorSetInfo, WeaveStateInfo,
+    BlockInfo, CommitmentProofInfo, ExecutionResult, FeeEstimateInfo, HealthInfo, LoomInfo,
+    NameInfo, NameResolution, QueryResult, SubmitResult, ThreadInfo, ThreadStateInfo, TokenInfo,
+    TransactionHistoryEntry, ValidatorInfo, ValidatorSetInfo, WeaveStateInfo,
 };
 use crate::metrics::NodeMetrics;
 use crate::state_manager::StateManager;
@@ -199,6 +201,48 @@ pub trait NornRpc {
     /// List all deployed looms with pagination.
     #[method(name = "norn_listLooms")]
     async fn list_looms(&self, limit: u64, offset: u64) -> Result<Vec<LoomInfo>, ErrorObjectOwned>;
+
+    /// Upload bytecode to a deployed loom and initialize it.
+    #[method(name = "norn_uploadLoomBytecode")]
+    async fn upload_loom_bytecode(
+        &self,
+        loom_id_hex: String,
+        bytecode_hex: String,
+    ) -> Result<SubmitResult, ErrorObjectOwned>;
+
+    /// Execute a loom contract (state-mutating).
+    #[method(name = "norn_executeLoom")]
+    async fn execute_loom(
+        &self,
+        loom_id_hex: String,
+        input_hex: String,
+        sender_hex: String,
+    ) -> Result<ExecutionResult, ErrorObjectOwned>;
+
+    /// Query a loom contract (read-only).
+    #[method(name = "norn_queryLoom")]
+    async fn query_loom(
+        &self,
+        loom_id_hex: String,
+        input_hex: String,
+    ) -> Result<QueryResult, ErrorObjectOwned>;
+
+    /// Join a loom as a participant.
+    #[method(name = "norn_joinLoom")]
+    async fn join_loom(
+        &self,
+        loom_id_hex: String,
+        participant_hex: String,
+        pubkey_hex: String,
+    ) -> Result<SubmitResult, ErrorObjectOwned>;
+
+    /// Leave a loom.
+    #[method(name = "norn_leaveLoom")]
+    async fn leave_loom(
+        &self,
+        loom_id_hex: String,
+        participant_hex: String,
+    ) -> Result<SubmitResult, ErrorObjectOwned>;
 }
 
 /// Implementation of the NornRpc trait.
@@ -206,6 +250,7 @@ pub trait NornRpc {
 pub struct NornRpcImpl {
     pub weave_engine: Arc<RwLock<WeaveEngine>>,
     pub state_manager: Arc<RwLock<StateManager>>,
+    pub loom_manager: Arc<RwLock<LoomManager>>,
     pub metrics: Arc<NodeMetrics>,
     pub block_tx: tokio::sync::broadcast::Sender<BlockInfo>,
     pub relay_handle: Option<norn_relay::relay::RelayHandle>,
@@ -1292,12 +1337,15 @@ impl NornRpcServer for NornRpcImpl {
     ) -> Result<Option<LoomInfo>, ErrorObjectOwned> {
         let loom_id = parse_loom_hex(&loom_id_hex)?;
         let sm = self.state_manager.read().await;
+        let loom_mgr = self.loom_manager.read().await;
         Ok(sm.get_loom(&loom_id).map(|record| LoomInfo {
             loom_id: loom_id_hex,
             name: record.name.clone(),
             operator: hex::encode(record.operator),
             active: record.active,
             deployed_at: record.deployed_at,
+            has_bytecode: loom_mgr.has_bytecode(&loom_id),
+            participant_count: loom_mgr.participant_count(&loom_id),
         }))
     }
 
@@ -1306,6 +1354,7 @@ impl NornRpcServer for NornRpcImpl {
         let offset = offset as usize;
 
         let sm = self.state_manager.read().await;
+        let loom_mgr = self.loom_manager.read().await;
         let looms = sm.list_looms();
 
         let result = looms
@@ -1318,10 +1367,221 @@ impl NornRpcServer for NornRpcImpl {
                 operator: hex::encode(record.operator),
                 active: record.active,
                 deployed_at: record.deployed_at,
+                has_bytecode: loom_mgr.has_bytecode(loom_id),
+                participant_count: loom_mgr.participant_count(loom_id),
             })
             .collect();
 
         Ok(result)
+    }
+
+    async fn upload_loom_bytecode(
+        &self,
+        loom_id_hex: String,
+        bytecode_hex: String,
+    ) -> Result<SubmitResult, ErrorObjectOwned> {
+        let loom_id = parse_loom_hex(&loom_id_hex)?;
+        let bytecode = hex::decode(&bytecode_hex).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>)
+        })?;
+
+        // Verify loom exists in StateManager.
+        {
+            let sm = self.state_manager.read().await;
+            if sm.get_loom(&loom_id).is_none() {
+                return Ok(SubmitResult {
+                    success: false,
+                    reason: Some(format!("loom {} not found", loom_id_hex)),
+                });
+            }
+        }
+
+        let mut loom_mgr = self.loom_manager.write().await;
+        match loom_mgr.upload_bytecode(&loom_id, bytecode.clone()) {
+            Ok(()) => {
+                // Persist bytecode and initial state.
+                let sm = self.state_manager.read().await;
+                if let Some(store) = sm.store() {
+                    if let Err(e) = store.save_loom_bytecode(&loom_id, &bytecode) {
+                        tracing::warn!("failed to persist loom bytecode: {}", e);
+                    }
+                    if let Some(state_data) = loom_mgr.get_state_data(&loom_id) {
+                        let state_bytes = borsh::to_vec(state_data).unwrap_or_default();
+                        if let Err(e) = store.save_loom_state(&loom_id, &state_bytes) {
+                            tracing::warn!("failed to persist loom state: {}", e);
+                        }
+                    }
+                }
+
+                Ok(SubmitResult {
+                    success: true,
+                    reason: Some("bytecode uploaded and initialized".to_string()),
+                })
+            }
+            Err(e) => Ok(SubmitResult {
+                success: false,
+                reason: Some(e.to_string()),
+            }),
+        }
+    }
+
+    async fn execute_loom(
+        &self,
+        loom_id_hex: String,
+        input_hex: String,
+        sender_hex: String,
+    ) -> Result<ExecutionResult, ErrorObjectOwned> {
+        let loom_id = parse_loom_hex(&loom_id_hex)?;
+        let input = hex::decode(&input_hex).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid input hex: {}", e), None::<()>)
+        })?;
+        let sender = parse_address_hex(&sender_hex)?;
+
+        // Get current block context.
+        let (block_height, timestamp) = {
+            let engine = self.weave_engine.read().await;
+            let state = engine.weave_state();
+            (
+                state.height,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            )
+        };
+
+        let mut loom_mgr = self.loom_manager.write().await;
+        match loom_mgr.execute(&loom_id, &input, sender, block_height, timestamp) {
+            Ok(transition) => {
+                // Persist updated state.
+                let sm = self.state_manager.read().await;
+                if let Some(store) = sm.store() {
+                    if let Some(state_data) = loom_mgr.get_state_data(&loom_id) {
+                        let state_bytes = borsh::to_vec(state_data).unwrap_or_default();
+                        if let Err(e) = store.save_loom_state(&loom_id, &state_bytes) {
+                            tracing::warn!("failed to persist loom state: {}", e);
+                        }
+                    }
+                }
+
+                // Get logs from the loom (not available via transition, return empty).
+                Ok(ExecutionResult {
+                    success: true,
+                    output_hex: Some(hex::encode(&transition.outputs)),
+                    gas_used: 0, // Gas tracking is at fuel level, not exposed in transition.
+                    logs: Vec::new(),
+                    reason: None,
+                })
+            }
+            Err(e) => Ok(ExecutionResult {
+                success: false,
+                output_hex: None,
+                gas_used: 0,
+                logs: Vec::new(),
+                reason: Some(e.to_string()),
+            }),
+        }
+    }
+
+    async fn query_loom(
+        &self,
+        loom_id_hex: String,
+        input_hex: String,
+    ) -> Result<QueryResult, ErrorObjectOwned> {
+        let loom_id = parse_loom_hex(&loom_id_hex)?;
+        let input = hex::decode(&input_hex).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid input hex: {}", e), None::<()>)
+        })?;
+
+        let (block_height, timestamp) = {
+            let engine = self.weave_engine.read().await;
+            let state = engine.weave_state();
+            (
+                state.height,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            )
+        };
+
+        let loom_mgr = self.loom_manager.read().await;
+        match loom_mgr.query(&loom_id, &input, [0u8; 20], block_height, timestamp) {
+            Ok(output) => Ok(QueryResult {
+                success: true,
+                output_hex: Some(hex::encode(&output)),
+                gas_used: 0,
+                logs: Vec::new(),
+                reason: None,
+            }),
+            Err(e) => Ok(QueryResult {
+                success: false,
+                output_hex: None,
+                gas_used: 0,
+                logs: Vec::new(),
+                reason: Some(e.to_string()),
+            }),
+        }
+    }
+
+    async fn join_loom(
+        &self,
+        loom_id_hex: String,
+        participant_hex: String,
+        pubkey_hex: String,
+    ) -> Result<SubmitResult, ErrorObjectOwned> {
+        let loom_id = parse_loom_hex(&loom_id_hex)?;
+        let address = parse_address_hex(&participant_hex)?;
+        let pubkey_bytes = hex::decode(&pubkey_hex).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid pubkey hex: {}", e), None::<()>)
+        })?;
+        if pubkey_bytes.len() != 32 {
+            return Err(ErrorObjectOwned::owned(
+                -32602,
+                format!("pubkey must be 32 bytes, got {}", pubkey_bytes.len()),
+                None::<()>,
+            ));
+        }
+        let mut pubkey = [0u8; 32];
+        pubkey.copy_from_slice(&pubkey_bytes);
+
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let mut loom_mgr = self.loom_manager.write().await;
+        match loom_mgr.join(&loom_id, pubkey, address, timestamp) {
+            Ok(()) => Ok(SubmitResult {
+                success: true,
+                reason: Some("joined loom".to_string()),
+            }),
+            Err(e) => Ok(SubmitResult {
+                success: false,
+                reason: Some(e.to_string()),
+            }),
+        }
+    }
+
+    async fn leave_loom(
+        &self,
+        loom_id_hex: String,
+        participant_hex: String,
+    ) -> Result<SubmitResult, ErrorObjectOwned> {
+        let loom_id = parse_loom_hex(&loom_id_hex)?;
+        let address = parse_address_hex(&participant_hex)?;
+
+        let mut loom_mgr = self.loom_manager.write().await;
+        match loom_mgr.leave(&loom_id, &address) {
+            Ok(()) => Ok(SubmitResult {
+                success: true,
+                reason: Some("left loom".to_string()),
+            }),
+            Err(e) => Ok(SubmitResult {
+                success: false,
+                reason: Some(e.to_string()),
+            }),
+        }
     }
 }
 

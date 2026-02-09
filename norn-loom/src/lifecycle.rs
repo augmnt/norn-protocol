@@ -292,12 +292,102 @@ impl LoomManager {
             .get(loom_id)
             .ok_or(LoomError::LoomNotFound { loom_id: *loom_id })?;
 
-        // Instantiate and execute (read-only — state is discarded).
+        // Instantiate and query (read-only — state is discarded).
         let runtime = LoomRuntime::new()?;
         let mut instance = runtime.instantiate(&bytecode_entry.bytecode, host_state)?;
-        let outputs = instance.call_execute(input)?;
+        let outputs = instance.call_query(input)?;
 
         Ok(outputs)
+    }
+
+    /// Upload bytecode to an existing loom and run init().
+    ///
+    /// Unlike `deploy()`, this attaches bytecode to a loom that was registered
+    /// on-chain but didn't have bytecode yet (Phase 1 → Phase 2 bridge).
+    pub fn upload_bytecode(
+        &mut self,
+        loom_id: &LoomId,
+        bytecode: Vec<u8>,
+    ) -> Result<(), LoomError> {
+        // Validate loom exists.
+        let _loom = self
+            .looms
+            .get(loom_id)
+            .ok_or(LoomError::LoomNotFound { loom_id: *loom_id })?;
+
+        if bytecode.is_empty() {
+            return Err(LoomError::InvalidBytecode {
+                reason: "bytecode cannot be empty".to_string(),
+            });
+        }
+
+        let wasm_hash = blake3_hash(&bytecode);
+        let loom_bytecode = LoomBytecode {
+            loom_id: *loom_id,
+            wasm_hash,
+            bytecode,
+        };
+
+        // Initialize state if not present.
+        if !self.states.contains_key(loom_id) {
+            self.states.insert(*loom_id, LoomState::new(*loom_id));
+        }
+
+        // Set up host state for init().
+        let state = self.states.get(loom_id).unwrap();
+        let mut host_state = LoomHostState::new([0u8; 20], 0, 0, DEFAULT_GAS_LIMIT);
+        host_state.state = state.data.clone();
+
+        // Instantiate and call init().
+        let runtime = LoomRuntime::new()?;
+        let mut instance = runtime.instantiate(&loom_bytecode.bytecode, host_state)?;
+        instance.call_init()?;
+
+        // Save the state from init.
+        let host_state = instance.into_host_state();
+        let loom_state = self.states.get_mut(loom_id).unwrap();
+        loom_state.data = host_state.state;
+
+        // Update loom state hash.
+        let new_hash = loom_state.compute_hash();
+        let loom = self.looms.get_mut(loom_id).unwrap();
+        loom.state_hash = new_hash;
+
+        // Store bytecode.
+        self.bytecodes.insert(*loom_id, loom_bytecode);
+
+        Ok(())
+    }
+
+    /// Check if a loom has bytecode uploaded.
+    pub fn has_bytecode(&self, loom_id: &LoomId) -> bool {
+        self.bytecodes.contains_key(loom_id)
+    }
+
+    /// Get the number of active participants for a loom.
+    pub fn participant_count(&self, loom_id: &LoomId) -> usize {
+        self.looms
+            .get(loom_id)
+            .map(|l| l.participants.iter().filter(|p| p.active).count())
+            .unwrap_or(0)
+    }
+
+    /// Get the serialized state data for persistence.
+    pub fn get_state_data(&self, loom_id: &LoomId) -> Option<&HashMap<Vec<u8>, Vec<u8>>> {
+        self.states.get(loom_id).map(|s| &s.data)
+    }
+
+    /// Get raw bytecode bytes for persistence.
+    pub fn get_bytecode_bytes(&self, loom_id: &LoomId) -> Option<&[u8]> {
+        self.bytecodes.get(loom_id).map(|b| b.bytecode.as_slice())
+    }
+
+    /// Register a loom metadata entry (from on-chain registration) without bytecode.
+    ///
+    /// Used when restoring from StateStore: the loom is registered on-chain but
+    /// may or may not have bytecode uploaded yet.
+    pub fn register_loom(&mut self, loom_id: LoomId, loom: Loom) {
+        self.looms.insert(loom_id, loom);
     }
 }
 

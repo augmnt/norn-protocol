@@ -1,0 +1,16 @@
+[package]
+name = "norn-counter"
+version = "0.10.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+norn-sdk = { path = "../../norn-sdk" }
+dlmalloc = { version = "0.2", features = ["global"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true

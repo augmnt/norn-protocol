@@ -4,8 +4,9 @@ use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use jsonrpsee::rpc_params;
 
 use crate::rpc::types::{
-    BlockInfo, FeeEstimateInfo, HealthInfo, LoomInfo, NameInfo, NameResolution, SubmitResult,
-    TokenInfo, TransactionHistoryEntry, ValidatorSetInfo, WeaveStateInfo,
+    BlockInfo, ExecutionResult, FeeEstimateInfo, HealthInfo, LoomInfo, NameInfo, NameResolution,
+    QueryResult, SubmitResult, TokenInfo, TransactionHistoryEntry, ValidatorSetInfo,
+    WeaveStateInfo,
 };
 
 use super::error::WalletError;
@@ -389,6 +390,97 @@ impl RpcClient {
         let result: Vec<LoomInfo> = self
             .client
             .request("norn_listLooms", rpc_params![limit, offset])
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Upload bytecode to a deployed loom.
+    pub async fn upload_loom_bytecode(
+        &self,
+        loom_id_hex: &str,
+        bytecode_hex: &str,
+    ) -> Result<SubmitResult, WalletError> {
+        let pb = Self::spinner("Uploading bytecode...");
+        let result: SubmitResult = self
+            .client
+            .request(
+                "norn_uploadLoomBytecode",
+                rpc_params![loom_id_hex, bytecode_hex],
+            )
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Execute a loom contract.
+    pub async fn execute_loom(
+        &self,
+        loom_id_hex: &str,
+        input_hex: &str,
+        sender_hex: &str,
+    ) -> Result<ExecutionResult, WalletError> {
+        let pb = Self::spinner("Executing loom...");
+        let result: ExecutionResult = self
+            .client
+            .request(
+                "norn_executeLoom",
+                rpc_params![loom_id_hex, input_hex, sender_hex],
+            )
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Query a loom contract (read-only).
+    pub async fn query_loom(
+        &self,
+        loom_id_hex: &str,
+        input_hex: &str,
+    ) -> Result<QueryResult, WalletError> {
+        let pb = Self::spinner("Querying loom...");
+        let result: QueryResult = self
+            .client
+            .request("norn_queryLoom", rpc_params![loom_id_hex, input_hex])
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Join a loom as a participant.
+    pub async fn join_loom(
+        &self,
+        loom_id_hex: &str,
+        participant_hex: &str,
+        pubkey_hex: &str,
+    ) -> Result<SubmitResult, WalletError> {
+        let pb = Self::spinner("Joining loom...");
+        let result: SubmitResult = self
+            .client
+            .request(
+                "norn_joinLoom",
+                rpc_params![loom_id_hex, participant_hex, pubkey_hex],
+            )
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Leave a loom.
+    pub async fn leave_loom(
+        &self,
+        loom_id_hex: &str,
+        participant_hex: &str,
+    ) -> Result<SubmitResult, WalletError> {
+        let pb = Self::spinner("Leaving loom...");
+        let result: SubmitResult = self
+            .client
+            .request("norn_leaveLoom", rpc_params![loom_id_hex, participant_hex])
             .await
             .map_err(|e| Self::map_rpc_error(&e))?;
         pb.finish_and_clear();

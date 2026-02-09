@@ -3,6 +3,7 @@ use tokio::sync::RwLock;
 
 use jsonrpsee::server::{ServerBuilder, ServerHandle};
 
+use norn_loom::lifecycle::LoomManager;
 use norn_relay::relay::RelayHandle;
 use norn_types::network::NetworkId;
 use norn_weave::engine::WeaveEngine;
@@ -19,6 +20,7 @@ pub async fn start_rpc_server(
     addr: &str,
     weave_engine: Arc<RwLock<WeaveEngine>>,
     state_manager: Arc<RwLock<StateManager>>,
+    loom_manager: Arc<RwLock<LoomManager>>,
     metrics: Arc<NodeMetrics>,
     relay_handle: Option<RelayHandle>,
     network_id: NetworkId,
@@ -30,6 +32,7 @@ pub async fn start_rpc_server(
     let rpc_impl = NornRpcImpl {
         weave_engine,
         state_manager,
+        loom_manager,
         metrics,
         block_tx: block_tx.clone(),
         relay_handle,
@@ -100,6 +103,7 @@ mod auth_middleware {
         "norn_listTokens",
         "norn_getLoomInfo",
         "norn_listLooms",
+        "norn_queryLoom",
     ];
 
     /// Tower layer that wraps services with API key authentication.

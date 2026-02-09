@@ -20,15 +20,13 @@ const ADDR_NAMES_PREFIX: &[u8] = b"state:addr_names:";
 const BLOCK_PREFIX: &[u8] = b"state:block:";
 const TOKEN_PREFIX: &[u8] = b"state:token:";
 const LOOM_PREFIX: &[u8] = b"state:loom:";
-#[allow(dead_code)] // Phase 2: loom execution persistence
 const LOOM_BYTECODE_PREFIX: &[u8] = b"state:loom_bytecode:";
-#[allow(dead_code)] // Phase 2: loom execution persistence
 const LOOM_STATE_PREFIX: &[u8] = b"state:loom_state:";
 const SCHEMA_VERSION_KEY: &[u8] = b"meta:schema_version";
 
 /// Current schema version. Bump this whenever a breaking change is made to any
 /// borsh-serialized type persisted through StateStore.
-pub const SCHEMA_VERSION: u32 = 5;
+pub const SCHEMA_VERSION: u32 = 6;
 
 /// Persistent store for StateManager data backed by a KvStore.
 pub struct StateStore {
@@ -298,7 +296,6 @@ impl StateStore {
         self.store.put(&key, &value)
     }
 
-    #[allow(dead_code)] // Phase 2: loom execution persistence
     pub fn save_loom_bytecode(
         &self,
         loom_id: &LoomId,
@@ -308,22 +305,41 @@ impl StateStore {
         self.store.put(&key, bytecode)
     }
 
-    #[allow(dead_code)] // Phase 2: loom execution persistence
     pub fn save_loom_state(&self, loom_id: &LoomId, state_data: &[u8]) -> Result<(), StorageError> {
         let key = self.loom_state_key(loom_id);
         self.store.put(&key, state_data)
     }
 
-    #[allow(dead_code)] // Phase 2: loom execution persistence
+    #[allow(dead_code)]
     pub fn load_loom_bytecode(&self, loom_id: &LoomId) -> Result<Option<Vec<u8>>, StorageError> {
         let key = self.loom_bytecode_key(loom_id);
         self.store.get(&key)
     }
 
-    #[allow(dead_code)] // Phase 2: loom execution persistence
+    #[allow(dead_code)]
     pub fn load_loom_state(&self, loom_id: &LoomId) -> Result<Option<Vec<u8>>, StorageError> {
         let key = self.loom_state_key(loom_id);
         self.store.get(&key)
+    }
+
+    pub fn load_all_loom_bytecodes(&self) -> Result<Vec<(LoomId, Vec<u8>)>, StorageError> {
+        let pairs = self.store.prefix_scan(LOOM_BYTECODE_PREFIX)?;
+        let mut results = Vec::with_capacity(pairs.len());
+        for (key, value) in pairs {
+            let loom_id = self.loom_id_from_key(&key, LOOM_BYTECODE_PREFIX.len());
+            results.push((loom_id, value));
+        }
+        Ok(results)
+    }
+
+    pub fn load_all_loom_states(&self) -> Result<Vec<(LoomId, Vec<u8>)>, StorageError> {
+        let pairs = self.store.prefix_scan(LOOM_STATE_PREFIX)?;
+        let mut results = Vec::with_capacity(pairs.len());
+        for (key, value) in pairs {
+            let loom_id = self.loom_id_from_key(&key, LOOM_STATE_PREFIX.len());
+            results.push((loom_id, value));
+        }
+        Ok(results)
     }
 
     pub fn load_all_looms(&self) -> Result<Vec<(LoomId, LoomRecord)>, StorageError> {
@@ -468,7 +484,6 @@ impl StateStore {
         key
     }
 
-    #[allow(dead_code)] // Phase 2: loom execution persistence
     fn loom_bytecode_key(&self, loom_id: &LoomId) -> Vec<u8> {
         let mut key = Vec::with_capacity(LOOM_BYTECODE_PREFIX.len() + 32);
         key.extend_from_slice(LOOM_BYTECODE_PREFIX);
@@ -476,7 +491,6 @@ impl StateStore {
         key
     }
 
-    #[allow(dead_code)] // Phase 2: loom execution persistence
     fn loom_state_key(&self, loom_id: &LoomId) -> Vec<u8> {
         let mut key = Vec::with_capacity(LOOM_STATE_PREFIX.len() + 32);
         key.extend_from_slice(LOOM_STATE_PREFIX);

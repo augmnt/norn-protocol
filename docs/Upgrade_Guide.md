@@ -10,6 +10,7 @@
 | v0.7.x      | v0.8.0     | No             | No               | `--reset-state` (PROTOCOL_VERSION 4→5, SCHEMA_VERSION 3→4) |
 | v0.8.0      | v0.8.1     | Yes            | Yes              | Restart node (CLI-only changes, no protocol/schema bump) |
 | v0.8.x      | v0.9.0     | No             | No               | `--reset-state` (PROTOCOL_VERSION 5→6, SCHEMA_VERSION 4→5) |
+| v0.9.x      | v0.10.0    | Yes            | No               | `--reset-state` (SCHEMA_VERSION 5→6, P2P compatible) |
 
 \* Within a minor version line, compatibility depends on whether PROTOCOL_VERSION or SCHEMA_VERSION was bumped. Check the release notes.
 
@@ -92,7 +93,7 @@ The protocol uses three version constants to detect incompatibilities:
 | Constant | Location | Current | Purpose |
 |----------|----------|---------|---------|
 | `PROTOCOL_VERSION` | `norn-relay/src/protocol.rs` | 6 | P2P wire format version. Mismatch = messages rejected. |
-| `SCHEMA_VERSION` | `norn-node/src/state_store.rs` | 5 | Borsh state schema version. Mismatch = node refuses to start (suggests `--reset-state`). |
+| `SCHEMA_VERSION` | `norn-node/src/state_store.rs` | 6 | Borsh state schema version. Mismatch = node refuses to start (suggests `--reset-state`). |
 | `GENESIS_CONFIG_VERSION` | `norn-types/src/genesis.rs` | 1 | Genesis config format version. Included in genesis hash computation. |
 
 ## Multi-Node P2P Requirements
@@ -276,3 +277,62 @@ Three new RPC methods: `norn_deployLoom`, `norn_getLoomInfo`, `norn_listLooms`. 
 ### New Wallet Commands
 
 Three new wallet subcommands: `deploy-loom`, `loom-info`, `list-looms` (36 total).
+
+## Changelog: v0.10.0 (Loom Phase 2 — Execution)
+
+### Upgrading from v0.9.x to v0.10.0
+
+This is a **state-incompatible** upgrade. SCHEMA_VERSION changed from 5 to 6. PROTOCOL_VERSION remains at 6 (no P2P changes — execution is off-chain).
+
+1. **Stop the node.**
+
+2. **Build the new version:**
+   ```bash
+   cargo install --path norn-node
+   ```
+
+3. **Start with `--reset-state`:**
+   ```bash
+   norn run --dev --reset-state
+   ```
+
+4. **Re-register NornNames, re-create tokens, and re-deploy looms:**
+   ```bash
+   norn wallet register-name --name your-name
+   norn wallet create-token --name "My Token" --symbol MTK --decimals 8 --max-supply 1000000 --initial-supply 1000
+   norn wallet deploy-loom --name my-contract
+   norn wallet upload-bytecode --loom-id <LOOM_ID> --bytecode path/to/contract.wasm
+   ```
+
+5. **P2P compatible:** v0.9.x and v0.10.0 nodes can communicate since PROTOCOL_VERSION is unchanged. However, v0.9.x nodes cannot execute or query loom bytecode.
+
+### New Crate: norn-sdk
+
+New workspace member `norn-sdk` — a `#![no_std]` contract SDK for writing loom smart contracts in Rust targeting `wasm32-unknown-unknown`. Provides host function bindings, output buffer management, encoding helpers, and memory allocation exports.
+
+### Counter Contract Example
+
+New `examples/counter/` — a working counter contract built with `norn-sdk` demonstrating init, execute (increment/decrement/reset), and query operations.
+
+### State Store Change
+
+The previously-reserved `state:loom_bytecode:` and `state:loom_state:` key prefixes are now active for persisting loom bytecodes and contract state. SCHEMA_VERSION bumped from 5 to 6.
+
+### New RPC Endpoints
+
+Five new RPC methods:
+- `norn_uploadLoomBytecode` — upload .wasm bytecode and initialize (auth required)
+- `norn_executeLoom` — execute a contract with input data (auth required)
+- `norn_queryLoom` — read-only contract query (no auth)
+- `norn_joinLoom` — join a loom as participant (auth required)
+- `norn_leaveLoom` — leave a loom (auth required)
+
+`norn_queryLoom` added to the unauthenticated whitelist. Total RPC endpoints: 35.
+
+### New Wallet Commands
+
+Five new wallet subcommands: `upload-bytecode`, `execute-loom`, `query-loom`, `join-loom`, `leave-loom` (41 total).
+
+### LoomManager Node Integration
+
+`LoomManager` from `norn-loom` is now wired into the node with `Arc<RwLock<LoomManager>>`. On startup, the node restores loom metadata, bytecodes, and contract state from persistent storage. Execution results are persisted via write-through to the state store.
