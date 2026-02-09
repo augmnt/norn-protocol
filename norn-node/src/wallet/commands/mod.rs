@@ -22,6 +22,7 @@ pub mod list_tokens;
 pub mod loom_info;
 pub mod mint_token;
 pub mod names;
+pub mod new_loom;
 pub mod node_info;
 pub mod query_loom;
 pub mod register;

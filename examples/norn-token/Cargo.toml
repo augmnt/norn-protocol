@@ -1,5 +1,5 @@
 [package]
-name = "norn-counter"
+name = "norn-token-example"
 version = "0.12.0"
 edition = "2021"
 

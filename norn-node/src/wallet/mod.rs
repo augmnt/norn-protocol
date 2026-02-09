@@ -214,5 +214,6 @@ pub async fn run(command: WalletCommand) -> Result<(), WalletError> {
         WalletCommand::LeaveLoom { loom_id, rpc_url } => {
             commands::leave_loom::run(&loom_id, rpc_url.as_deref()).await
         }
+        WalletCommand::NewLoom { name } => commands::new_loom::run(&name),
     }
 }

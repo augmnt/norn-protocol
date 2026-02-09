@@ -1,89 +1,134 @@
-//! Counter contract example for the Norn Protocol.
+//! Counter contract — demonstrates SDK v3 features: Response builder, ensure!,
+//! and native testing with TestEnv.
 //!
-//! Actions (first byte of input):
-//! - 0x01: Increment counter by 1
-//! - 0x02: Decrement counter by 1 (saturating)
-//! - 0x03: Reset counter to 0
-//!
-//! Query: returns the current counter value as u64 LE bytes.
+//! Actions: Increment, Decrement, Reset.
+//! Query: GetValue returns the current counter as u64.
 
 #![no_std]
 
 extern crate alloc;
 
-// Global allocator for wasm32 target.
-#[cfg(target_arch = "wasm32")]
-#[global_allocator]
-static ALLOC: dlmalloc::GlobalDlmalloc = dlmalloc::GlobalDlmalloc;
+use norn_sdk::prelude::*;
 
-use norn_sdk::{encoding, host, output};
-
-const KEY_COUNTER: &[u8] = b"counter";
-
-fn get_counter() -> u64 {
-    host::state_get(KEY_COUNTER)
-        .and_then(|bytes| encoding::decode_u64(&bytes))
-        .unwrap_or(0)
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct Counter {
+    value: u64,
 }
 
-fn set_counter(value: u64) {
-    host::state_set(KEY_COUNTER, &encoding::encode_u64(value));
+#[derive(BorshSerialize, BorshDeserialize)]
+pub enum Execute {
+    Increment,
+    Decrement,
+    Reset,
 }
 
-#[no_mangle]
-pub extern "C" fn init() {
-    set_counter(0);
-    host::log("counter initialized");
+#[derive(BorshSerialize, BorshDeserialize)]
+pub enum Query {
+    GetValue,
 }
 
-#[no_mangle]
-pub extern "C" fn execute(ptr: i32, len: i32) -> i32 {
-    let input = output::read_input(ptr, len);
+impl Contract for Counter {
+    type Exec = Execute;
+    type Query = Query;
 
-    if input.is_empty() {
-        // Default: increment by 1.
-        let value = get_counter() + 1;
-        set_counter(value);
-        output::set_output(&encoding::encode_u64(value));
-        return 0;
+    fn init(_ctx: &Context) -> Self {
+        Counter { value: 0 }
     }
 
-    let action = input[0];
-    let value = match action {
-        0x01 => {
-            // Increment
-            let v = get_counter() + 1;
-            set_counter(v);
-            host::log("incremented");
-            v
+    fn execute(&mut self, _ctx: &Context, msg: Execute) -> ContractResult {
+        match msg {
+            Execute::Increment => {
+                self.value += 1;
+                Ok(Response::new()
+                    .add_attribute("action", "increment")
+                    .set_data(&self.value))
+            }
+            Execute::Decrement => {
+                ensure!(self.value > 0, "counter is already zero");
+                self.value -= 1;
+                Ok(Response::new()
+                    .add_attribute("action", "decrement")
+                    .set_data(&self.value))
+            }
+            Execute::Reset => {
+                self.value = 0;
+                Ok(Response::new()
+                    .add_attribute("action", "reset")
+                    .set_data(&self.value))
+            }
         }
-        0x02 => {
-            // Decrement (saturating)
-            let v = get_counter().saturating_sub(1);
-            set_counter(v);
-            host::log("decremented");
-            v
-        }
-        0x03 => {
-            // Reset
-            set_counter(0);
-            host::log("reset");
-            0
-        }
-        _ => {
-            host::log("unknown action");
-            return 1; // error
-        }
-    };
+    }
 
-    output::set_output(&encoding::encode_u64(value));
-    0
+    fn query(&self, _ctx: &Context, msg: Query) -> ContractResult {
+        match msg {
+            Query::GetValue => ok(self.value),
+        }
+    }
 }
 
-#[no_mangle]
-pub extern "C" fn query(ptr: i32, len: i32) -> i32 {
-    let _input = output::read_input(ptr, len);
-    let value = get_counter();
-    output::set_output(&encoding::encode_u64(value));
-    0
+norn_entry!(Counter);
+
+// ── Tests ──────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use norn_sdk::testing::*;
+
+    #[test]
+    fn test_init() {
+        let env = TestEnv::new();
+        let counter = Counter::init(&env.ctx());
+        assert_eq!(counter.value, 0);
+    }
+
+    #[test]
+    fn test_increment() {
+        let env = TestEnv::new();
+        let mut counter = Counter::init(&env.ctx());
+        let resp = counter.execute(&env.ctx(), Execute::Increment).unwrap();
+        assert_attribute(&resp, "action", "increment");
+        let val: u64 = from_response(&resp).unwrap();
+        assert_eq!(val, 1);
+    }
+
+    #[test]
+    fn test_decrement() {
+        let env = TestEnv::new();
+        let mut counter = Counter::init(&env.ctx());
+        counter.execute(&env.ctx(), Execute::Increment).unwrap();
+        let resp = counter.execute(&env.ctx(), Execute::Decrement).unwrap();
+        assert_attribute(&resp, "action", "decrement");
+        let val: u64 = from_response(&resp).unwrap();
+        assert_eq!(val, 0);
+    }
+
+    #[test]
+    fn test_decrement_at_zero_fails() {
+        let env = TestEnv::new();
+        let mut counter = Counter::init(&env.ctx());
+        let err = counter.execute(&env.ctx(), Execute::Decrement).unwrap_err();
+        assert_eq!(err.message(), "counter is already zero");
+    }
+
+    #[test]
+    fn test_reset() {
+        let env = TestEnv::new();
+        let mut counter = Counter::init(&env.ctx());
+        counter.execute(&env.ctx(), Execute::Increment).unwrap();
+        counter.execute(&env.ctx(), Execute::Increment).unwrap();
+        let resp = counter.execute(&env.ctx(), Execute::Reset).unwrap();
+        let val: u64 = from_response(&resp).unwrap();
+        assert_eq!(val, 0);
+    }
+
+    #[test]
+    fn test_query() {
+        let env = TestEnv::new();
+        let mut counter = Counter::init(&env.ctx());
+        counter.execute(&env.ctx(), Execute::Increment).unwrap();
+        let resp = counter.query(&env.ctx(), Query::GetValue).unwrap();
+        let val: u64 = from_response(&resp).unwrap();
+        assert_eq!(val, 1);
+    }
 }

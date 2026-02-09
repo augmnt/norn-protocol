@@ -467,4 +467,9 @@ pub enum WalletCommand {
         #[arg(long)]
         rpc_url: Option<String>,
     },
+    /// Scaffold a new loom smart contract project
+    NewLoom {
+        /// Project name (lowercase alphanumeric + hyphens)
+        name: String,
+    },
 }

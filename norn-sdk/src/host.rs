@@ -1,11 +1,15 @@
 //! Safe Rust wrappers around the Norn host functions.
 //!
-//! These functions are linked at runtime by the norn-loom Wasm engine. They are
-//! only callable when running inside the Norn runtime (target wasm32-unknown-unknown).
+//! On `wasm32` targets these call real host imports provided by the Norn runtime.
+//! On native targets (for `cargo test`) they use `thread_local!` storage so that
+//! [`Item`](crate::storage::Item), [`Map`](crate::storage::Map), and the
+//! [`Contract`](crate::Contract) trait work in unit tests.
 
+#[allow(unused_imports)]
+use alloc::vec;
 use alloc::vec::Vec;
 
-// ── Raw extern declarations ────────────────────────────────────────────────
+// ── Raw extern declarations (wasm32 only) ──────────────────────────────────
 
 #[cfg(target_arch = "wasm32")]
 extern "C" {
@@ -18,7 +22,9 @@ extern "C" {
     fn norn_timestamp() -> i64;
 }
 
-// ── Safe wrappers ──────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// wasm32 implementations — real host calls
+// ═══════════════════════════════════════════════════════════════════════════
 
 /// Emit a log message visible in execution results.
 #[cfg(target_arch = "wasm32")]
@@ -28,26 +34,18 @@ pub fn log(msg: &str) {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-pub fn log(_msg: &str) {}
-
 /// Read a value from contract state.
-///
-/// Uses a two-phase protocol: first queries the length (out_ptr=0), then
-/// allocates a buffer and reads the value.
 #[cfg(target_arch = "wasm32")]
 pub fn state_get(key: &[u8]) -> Option<Vec<u8>> {
     unsafe {
-        // Phase 1: query length.
         let len = norn_state_get(key.as_ptr() as i32, key.len() as i32, 0, 0);
         if len < 0 {
-            return None; // -1 = not found
+            return None;
         }
         let len = len as usize;
         if len == 0 {
             return Some(vec![]);
         }
-        // Phase 2: read value into buffer.
         let mut buf = vec![0u8; len];
         let result = norn_state_get(
             key.as_ptr() as i32,
@@ -60,11 +58,6 @@ pub fn state_get(key: &[u8]) -> Option<Vec<u8>> {
         }
         Some(buf)
     }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn state_get(_key: &[u8]) -> Option<Vec<u8>> {
-    None
 }
 
 /// Write a value to contract state.
@@ -80,10 +73,13 @@ pub fn state_set(key: &[u8], value: &[u8]) {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-pub fn state_set(_key: &[u8], _value: &[u8]) {}
+/// Remove a key from contract state (writes empty value on wasm32).
+#[cfg(target_arch = "wasm32")]
+pub fn state_remove(key: &[u8]) {
+    state_set(key, &[]);
+}
 
-/// Transfer tokens. The `from` address must match the contract caller (sender).
+/// Transfer tokens.
 #[cfg(target_arch = "wasm32")]
 pub fn transfer(from: &[u8; 20], to: &[u8; 20], token_id: &[u8; 32], amount: u128) {
     unsafe {
@@ -96,9 +92,6 @@ pub fn transfer(from: &[u8; 20], to: &[u8; 20], token_id: &[u8; 32], amount: u12
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-pub fn transfer(_from: &[u8; 20], _to: &[u8; 20], _token_id: &[u8; 32], _amount: u128) {}
-
 /// Get the address of the transaction sender.
 #[cfg(target_arch = "wasm32")]
 pub fn sender() -> [u8; 20] {
@@ -109,20 +102,10 @@ pub fn sender() -> [u8; 20] {
     addr
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-pub fn sender() -> [u8; 20] {
-    [0u8; 20]
-}
-
 /// Get the current block height.
 #[cfg(target_arch = "wasm32")]
 pub fn block_height() -> u64 {
     unsafe { norn_block_height() as u64 }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn block_height() -> u64 {
-    0
 }
 
 /// Get the current block timestamp (unix seconds).
@@ -131,7 +114,175 @@ pub fn timestamp() -> u64 {
     unsafe { norn_timestamp() as u64 }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Native implementations — thread-local mock storage for `cargo test`
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[cfg(not(target_arch = "wasm32"))]
+mod mock {
+    use std::cell::RefCell;
+    use std::collections::BTreeMap;
+    use std::string::String;
+    use std::vec::Vec;
+
+    type TransferRecord = (Vec<u8>, Vec<u8>, Vec<u8>, u128);
+
+    std::thread_local! {
+        static STATE: RefCell<BTreeMap<Vec<u8>, Vec<u8>>> = const { RefCell::new(BTreeMap::new()) };
+        static LOGS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+        static SENDER: RefCell<[u8; 20]> = const { RefCell::new([0u8; 20]) };
+        static BLOCK_HEIGHT: RefCell<u64> = const { RefCell::new(0) };
+        static TIMESTAMP: RefCell<u64> = const { RefCell::new(0) };
+        static TRANSFERS: RefCell<Vec<TransferRecord>> = const { RefCell::new(Vec::new()) };
+    }
+
+    // ── Host function implementations ──────────────────────────────────────
+
+    pub fn log(msg: &str) {
+        LOGS.with(|logs| logs.borrow_mut().push(String::from(msg)));
+    }
+
+    pub fn state_get(key: &[u8]) -> Option<Vec<u8>> {
+        STATE.with(|state| state.borrow().get(key).cloned())
+    }
+
+    pub fn state_set(key: &[u8], value: &[u8]) {
+        STATE.with(|state| {
+            if value.is_empty() {
+                state.borrow_mut().remove(key);
+            } else {
+                state.borrow_mut().insert(key.to_vec(), value.to_vec());
+            }
+        });
+    }
+
+    pub fn state_remove(key: &[u8]) {
+        STATE.with(|state| {
+            state.borrow_mut().remove(key);
+        });
+    }
+
+    pub fn transfer(from: &[u8; 20], to: &[u8; 20], token_id: &[u8; 32], amount: u128) {
+        TRANSFERS.with(|t| {
+            t.borrow_mut()
+                .push((from.to_vec(), to.to_vec(), token_id.to_vec(), amount));
+        });
+    }
+
+    pub fn sender() -> [u8; 20] {
+        SENDER.with(|s| *s.borrow())
+    }
+
+    pub fn block_height() -> u64 {
+        BLOCK_HEIGHT.with(|h| *h.borrow())
+    }
+
+    pub fn timestamp() -> u64 {
+        TIMESTAMP.with(|t| *t.borrow())
+    }
+
+    // ── Mock control functions ─────────────────────────────────────────────
+
+    pub fn mock_reset() {
+        STATE.with(|s| s.borrow_mut().clear());
+        LOGS.with(|l| l.borrow_mut().clear());
+        SENDER.with(|s| *s.borrow_mut() = [0u8; 20]);
+        BLOCK_HEIGHT.with(|h| *h.borrow_mut() = 0);
+        TIMESTAMP.with(|t| *t.borrow_mut() = 0);
+        TRANSFERS.with(|t| t.borrow_mut().clear());
+    }
+
+    pub fn mock_set_sender(addr: [u8; 20]) {
+        SENDER.with(|s| *s.borrow_mut() = addr);
+    }
+
+    pub fn mock_set_block_height(h: u64) {
+        BLOCK_HEIGHT.with(|bh| *bh.borrow_mut() = h);
+    }
+
+    pub fn mock_set_timestamp(t: u64) {
+        TIMESTAMP.with(|ts| *ts.borrow_mut() = t);
+    }
+
+    pub fn mock_get_logs() -> Vec<String> {
+        LOGS.with(|l| l.borrow().clone())
+    }
+
+    pub fn mock_reset_logs() {
+        LOGS.with(|l| l.borrow_mut().clear());
+    }
+}
+
+// ── Re-export native stubs as public module-level functions ────────────────
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn log(msg: &str) {
+    mock::log(msg);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn state_get(key: &[u8]) -> Option<Vec<u8>> {
+    mock::state_get(key)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn state_set(key: &[u8], value: &[u8]) {
+    mock::state_set(key, value);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn state_remove(key: &[u8]) {
+    mock::state_remove(key);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn transfer(from: &[u8; 20], to: &[u8; 20], token_id: &[u8; 32], amount: u128) {
+    mock::transfer(from, to, token_id, amount);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn sender() -> [u8; 20] {
+    mock::sender()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn block_height() -> u64 {
+    mock::block_height()
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 pub fn timestamp() -> u64 {
-    0
+    mock::timestamp()
+}
+
+// ── Mock control (native only, public) ─────────────────────────────────────
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn mock_reset() {
+    mock::mock_reset();
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn mock_set_sender(addr: [u8; 20]) {
+    mock::mock_set_sender(addr);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn mock_set_block_height(h: u64) {
+    mock::mock_set_block_height(h);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn mock_set_timestamp(t: u64) {
+    mock::mock_set_timestamp(t);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn mock_get_logs() -> Vec<alloc::string::String> {
+    mock::mock_get_logs()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn mock_reset_logs() {
+    mock::mock_reset_logs();
 }

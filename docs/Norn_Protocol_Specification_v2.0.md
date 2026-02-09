@@ -2959,6 +2959,62 @@ Protocol version 0.10.0 completes Loom smart contracts with execution support �
 
 Execution is off-chain by design — bytecode upload and execution are local to each node and not broadcast or included in blocks. The PROTOCOL_VERSION remains at 6 (P2P compatible with v0.9.x).
 
+### 32.11 v0.11.0 Updates (Loom SDK v2 — Beginner-Friendly Contracts)
+
+Protocol version 0.11.0 redesigns the contract SDK around a `Contract` trait and `norn_entry!` macro, eliminating ~70 lines of FFI boilerplate per contract:
+
+| Feature | Description |
+|---------|-------------|
+| `Contract` trait | Core interface: `init()`, `execute()`, `query()` with typed message enums |
+| `norn_entry!` macro | Declarative macro generating all Wasm entry points, state persistence, and global allocator |
+| `Context` struct | Wraps host functions (`sender()`, `block_height()`, `timestamp()`, `log()`, `transfer()`) |
+| `ContractError` enum | Typed error variants: `Unauthorized`, `InvalidInput`, `NotFound`, `Overflow`, `InsufficientFunds`, `Custom` |
+| `ContractResult` type | `Result<Vec<u8>, ContractError>` — standard return type for execute/query |
+| Response helpers | `ok(value)`, `ok_bytes(data)`, `ok_empty()` for constructing responses |
+| `prelude` module | One-line import: `use norn_sdk::prelude::*;` brings all contract types |
+| `Context::mock()` builder | Native-target mock context for unit testing without Wasm runtime |
+| dlmalloc bundled | SDK includes `dlmalloc` as wasm32-only dep — contracts no longer need it |
+| Counter example rewrite | ~35 lines with SDK v2 (was ~70 lines with raw FFI) |
+| Token vault example | New example demonstrating access control, token transfers, error handling |
+| `norn wallet new-loom` | CLI scaffolding command — generates a ready-to-build contract project |
+| Backward compatible | `host`, `output`, `encoding` modules preserved for low-level/advanced use |
+
+#### Contract Development Workflow
+
+```rust
+// 1. Define state
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct MyContract { value: u64 }
+
+// 2. Define messages
+#[derive(BorshSerialize, BorshDeserialize)]
+pub enum Execute { SetValue { value: u64 } }
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub enum Query { GetValue }
+
+// 3. Implement Contract trait
+impl Contract for MyContract {
+    type Exec = Execute;
+    type Query = Query;
+    fn init(_ctx: &Context) -> Self { MyContract { value: 0 } }
+    fn execute(&mut self, _ctx: &Context, msg: Execute) -> ContractResult { /* ... */ }
+    fn query(&self, _ctx: &Context, msg: Query) -> ContractResult { /* ... */ }
+}
+
+// 4. Generate entry points
+norn_entry!(MyContract);
+```
+
+#### Scaffolding
+
+```bash
+norn wallet new-loom my-contract
+cd my-contract
+cargo build --release
+# Produces target/wasm32-unknown-unknown/release/my_contract.wasm
+```
+
 ---
 
 *End of Norn Protocol Specification v2.0.*
