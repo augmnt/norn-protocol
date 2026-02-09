@@ -1,10 +1,5 @@
-//! NornToken — ERC20-style fungible token showcasing every SDK v3 feature.
-//!
-//! Storage: `Item` for owner/name/symbol/decimals/total_supply, `Map` for
-//! balances and allowances.
-//!
-//! Execute: Mint, Burn, Transfer, Approve.
-//! Query: Balance, Allowance, TotalSupply, Info.
+//! NornToken — ERC20-style fungible token showcasing `#[norn_contract]` with
+//! `Item`/`Map` storage, address helpers, and guard macros.
 
 #![no_std]
 
@@ -34,42 +29,6 @@ fn allowance_key(owner: &Address, spender: &Address) -> [u8; 40] {
 
 // ── Contract ───────────────────────────────────────────────────────────────
 
-/// Unit struct — all state lives in storage primitives.
-#[derive(BorshSerialize, BorshDeserialize)]
-pub struct NornToken;
-
-#[derive(BorshSerialize, BorshDeserialize)]
-pub enum Execute {
-    Mint {
-        to: Address,
-        amount: u128,
-    },
-    Burn {
-        amount: u128,
-    },
-    Transfer {
-        to: Address,
-        amount: u128,
-    },
-    Approve {
-        spender: Address,
-        amount: u128,
-    },
-    TransferFrom {
-        from: Address,
-        to: Address,
-        amount: u128,
-    },
-}
-
-#[derive(BorshSerialize, BorshDeserialize)]
-pub enum Query {
-    Balance { address: Address },
-    Allowance { owner: Address, spender: Address },
-    TotalSupply,
-    Info,
-}
-
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct TokenInfo {
     pub owner: Address,
@@ -79,12 +38,13 @@ pub struct TokenInfo {
     pub total_supply: u128,
 }
 
-impl Contract for NornToken {
-    type Init = Empty;
-    type Exec = Execute;
-    type Query = Query;
+#[norn_contract]
+pub struct NornToken;
 
-    fn init(ctx: &Context, _msg: Empty) -> Self {
+#[norn_contract]
+impl NornToken {
+    #[init]
+    pub fn new(ctx: &Context) -> Self {
         OWNER.save(&ctx.sender()).unwrap();
         TOKEN_NAME.save(&String::from("Norn Token")).unwrap();
         SYMBOL.save(&String::from("NORN")).unwrap();
@@ -93,118 +53,136 @@ impl Contract for NornToken {
         NornToken
     }
 
-    fn execute(&mut self, ctx: &Context, msg: Execute) -> ContractResult {
-        match msg {
-            Execute::Mint { to, amount } => {
-                let owner = OWNER.load()?;
-                ctx.require_sender(&owner)?;
-                ensure!(amount > 0, "mint amount must be positive");
-                ensure_ne!(to, ZERO_ADDRESS, "cannot mint to zero address");
+    #[execute]
+    pub fn mint(&mut self, ctx: &Context, to: Address, amount: u128) -> ContractResult {
+        let owner = OWNER.load()?;
+        ctx.require_sender(&owner)?;
+        ensure!(amount > 0, "mint amount must be positive");
+        ensure_ne!(to, ZERO_ADDRESS, "cannot mint to zero address");
 
-                let bal = BALANCES.load_or(&to, 0);
-                let new_bal = bal.checked_add(amount).ok_or(ContractError::Overflow)?;
-                BALANCES.save(&to, &new_bal)?;
+        let bal = BALANCES.load_or(&to, 0);
+        let new_bal = bal.checked_add(amount).ok_or(ContractError::Overflow)?;
+        BALANCES.save(&to, &new_bal)?;
 
-                let supply = TOTAL_SUPPLY.load_or(0);
-                TOTAL_SUPPLY.save(&(supply + amount))?;
+        let supply = TOTAL_SUPPLY.load_or(0);
+        TOTAL_SUPPLY.save(&(supply + amount))?;
 
-                Ok(Response::new()
-                    .add_attribute("action", "mint")
-                    .add_attribute("to", addr_to_hex(&to))
-                    .add_attribute("amount", format!("{amount}"))
-                    .set_data(&new_bal))
-            }
-            Execute::Burn { amount } => {
-                ensure!(amount > 0, "burn amount must be positive");
-                let sender = ctx.sender();
-                let bal = BALANCES.load_or(&sender, 0);
-                ensure!(amount <= bal, ContractError::InsufficientFunds);
-
-                BALANCES.save(&sender, &(bal - amount))?;
-                let supply = TOTAL_SUPPLY.load_or(0);
-                TOTAL_SUPPLY.save(&(supply - amount))?;
-
-                Ok(Response::new()
-                    .add_attribute("action", "burn")
-                    .add_attribute("amount", format!("{amount}"))
-                    .set_data(&(bal - amount)))
-            }
-            Execute::Transfer { to, amount } => {
-                ensure!(amount > 0, "transfer amount must be positive");
-                ensure_ne!(to, ZERO_ADDRESS, "cannot transfer to zero address");
-                let sender = ctx.sender();
-                ensure_ne!(sender, to, "cannot transfer to self");
-
-                let from_bal = BALANCES.load_or(&sender, 0);
-                ensure!(amount <= from_bal, ContractError::InsufficientFunds);
-
-                let to_bal = BALANCES.load_or(&to, 0);
-                BALANCES.save(&sender, &(from_bal - amount))?;
-                BALANCES.save(&to, &(to_bal + amount))?;
-
-                Ok(Response::new()
-                    .add_attribute("action", "transfer")
-                    .add_attribute("from", addr_to_hex(&sender))
-                    .add_attribute("to", addr_to_hex(&to))
-                    .add_attribute("amount", format!("{amount}")))
-            }
-            Execute::Approve { spender, amount } => {
-                ensure_ne!(spender, ZERO_ADDRESS, "cannot approve zero address");
-                let sender = ctx.sender();
-                let key = allowance_key(&sender, &spender);
-                ALLOWANCES.save(&key, &amount)?;
-
-                Ok(Response::new()
-                    .add_attribute("action", "approve")
-                    .add_attribute("spender", addr_to_hex(&spender))
-                    .add_attribute("amount", format!("{amount}")))
-            }
-            Execute::TransferFrom { from, to, amount } => {
-                ensure!(amount > 0, "transfer amount must be positive");
-                ensure_ne!(to, ZERO_ADDRESS, "cannot transfer to zero address");
-
-                let spender = ctx.sender();
-                let key = allowance_key(&from, &spender);
-                let allowance = ALLOWANCES.load_or(&key, 0);
-                ensure!(amount <= allowance, "insufficient allowance");
-
-                let from_bal = BALANCES.load_or(&from, 0);
-                ensure!(amount <= from_bal, ContractError::InsufficientFunds);
-
-                let to_bal = BALANCES.load_or(&to, 0);
-                BALANCES.save(&from, &(from_bal - amount))?;
-                BALANCES.save(&to, &(to_bal + amount))?;
-                ALLOWANCES.save(&key, &(allowance - amount))?;
-
-                Ok(Response::new()
-                    .add_attribute("action", "transfer_from")
-                    .add_attribute("from", addr_to_hex(&from))
-                    .add_attribute("to", addr_to_hex(&to))
-                    .add_attribute("amount", format!("{amount}")))
-            }
-        }
+        Ok(Response::new()
+            .add_attribute("action", "mint")
+            .add_attribute("to", addr_to_hex(&to))
+            .add_attribute("amount", format!("{amount}"))
+            .set_data(&new_bal))
     }
 
-    fn query(&self, _ctx: &Context, msg: Query) -> ContractResult {
-        match msg {
-            Query::Balance { address } => ok(BALANCES.load_or(&address, 0u128)),
-            Query::Allowance { owner, spender } => {
-                let key = allowance_key(&owner, &spender);
-                ok(ALLOWANCES.load_or(&key, 0u128))
-            }
-            Query::TotalSupply => ok(TOTAL_SUPPLY.load_or(0u128)),
-            Query::Info => ok(TokenInfo {
-                owner: OWNER.load_or(ZERO_ADDRESS),
-                name: TOKEN_NAME.load_or(String::from("")),
-                symbol: SYMBOL.load_or(String::from("")),
-                decimals: DECIMALS.load_or(18),
-                total_supply: TOTAL_SUPPLY.load_or(0),
-            }),
-        }
+    #[execute]
+    pub fn burn(&mut self, ctx: &Context, amount: u128) -> ContractResult {
+        ensure!(amount > 0, "burn amount must be positive");
+        let sender = ctx.sender();
+        let bal = BALANCES.load_or(&sender, 0);
+        ensure!(amount <= bal, ContractError::InsufficientFunds);
+
+        BALANCES.save(&sender, &(bal - amount))?;
+        let supply = TOTAL_SUPPLY.load_or(0);
+        TOTAL_SUPPLY.save(&(supply - amount))?;
+
+        Ok(Response::new()
+            .add_attribute("action", "burn")
+            .add_attribute("amount", format!("{amount}"))
+            .set_data(&(bal - amount)))
+    }
+
+    #[execute]
+    pub fn transfer(&mut self, ctx: &Context, to: Address, amount: u128) -> ContractResult {
+        ensure!(amount > 0, "transfer amount must be positive");
+        ensure_ne!(to, ZERO_ADDRESS, "cannot transfer to zero address");
+        let sender = ctx.sender();
+        ensure_ne!(sender, to, "cannot transfer to self");
+
+        let from_bal = BALANCES.load_or(&sender, 0);
+        ensure!(amount <= from_bal, ContractError::InsufficientFunds);
+
+        let to_bal = BALANCES.load_or(&to, 0);
+        BALANCES.save(&sender, &(from_bal - amount))?;
+        BALANCES.save(&to, &(to_bal + amount))?;
+
+        Ok(Response::new()
+            .add_attribute("action", "transfer")
+            .add_attribute("from", addr_to_hex(&sender))
+            .add_attribute("to", addr_to_hex(&to))
+            .add_attribute("amount", format!("{amount}")))
+    }
+
+    #[execute]
+    pub fn approve(&mut self, ctx: &Context, spender: Address, amount: u128) -> ContractResult {
+        ensure_ne!(spender, ZERO_ADDRESS, "cannot approve zero address");
+        let sender = ctx.sender();
+        let key = allowance_key(&sender, &spender);
+        ALLOWANCES.save(&key, &amount)?;
+
+        Ok(Response::new()
+            .add_attribute("action", "approve")
+            .add_attribute("spender", addr_to_hex(&spender))
+            .add_attribute("amount", format!("{amount}")))
+    }
+
+    #[execute]
+    pub fn transfer_from(
+        &mut self,
+        ctx: &Context,
+        from: Address,
+        to: Address,
+        amount: u128,
+    ) -> ContractResult {
+        ensure!(amount > 0, "transfer amount must be positive");
+        ensure_ne!(to, ZERO_ADDRESS, "cannot transfer to zero address");
+
+        let spender = ctx.sender();
+        let key = allowance_key(&from, &spender);
+        let allowance = ALLOWANCES.load_or(&key, 0);
+        ensure!(amount <= allowance, "insufficient allowance");
+
+        let from_bal = BALANCES.load_or(&from, 0);
+        ensure!(amount <= from_bal, ContractError::InsufficientFunds);
+
+        let to_bal = BALANCES.load_or(&to, 0);
+        BALANCES.save(&from, &(from_bal - amount))?;
+        BALANCES.save(&to, &(to_bal + amount))?;
+        ALLOWANCES.save(&key, &(allowance - amount))?;
+
+        Ok(Response::new()
+            .add_attribute("action", "transfer_from")
+            .add_attribute("from", addr_to_hex(&from))
+            .add_attribute("to", addr_to_hex(&to))
+            .add_attribute("amount", format!("{amount}")))
+    }
+
+    #[query]
+    pub fn balance(&self, _ctx: &Context, address: Address) -> ContractResult {
+        ok(BALANCES.load_or(&address, 0u128))
+    }
+
+    #[query]
+    pub fn allowance(&self, _ctx: &Context, owner: Address, spender: Address) -> ContractResult {
+        let key = allowance_key(&owner, &spender);
+        ok(ALLOWANCES.load_or(&key, 0u128))
+    }
+
+    #[query]
+    pub fn total_supply(&self, _ctx: &Context) -> ContractResult {
+        ok(TOTAL_SUPPLY.load_or(0u128))
+    }
+
+    #[query]
+    pub fn info(&self, _ctx: &Context) -> ContractResult {
+        ok(TokenInfo {
+            owner: OWNER.load_or(ZERO_ADDRESS),
+            name: TOKEN_NAME.load_or(String::from("")),
+            symbol: SYMBOL.load_or(String::from("")),
+            decimals: DECIMALS.load_or(18),
+            total_supply: TOTAL_SUPPLY.load_or(0),
+        })
     }
 }
-
-norn_entry!(NornToken);
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
@@ -219,17 +197,17 @@ mod tests {
 
     fn setup() -> (TestEnv, NornToken) {
         let env = TestEnv::new().with_sender(ALICE);
-        let token = NornToken::init(&env.ctx(), Empty);
+        let token = NornToken::new(&env.ctx());
         (env, token)
     }
 
     #[test]
     fn test_init() {
-        let (env, _token) = setup();
+        let (env, token) = setup();
         assert_eq!(OWNER.load().unwrap(), ALICE);
         assert_eq!(TOTAL_SUPPLY.load().unwrap(), 0);
 
-        let resp = _token.query(&env.ctx(), Query::Info).unwrap();
+        let resp = token.info(&env.ctx()).unwrap();
         let info: TokenInfo = from_response(&resp).unwrap();
         assert_eq!(info.symbol, "NORN");
         assert_eq!(info.decimals, 18);
@@ -238,15 +216,7 @@ mod tests {
     #[test]
     fn test_mint() {
         let (env, mut token) = setup();
-        let resp = token
-            .execute(
-                &env.ctx(),
-                Execute::Mint {
-                    to: BOB,
-                    amount: 1000,
-                },
-            )
-            .unwrap();
+        let resp = token.mint(&env.ctx(), BOB, 1000).unwrap();
         assert_attribute(&resp, "action", "mint");
         assert_attribute(&resp, "amount", "1000");
 
@@ -259,55 +229,23 @@ mod tests {
     fn test_mint_unauthorized() {
         let (env, mut token) = setup();
         env.set_sender(BOB);
-        let err = token
-            .execute(
-                &env.ctx(),
-                Execute::Mint {
-                    to: BOB,
-                    amount: 100,
-                },
-            )
-            .unwrap_err();
+        let err = token.mint(&env.ctx(), BOB, 100).unwrap_err();
         assert!(matches!(err, ContractError::Unauthorized));
     }
 
     #[test]
     fn test_mint_to_zero_address() {
         let (env, mut token) = setup();
-        let err = token
-            .execute(
-                &env.ctx(),
-                Execute::Mint {
-                    to: ZERO_ADDRESS,
-                    amount: 100,
-                },
-            )
-            .unwrap_err();
+        let err = token.mint(&env.ctx(), ZERO_ADDRESS, 100).unwrap_err();
         assert_eq!(err.message(), "cannot mint to zero address");
     }
 
     #[test]
     fn test_transfer() {
         let (env, mut token) = setup();
-        token
-            .execute(
-                &env.ctx(),
-                Execute::Mint {
-                    to: ALICE,
-                    amount: 500,
-                },
-            )
-            .unwrap();
+        token.mint(&env.ctx(), ALICE, 500).unwrap();
 
-        let resp = token
-            .execute(
-                &env.ctx(),
-                Execute::Transfer {
-                    to: BOB,
-                    amount: 200,
-                },
-            )
-            .unwrap();
+        let resp = token.transfer(&env.ctx(), BOB, 200).unwrap();
         assert_attribute(&resp, "action", "transfer");
         assert_attribute(&resp, "amount", "200");
 
@@ -318,69 +256,27 @@ mod tests {
     #[test]
     fn test_transfer_insufficient() {
         let (env, mut token) = setup();
-        token
-            .execute(
-                &env.ctx(),
-                Execute::Mint {
-                    to: ALICE,
-                    amount: 50,
-                },
-            )
-            .unwrap();
+        token.mint(&env.ctx(), ALICE, 50).unwrap();
 
-        let err = token
-            .execute(
-                &env.ctx(),
-                Execute::Transfer {
-                    to: BOB,
-                    amount: 100,
-                },
-            )
-            .unwrap_err();
+        let err = token.transfer(&env.ctx(), BOB, 100).unwrap_err();
         assert!(matches!(err, ContractError::InsufficientFunds));
     }
 
     #[test]
     fn test_transfer_to_zero_fails() {
         let (env, mut token) = setup();
-        token
-            .execute(
-                &env.ctx(),
-                Execute::Mint {
-                    to: ALICE,
-                    amount: 100,
-                },
-            )
-            .unwrap();
+        token.mint(&env.ctx(), ALICE, 100).unwrap();
 
-        let err = token
-            .execute(
-                &env.ctx(),
-                Execute::Transfer {
-                    to: ZERO_ADDRESS,
-                    amount: 10,
-                },
-            )
-            .unwrap_err();
+        let err = token.transfer(&env.ctx(), ZERO_ADDRESS, 10).unwrap_err();
         assert_eq!(err.message(), "cannot transfer to zero address");
     }
 
     #[test]
     fn test_burn() {
         let (env, mut token) = setup();
-        token
-            .execute(
-                &env.ctx(),
-                Execute::Mint {
-                    to: ALICE,
-                    amount: 300,
-                },
-            )
-            .unwrap();
+        token.mint(&env.ctx(), ALICE, 300).unwrap();
 
-        let resp = token
-            .execute(&env.ctx(), Execute::Burn { amount: 100 })
-            .unwrap();
+        let resp = token.burn(&env.ctx(), 100).unwrap();
         assert_attribute(&resp, "action", "burn");
 
         let remaining: u128 = from_response(&resp).unwrap();
@@ -391,72 +287,29 @@ mod tests {
     #[test]
     fn test_burn_insufficient() {
         let (env, mut token) = setup();
-        token
-            .execute(
-                &env.ctx(),
-                Execute::Mint {
-                    to: ALICE,
-                    amount: 10,
-                },
-            )
-            .unwrap();
+        token.mint(&env.ctx(), ALICE, 10).unwrap();
 
-        let err = token
-            .execute(&env.ctx(), Execute::Burn { amount: 50 })
-            .unwrap_err();
+        let err = token.burn(&env.ctx(), 50).unwrap_err();
         assert!(matches!(err, ContractError::InsufficientFunds));
     }
 
     #[test]
     fn test_approve_and_transfer_from() {
         let (env, mut token) = setup();
-        token
-            .execute(
-                &env.ctx(),
-                Execute::Mint {
-                    to: ALICE,
-                    amount: 1000,
-                },
-            )
-            .unwrap();
+        token.mint(&env.ctx(), ALICE, 1000).unwrap();
 
         // Alice approves Bob to spend 500
-        let resp = token
-            .execute(
-                &env.ctx(),
-                Execute::Approve {
-                    spender: BOB,
-                    amount: 500,
-                },
-            )
-            .unwrap();
+        let resp = token.approve(&env.ctx(), BOB, 500).unwrap();
         assert_attribute(&resp, "action", "approve");
 
         // Check allowance
-        let resp = token
-            .query(
-                &env.ctx(),
-                Query::Allowance {
-                    owner: ALICE,
-                    spender: BOB,
-                },
-            )
-            .unwrap();
-        let allowance: u128 = from_response(&resp).unwrap();
-        assert_eq!(allowance, 500);
+        let resp = token.allowance(&env.ctx(), ALICE, BOB).unwrap();
+        let allow: u128 = from_response(&resp).unwrap();
+        assert_eq!(allow, 500);
 
         // Bob transfers from Alice to Charlie
         env.set_sender(BOB);
-        let resp = token
-            .execute(
-                &env.ctx(),
-                Execute::TransferFrom {
-                    from: ALICE,
-                    to: CHARLIE,
-                    amount: 200,
-                },
-            )
-            .unwrap();
+        let resp = token.transfer_from(&env.ctx(), ALICE, CHARLIE, 200).unwrap();
         assert_attribute(&resp, "action", "transfer_from");
 
         assert_eq!(BALANCES.load_or(&ALICE, 0), 800);
@@ -470,35 +323,12 @@ mod tests {
     #[test]
     fn test_transfer_from_insufficient_allowance() {
         let (env, mut token) = setup();
-        token
-            .execute(
-                &env.ctx(),
-                Execute::Mint {
-                    to: ALICE,
-                    amount: 1000,
-                },
-            )
-            .unwrap();
-        token
-            .execute(
-                &env.ctx(),
-                Execute::Approve {
-                    spender: BOB,
-                    amount: 100,
-                },
-            )
-            .unwrap();
+        token.mint(&env.ctx(), ALICE, 1000).unwrap();
+        token.approve(&env.ctx(), BOB, 100).unwrap();
 
         env.set_sender(BOB);
         let err = token
-            .execute(
-                &env.ctx(),
-                Execute::TransferFrom {
-                    from: ALICE,
-                    to: CHARLIE,
-                    amount: 200,
-                },
-            )
+            .transfer_from(&env.ctx(), ALICE, CHARLIE, 200)
             .unwrap_err();
         assert_eq!(err.message(), "insufficient allowance");
     }
@@ -506,26 +336,14 @@ mod tests {
     #[test]
     fn test_query_balance() {
         let (env, mut token) = setup();
-        token
-            .execute(
-                &env.ctx(),
-                Execute::Mint {
-                    to: BOB,
-                    amount: 42,
-                },
-            )
-            .unwrap();
+        token.mint(&env.ctx(), BOB, 42).unwrap();
 
-        let resp = token
-            .query(&env.ctx(), Query::Balance { address: BOB })
-            .unwrap();
+        let resp = token.balance(&env.ctx(), BOB).unwrap();
         let bal: u128 = from_response(&resp).unwrap();
         assert_eq!(bal, 42);
 
         // Non-existent balance = 0
-        let resp = token
-            .query(&env.ctx(), Query::Balance { address: CHARLIE })
-            .unwrap();
+        let resp = token.balance(&env.ctx(), CHARLIE).unwrap();
         let bal: u128 = from_response(&resp).unwrap();
         assert_eq!(bal, 0);
     }
@@ -533,26 +351,10 @@ mod tests {
     #[test]
     fn test_query_total_supply() {
         let (env, mut token) = setup();
-        token
-            .execute(
-                &env.ctx(),
-                Execute::Mint {
-                    to: ALICE,
-                    amount: 100,
-                },
-            )
-            .unwrap();
-        token
-            .execute(
-                &env.ctx(),
-                Execute::Mint {
-                    to: BOB,
-                    amount: 200,
-                },
-            )
-            .unwrap();
+        token.mint(&env.ctx(), ALICE, 100).unwrap();
+        token.mint(&env.ctx(), BOB, 200).unwrap();
 
-        let resp = token.query(&env.ctx(), Query::TotalSupply).unwrap();
+        let resp = token.total_supply(&env.ctx()).unwrap();
         let supply: u128 = from_response(&resp).unwrap();
         assert_eq!(supply, 300);
     }

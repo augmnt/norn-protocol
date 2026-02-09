@@ -39,7 +39,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-norn-sdk = {{ git = "https://github.com/augmnt/norn-protocol", tag = "v0.13.0" }}
+norn-sdk = {{ git = "https://github.com/augmnt/norn-protocol", tag = "v0.14.0" }}
 borsh = {{ version = "1.5", default-features = false, features = ["derive"] }}
 
 [profile.release]
@@ -56,7 +56,7 @@ target = "wasm32-unknown-unknown"
 "#;
     fs::write(dir.join(".cargo/config.toml"), cargo_config)?;
 
-    // src/lib.rs — SDK v3 contract template with Item, Response, ensure!, and a test.
+    // src/lib.rs — SDK v5 contract template with #[norn_contract] proc macro.
     let lib_rs = format!(
         r#"//! {} — a Norn loom smart contract.
 
@@ -73,52 +73,34 @@ const VALUE: Item<u64> = Item::new("value");
 
 // ── Contract ───────────────────────────────────────────────────────────────
 
-#[derive(BorshSerialize, BorshDeserialize)]
+#[norn_contract]
 pub struct MyContract;
 
-#[derive(BorshSerialize, BorshDeserialize)]
-pub enum Execute {{
-    SetValue {{ value: u64 }},
-}}
-
-#[derive(BorshSerialize, BorshDeserialize)]
-pub enum Query {{
-    GetValue,
-}}
-
-impl Contract for MyContract {{
-    type Init = Empty;
-    type Exec = Execute;
-    type Query = Query;
-
-    fn init(ctx: &Context, _msg: Empty) -> Self {{
+#[norn_contract]
+impl MyContract {{
+    #[init]
+    pub fn new(ctx: &Context) -> Self {{
         OWNER.save(&ctx.sender()).unwrap();
         VALUE.save(&0u64).unwrap();
         MyContract
     }}
 
-    fn execute(&mut self, ctx: &Context, msg: Execute) -> ContractResult {{
-        match msg {{
-            Execute::SetValue {{ value }} => {{
-                let owner = OWNER.load()?;
-                ctx.require_sender(&owner)?;
-                VALUE.save(&value)?;
-                Ok(Response::new()
-                    .add_attribute("action", "set_value")
-                    .add_attribute("value", format!("{{value}}"))
-                    .set_data(&value))
-            }}
-        }}
+    #[execute]
+    pub fn set_value(&mut self, ctx: &Context, value: u64) -> ContractResult {{
+        let owner = OWNER.load()?;
+        ctx.require_sender(&owner)?;
+        VALUE.save(&value)?;
+        Ok(Response::new()
+            .add_attribute("action", "set_value")
+            .add_attribute("value", format!("{{value}}"))
+            .set_data(&value))
     }}
 
-    fn query(&self, _ctx: &Context, msg: Query) -> ContractResult {{
-        match msg {{
-            Query::GetValue => ok(VALUE.load_or(0u64)),
-        }}
+    #[query]
+    pub fn get_value(&self, _ctx: &Context) -> ContractResult {{
+        ok(VALUE.load_or(0u64))
     }}
 }}
-
-norn_entry!(MyContract);
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
@@ -132,14 +114,12 @@ mod tests {{
     #[test]
     fn test_set_and_get() {{
         let env = TestEnv::new().with_sender(ALICE);
-        let mut contract = MyContract::init(&env.ctx(), Empty);
+        let mut contract = MyContract::new(&env.ctx());
 
-        let resp = contract
-            .execute(&env.ctx(), Execute::SetValue {{ value: 42 }})
-            .unwrap();
+        let resp = contract.set_value(&env.ctx(), 42).unwrap();
         assert_attribute(&resp, "action", "set_value");
 
-        let resp = contract.query(&env.ctx(), Query::GetValue).unwrap();
+        let resp = contract.get_value(&env.ctx()).unwrap();
         let val: u64 = from_response(&resp).unwrap();
         assert_eq!(val, 42);
     }}
@@ -147,12 +127,10 @@ mod tests {{
     #[test]
     fn test_unauthorized() {{
         let env = TestEnv::new().with_sender(ALICE);
-        let mut contract = MyContract::init(&env.ctx(), Empty);
+        let mut contract = MyContract::new(&env.ctx());
 
         env.set_sender([2u8; 20]); // different sender
-        let err = contract
-            .execute(&env.ctx(), Execute::SetValue {{ value: 99 }})
-            .unwrap_err();
+        let err = contract.set_value(&env.ctx(), 99).unwrap_err();
         assert!(matches!(err, ContractError::Unauthorized));
     }}
 }}

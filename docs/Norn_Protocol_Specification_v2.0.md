@@ -3098,6 +3098,85 @@ impl Contract for MyToken {
 }
 ```
 
+### 32.14 v0.14.0 Updates (SDK v5 — Proc-Macro DX Overhaul)
+
+SDK v5 introduces the `#[norn_contract]` proc macro that eliminates boilerplate from loom contract development. The macro auto-generates borsh derives, dispatch enums, `Contract` trait impl, and `norn_entry!` call from annotated methods.
+
+| Feature | Details |
+|---|---|
+| **`norn-sdk-macros` crate** | New proc-macro crate providing `#[norn_contract]` attribute |
+| **`#[norn_contract]` on struct** | Auto-adds `#[derive(BorshSerialize, BorshDeserialize)]` |
+| **`#[norn_contract]` on impl** | Scans `#[init]`/`#[execute]`/`#[query]` method attributes, generates dispatch enums + Contract impl + norn_entry! |
+| **`#[init]` method** | Constructor (exactly one, must return `Self`). Extra params after `&Context` become a generated init struct. |
+| **`#[execute]` method** | State-changing operation (`&mut self, &Context, ...`). Each becomes an enum variant. |
+| **`#[query]` method** | Read-only operation (`&self, &Context, ...`). Each becomes an enum variant. |
+| **Direct method calls** | Tests call `counter.increment(&ctx)` instead of `counter.execute(&ctx, Execute::Increment)` |
+| **Reference param handling** | `&T` in method signature → `T` in generated enum, `&var` in dispatch call |
+| **Backward compatible** | Manual `Contract` trait + `norn_entry!` approach still fully supported |
+| **Coin example** | New minimal token example mirroring Solidity's intro Coin contract |
+
+No PROTOCOL_VERSION or SCHEMA_VERSION change — SDK-level improvements only.
+
+#### Before vs After (v0.13.0 → v0.14.0)
+
+```rust
+// BEFORE (v0.13.0) — 70 lines, manual enums + match dispatch
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct Counter { value: u64 }
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub enum Execute { Increment, Decrement, Reset }
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub enum Query { GetValue }
+
+impl Contract for Counter {
+    type Init = Empty;
+    type Exec = Execute;
+    type Query = Query;
+    fn init(_ctx: &Context, _msg: Empty) -> Self { Counter { value: 0 } }
+    fn execute(&mut self, _ctx: &Context, msg: Execute) -> ContractResult {
+        match msg {
+            Execute::Increment => { self.value += 1; ok(self.value) }
+            Execute::Decrement => { self.value -= 1; ok(self.value) }
+            Execute::Reset => { self.value = 0; ok(self.value) }
+        }
+    }
+    fn query(&self, _ctx: &Context, msg: Query) -> ContractResult {
+        match msg { Query::GetValue => ok(self.value) }
+    }
+}
+norn_entry!(Counter);
+
+// AFTER (v0.14.0) — 28 lines, zero ceremony
+#[norn_contract]
+pub struct Counter { value: u64 }
+
+#[norn_contract]
+impl Counter {
+    #[init]
+    pub fn new(_ctx: &Context) -> Self { Counter { value: 0 } }
+
+    #[execute]
+    pub fn increment(&mut self, _ctx: &Context) -> ContractResult {
+        self.value += 1; ok(self.value)
+    }
+
+    #[execute]
+    pub fn decrement(&mut self, _ctx: &Context) -> ContractResult {
+        self.value -= 1; ok(self.value)
+    }
+
+    #[execute]
+    pub fn reset(&mut self, _ctx: &Context) -> ContractResult {
+        self.value = 0; ok(self.value)
+    }
+
+    #[query]
+    pub fn get_value(&self, _ctx: &Context) -> ContractResult { ok(self.value) }
+}
+```
+
 ---
 
 *End of Norn Protocol Specification v2.0.*

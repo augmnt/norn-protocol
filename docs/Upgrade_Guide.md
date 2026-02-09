@@ -422,3 +422,80 @@ impl Contract for MyContract {
 ### Scaffolding
 
 `norn wallet new-loom` now generates v0.13.0 templates with `type Init = Empty`.
+
+## Changelog: v0.14.0 (SDK v5 — Proc-Macro DX Overhaul)
+
+### Upgrading from v0.13.x to v0.14.0
+
+**No `--reset-state` required.** PROTOCOL_VERSION and SCHEMA_VERSION are unchanged. Simply pull, build, and restart.
+
+```bash
+git pull && cargo build --release
+# Restart your node
+```
+
+### No Breaking Changes
+
+The `#[norn_contract]` proc macro is purely additive. Existing contracts using the manual `Contract` trait + `norn_entry!` approach continue to work without changes. You can migrate at your own pace.
+
+### Migration (optional)
+
+To adopt `#[norn_contract]` on an existing contract:
+
+1. Replace `#[derive(BorshSerialize, BorshDeserialize)]` on the contract struct with `#[norn_contract]`
+2. Remove the manual `Execute` and `Query` enums
+3. Remove the `impl Contract for MyContract { ... }` block
+4. Remove the `norn_entry!(MyContract);` call
+5. Add `#[norn_contract]` on the impl block
+6. Annotate methods: `#[init]`, `#[execute]`, `#[query]`
+7. Update tests: `counter.execute(&ctx, Execute::Increment)` → `counter.increment(&ctx)`
+
+```rust
+// v0.13.0 — manual approach
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct Counter { value: u64 }
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub enum Execute { Increment }
+
+impl Contract for Counter {
+    type Init = Empty;
+    type Exec = Execute;
+    type Query = Query;
+    fn init(_ctx: &Context, _msg: Empty) -> Self { Counter { value: 0 } }
+    fn execute(&mut self, _ctx: &Context, msg: Execute) -> ContractResult {
+        match msg { Execute::Increment => { self.value += 1; ok(self.value) } }
+    }
+    // ...
+}
+norn_entry!(Counter);
+
+// v0.14.0 — proc macro approach
+#[norn_contract]
+pub struct Counter { value: u64 }
+
+#[norn_contract]
+impl Counter {
+    #[init]
+    pub fn new(_ctx: &Context) -> Self { Counter { value: 0 } }
+
+    #[execute]
+    pub fn increment(&mut self, _ctx: &Context) -> ContractResult {
+        self.value += 1; ok(self.value)
+    }
+    // ...
+}
+```
+
+### New Features
+
+- **`#[norn_contract]` proc macro** — eliminates ~60% of ceremony (borsh derives, enum definitions, match dispatch, norn_entry!)
+- **Direct method calls in tests** — `counter.increment(&ctx)` instead of `counter.execute(&ctx, Execute::Increment)`
+- **Typed init params** — extra params after `&Context` in `#[init]` automatically become a generated init struct
+- **Reference parameter handling** — `&T` method params automatically store `T` in enums, pass `&var` in dispatch
+- **Coin example** — new minimal token contract mirroring Solidity's intro Coin example
+- **norn-sdk-macros crate** — new workspace member providing the proc macro
+
+### Scaffolding
+
+`norn wallet new-loom` now generates v0.14.0 templates with `#[norn_contract]` syntax.

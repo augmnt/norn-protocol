@@ -11,16 +11,18 @@ members = [
     "norn-spindle",
     "norn-node",
     "norn-sdk",
+    "norn-sdk-macros",
 ]
 exclude = [
     "examples/counter",
     "examples/token-vault",
     "examples/norn-token",
     "examples/norn20-token",
+    "examples/coin",
 ]
 
 [workspace.package]
-version = "0.13.0"
+version = "0.14.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/augmnt/norn-protocol"

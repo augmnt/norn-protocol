@@ -1,46 +1,38 @@
 //! SDK for writing Norn Protocol loom smart contracts.
 //!
-//! # SDK v3 — Storage, Response Builder, Guards, Testing
+//! # SDK v5 — Proc-Macro DX
 //!
-//! The recommended way to write contracts is with the [`Contract`] trait,
-//! [`norn_entry!`] macro, typed [`storage`] primitives, and [`Response`]
-//! builder:
+//! The recommended way to write contracts uses `#[norn_contract]`:
 //!
 //! ```ignore
 //! use norn_sdk::prelude::*;
 //!
-//! #[derive(BorshSerialize, BorshDeserialize)]
-//! pub struct MyToken;
+//! #[norn_contract]
+//! pub struct Counter { value: u64 }
 //!
-//! #[derive(BorshSerialize, BorshDeserialize)]
-//! pub struct InitMsg { name: String, symbol: String, decimals: u8, initial_supply: u128 }
+//! #[norn_contract]
+//! impl Counter {
+//!     #[init]
+//!     pub fn new(_ctx: &Context) -> Self { Counter { value: 0 } }
 //!
-//! impl Contract for MyToken {
-//!     type Init = InitMsg;
-//!     type Exec = Exec;
-//!     type Query = Query;
-//!     fn init(ctx: &Context, msg: InitMsg) -> Self {
-//!         Ownable::init(&ctx.sender()).unwrap();
-//!         Norn20::init(&msg.name, &msg.symbol, msg.decimals).unwrap();
-//!         if msg.initial_supply > 0 {
-//!             Norn20::mint(&ctx.sender(), msg.initial_supply).unwrap();
-//!         }
-//!         MyToken
+//!     #[execute]
+//!     pub fn increment(&mut self, _ctx: &Context) -> ContractResult {
+//!         self.value += 1;
+//!         ok(self.value)
 //!     }
-//!     fn execute(&mut self, ctx: &Context, msg: Exec) -> ContractResult {
-//!         match msg {
-//!             Exec::Transfer { to, amount } => Norn20::transfer(ctx, &to, amount),
-//!         }
-//!     }
-//!     fn query(&self, _ctx: &Context, msg: Query) -> ContractResult {
-//!         match msg {
-//!             Query::Balance { addr } => ok(Norn20::balance_of(&addr)),
-//!         }
+//!
+//!     #[query]
+//!     pub fn get_value(&self, _ctx: &Context) -> ContractResult {
+//!         ok(self.value)
 //!     }
 //! }
-//!
-//! norn_entry!(MyToken);
 //! ```
+//!
+//! The macro generates borsh derives, dispatch enums, `Contract` trait impl,
+//! and `norn_entry!` — so every line is business logic.
+//!
+//! The manual `Contract` trait + `norn_entry!` approach is still fully
+//! supported for advanced use cases.
 //!
 //! # Low-level API
 //!
@@ -82,6 +74,9 @@ pub mod testing;
 pub use contract::{Context, Contract};
 pub use error::ContractError;
 pub use response::ContractResult;
+
+// Re-export the proc macro from norn-sdk-macros.
+pub use norn_sdk_macros::norn_contract;
 
 // Re-export dlmalloc for the norn_entry! macro (wasm32 only).
 #[cfg(target_arch = "wasm32")]

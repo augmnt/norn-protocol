@@ -34,3 +34,6 @@ pub use alloc::{format, string::String, vec, vec::Vec};
 // Re-export the norn_entry! macro so `use norn_sdk::prelude::*` brings it into scope.
 #[doc(hidden)]
 pub use crate::norn_entry;
+
+// SDK v5 — proc macro
+pub use crate::norn_contract;
