@@ -1682,7 +1682,7 @@ Default values:
 |---------|---------|
 | `network.listen_addr` | `0.0.0.0:9740` |
 | `network.max_connections` | 50 |
-| `storage.data_dir` | `./norn-data` |
+| `storage.data_dir` | `~/.norn/data` |
 | `storage.db_type` | `memory` |
 | `validator.enabled` | `false` |
 | `validator.solo_mode` | `false` |

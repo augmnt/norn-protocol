@@ -83,7 +83,9 @@ impl Default for NodeConfig {
                 max_connections: 50,
             },
             storage: StorageConfig {
-                data_dir: "./norn-data".to_string(),
+                data_dir: dirs::home_dir()
+                    .map(|h| h.join(".norn").join("data").to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "./norn-data".to_string()),
                 db_type: "memory".to_string(),
             },
             validator: ValidatorConfig {

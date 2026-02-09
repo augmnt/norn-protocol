@@ -36,6 +36,9 @@ pub enum Command {
         /// Wipe the data directory before starting (useful after breaking upgrades)
         #[arg(long)]
         reset_state: bool,
+        /// Override data directory path
+        #[arg(long)]
+        data_dir: Option<String>,
         /// Disable default bootstrap nodes (for isolated local testing)
         #[arg(long)]
         no_bootstrap: bool,
@@ -79,6 +82,7 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
             rpc_addr,
             storage,
             network,
+            data_dir,
             reset_state,
             no_bootstrap,
             boot_nodes,
@@ -107,6 +111,9 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
             }
             if let Some(db) = storage {
                 config.storage.db_type = db;
+            }
+            if let Some(dir) = data_dir {
+                config.storage.data_dir = dir;
             }
             if let Some(ref net) = network {
                 config.network_id = net.clone();

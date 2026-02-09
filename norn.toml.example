@@ -18,7 +18,7 @@ max_connections = 50
 
 [storage]
 # Directory for on-disk data (blocks, state).
-data_dir = "./norn-data"
+data_dir = "~/.norn/data"
 
 # Storage backend: "memory", "sqlite", or "rocksdb".
 # Use "memory" for development, "rocksdb" for production.
