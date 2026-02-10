@@ -6,7 +6,7 @@
   <a href="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml"><img src="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-stable-orange.svg" alt="Rust"></a>
-  <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.10.0"><img src="https://img.shields.io/badge/version-0.10.0-green.svg" alt="Version"></a>
+  <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.18.0"><img src="https://img.shields.io/badge/version-0.18.0-green.svg" alt="Version"></a>
 </p>
 
 ---
@@ -89,7 +89,56 @@ flowchart TB
     RL["Relays<br/>(P2P Message Buffers)"] --> W
 ```
 
-## Network Modes
+## Running a Node
+
+### Network Architecture
+
+Norn uses a **seed node** as the canonical block producer and bootstrap peer. All other nodes connect to the seed to sync blocks, submit transactions, and hold their local thread state.
+
+```
+┌─────────────────────────────────────────────┐
+│            seed.norn.network                │
+│         (block producer, public)            │
+│              Port 9740 (P2P)                │
+│              Port 9741 (RPC)                │
+└──────────┬────────────┬─────────────────────┘
+           │            │
+     ┌─────┘            └─────┐
+     ▼                        ▼
+┌──────────┐            ┌──────────┐
+│ Your Node│            │ Node C   │
+│ (local)  │            │ (local)  │
+└──────────┘            └──────────┘
+```
+
+- **Seed node**: The source of truth. Produces blocks, serves the explorer and wallet extension.
+- **Local nodes**: Connect to the seed as peers. Hold your thread locally, sync blocks from the network, and gossip transactions to the seed for inclusion in blocks.
+
+### Quick Start (Join the Devnet)
+
+Connect to the public devnet seed node:
+
+```bash
+norn run --dev --storage sqlite --bootstrap /ip4/164.90.182.133/tcp/9740
+```
+
+This will:
+1. Connect to `seed.norn.network` as a peer
+2. Sync all existing blocks from the network
+3. Store your thread and chain state locally (SQLite)
+4. Gossip any transactions you submit to the seed for inclusion in blocks
+
+Your wallet CLI will work against your local node by default (`--rpc-url http://localhost:9741`), and transactions will propagate to the entire network.
+
+### Running the Seed Node
+
+The seed node runs with `--no-bootstrap` since it IS the bootstrap peer:
+
+```bash
+norn run --dev --no-bootstrap --storage sqlite --rpc-addr 0.0.0.0:9741 --data-dir /var/lib/norn/norn-data
+```
+
+### Network Modes
 
 Norn supports three network modes, selectable via `--network` flag or `network_id` in `norn.toml`:
 
@@ -99,16 +148,25 @@ Norn supports three network modes, selectable via `--network` flag or `network_i
 | `testnet` | `norn-testnet-1` | Enabled (1hr cooldown) | Public testing, multi-node |
 | `mainnet` | `norn-mainnet` | Disabled | Production deployment |
 
-```bash
-# Dev mode (default)
-norn run --dev
+### Common Flags
 
-# Testnet mode
-norn run --dev --network testnet
+| Flag | Description |
+|------|-------------|
+| `--dev` | Dev mode with faucet and solo validator |
+| `--storage sqlite` | Persist state to disk (default is in-memory) |
+| `--bootstrap /ip4/<IP>/tcp/<PORT>` | Connect to a seed node |
+| `--no-bootstrap` | Run as the seed node (no outbound peers) |
+| `--rpc-addr <ADDR:PORT>` | Bind RPC server (default `127.0.0.1:9741`) |
+| `--data-dir <PATH>` | Data directory (default `~/.norn/`) |
 
-# Mainnet mode (requires genesis file)
-norn run --network mainnet --genesis genesis/mainnet.json
-```
+### Public Endpoints
+
+| Service | URL |
+|---------|-----|
+| RPC | `https://seed.norn.network` |
+| WebSocket | `wss://seed.norn.network` |
+| Explorer | [explorer.norn.network](https://explorer.norn.network) |
+| P2P Bootstrap | `/ip4/164.90.182.133/tcp/9740` |
 
 ## Repository Structure
 
@@ -436,17 +494,22 @@ For full details, see the [Protocol Specification](docs/Norn_Protocol_Specificat
 
 The **Norn Explorer** is a block explorer web app for browsing the Norn network — blocks, transactions, accounts, tokens, and smart contracts. Built with Next.js 15, React 19, shadcn/ui, and the `@norn-protocol/sdk`.
 
+**Live instance:** [explorer.norn.network](https://explorer.norn.network)
+
+To run locally:
+
 ```bash
-cd explorer
+cd sdk/typescript && npm install && npm run build  # Build SDK first
+cd ../../explorer
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Configure the RPC endpoint in `.env.local`:
+Open [http://localhost:3000](http://localhost:3000). By default it connects to `seed.norn.network`. To point at a local node, create `.env.local`:
 
 ```env
-NEXT_PUBLIC_RPC_URL=http://localhost:9944
-NEXT_PUBLIC_WS_URL=ws://localhost:9944
+NEXT_PUBLIC_RPC_URL=http://localhost:9741
+NEXT_PUBLIC_WS_URL=ws://localhost:9741
 ```
 
 **Key pages:**
@@ -485,7 +548,7 @@ Then load the `wallet-extension/dist` directory as an unpacked extension in `chr
 - Browse NT-1 tokens and transaction history
 - Register NornNames (1 NORN fee)
 - Multi-account support with auto-lock
-- Configurable RPC endpoint (local node or devnet)
+- Configurable RPC endpoint (defaults to `seed.norn.network`)
 
 **Importing a CLI wallet:**
 
