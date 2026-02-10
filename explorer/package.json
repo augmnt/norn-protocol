@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "cd ../sdk/typescript && npm install && npm run build && cd ../../explorer && next build",
+    "postinstall": "cd ../sdk/typescript && npm install && npm run build",
+    "build": "next build",
     "start": "next start",
     "lint": "next lint"
   },
