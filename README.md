@@ -95,20 +95,23 @@ flowchart TB
 
 Norn uses a **seed node** as the canonical block producer and bootstrap peer. All other nodes connect to the seed to sync blocks, submit transactions, and hold their local thread state.
 
-```
-┌─────────────────────────────────────────────┐
-│            seed.norn.network                │
-│         (block producer, public)            │
-│              Port 9740 (P2P)                │
-│              Port 9741 (RPC)                │
-└──────────┬────────────┬─────────────────────┘
-           │            │
-     ┌─────┘            └─────┐
-     ▼                        ▼
-┌──────────┐            ┌──────────┐
-│ Your Node│            │ Node C   │
-│ (local)  │            │ (local)  │
-└──────────┘            └──────────┘
+```mermaid
+flowchart TB
+    subgraph Seed["seed.norn.network (block producer)"]
+        P2P["P2P :9740"]
+        RPC["RPC :9741"]
+    end
+
+    Explorer["Explorer\nexplorer.norn.network"] -.->|HTTPS| RPC
+    Wallet["Wallet Extension"] -.->|HTTPS| RPC
+
+    subgraph Local["Local Nodes"]
+        A["Your Node\n(norn run --dev)"]
+        B["Node B\n(norn run --dev)"]
+    end
+
+    A <-->|"gossip + sync"| P2P
+    B <-->|"gossip + sync"| P2P
 ```
 
 - **Seed node**: The source of truth. Produces blocks, serves the explorer and wallet extension.
