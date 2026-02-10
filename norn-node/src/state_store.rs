@@ -4,7 +4,7 @@ use borsh::BorshDeserialize;
 
 use norn_storage::error::StorageError;
 use norn_storage::traits::KvStore;
-use norn_types::primitives::{Address, LoomId, TokenId};
+use norn_types::primitives::{Address, Hash, LoomId, TokenId};
 use norn_types::thread::ThreadState;
 use norn_types::weave::WeaveBlock;
 
@@ -179,6 +179,33 @@ impl StateStore {
             results.push(record);
         }
         Ok(results)
+    }
+
+    /// Update the `block_height` field of a persisted transfer record by knot_id.
+    pub fn update_transfer_block_height(
+        &self,
+        knot_id: &Hash,
+        block_height: u64,
+    ) -> Result<(), StorageError> {
+        let count = self.next_transfer_seq()?;
+        for seq in (0..count).rev() {
+            let key = self.transfer_key(seq);
+            if let Some(data) = self.store.get(&key)? {
+                if let Ok(mut record) = TransferRecord::try_from_slice(&data) {
+                    if record.knot_id == *knot_id {
+                        record.block_height = Some(block_height);
+                        let value = borsh::to_vec(&record).map_err(|e| {
+                            StorageError::SerializationError {
+                                reason: e.to_string(),
+                            }
+                        })?;
+                        self.store.put(&key, &value)?;
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        Ok(()) // Not found — OK, might be evicted
     }
 
     // ── Names ───────────────────────────────────────────────────────────

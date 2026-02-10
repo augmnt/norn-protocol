@@ -651,12 +651,32 @@ impl StateManager {
     /// Archive a produced block. Evicts oldest blocks from memory when the
     /// archive exceeds `MAX_BLOCK_ARCHIVE` (older blocks remain in SQLite).
     pub fn archive_block(&mut self, block: WeaveBlock) {
-        // Persist
+        let block_height = block.height;
+
+        // Persist block.
         if let Some(ref store) = self.state_store {
             if let Err(e) = store.save_block(&block) {
                 tracing::warn!("Failed to persist block {}: {}", block.height, e);
             }
         }
+
+        // Update block_height on transfers that are now included in this block.
+        for bt in &block.transfers {
+            for record in self.transfer_log.iter_mut().rev() {
+                if record.knot_id == bt.knot_id {
+                    record.block_height = Some(block_height);
+                    if let Some(ref store) = self.state_store {
+                        if let Err(e) =
+                            store.update_transfer_block_height(&bt.knot_id, block_height)
+                        {
+                            tracing::warn!("Failed to update transfer block_height: {}", e);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
         self.block_archive.push(block);
 
         // Evict oldest blocks from memory (they're persisted to disk).
@@ -689,37 +709,6 @@ impl StateManager {
     /// Get the latest block height.
     pub fn latest_block_height(&self) -> u64 {
         self.block_archive.last().map(|b| b.height).unwrap_or(0)
-    }
-
-    /// Log a faucet credit as a transfer record (from zero-address).
-    #[allow(dead_code)]
-    pub fn log_faucet_credit(&mut self, address: Address, amount: Amount, timestamp: u64) {
-        let record = TransferRecord {
-            knot_id: [0u8; 32],
-            from: [0u8; 20], // zero address = faucet
-            to: address,
-            token_id: NATIVE_TOKEN_ID,
-            amount,
-            memo: Some(b"faucet".to_vec()),
-            timestamp,
-            block_height: None,
-        };
-        self.transfer_log.push(record.clone());
-
-        // Persist
-        if let Some(ref store) = self.state_store {
-            if let Err(e) = store.save_thread_state(
-                &address,
-                self.thread_states
-                    .get(&address)
-                    .unwrap_or(&ThreadState::new()),
-            ) {
-                tracing::warn!("Failed to persist thread state after faucet: {}", e);
-            }
-            if let Err(e) = store.append_transfer(&record) {
-                tracing::warn!("Failed to persist faucet transfer: {}", e);
-            }
-        }
     }
 
     /// Register a name for an address. Validates the name, checks uniqueness,
@@ -1515,20 +1504,6 @@ mod tests {
         assert!(sm.get_block(1).is_some());
         assert!(sm.get_block(2).is_none());
         assert_eq!(sm.latest_block_height(), 1);
-    }
-
-    #[test]
-    fn test_faucet_log() {
-        let mut sm = StateManager::new();
-        let addr = test_address(1);
-        sm.register_thread(addr, test_pubkey(1));
-        sm.credit(addr, NATIVE_TOKEN_ID, 100).unwrap();
-        sm.log_faucet_credit(addr, 100, 1000);
-
-        let history = sm.get_history(&addr, 10, 0);
-        assert_eq!(history.len(), 1);
-        assert_eq!(history[0].from, [0u8; 20]);
-        assert_eq!(history[0].memo, Some(b"faucet".to_vec()));
     }
 
     // ─── Name Registry Tests ────────────────────────────────────────────────

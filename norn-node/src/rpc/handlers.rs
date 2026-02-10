@@ -813,6 +813,7 @@ impl NornRpcServer for NornRpcImpl {
 
             // Gossip faucet credit to peers so the block producer can include it.
             if let Some(ref handle) = self.relay_handle {
+                tracing::info!(recipient = %address_hex, "broadcasting faucet credit to peers");
                 let h = handle.clone();
                 let msg = NornMessage::FaucetCredit(norn_types::network::FaucetCredit {
                     recipient: address,
@@ -823,6 +824,8 @@ impl NornRpcServer for NornRpcImpl {
                 tokio::spawn(async move {
                     let _ = h.broadcast(msg).await;
                 });
+            } else {
+                tracing::warn!("no relay handle — faucet credit not gossiped to peers");
             }
 
             Ok(SubmitResult {

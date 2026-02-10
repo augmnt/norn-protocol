@@ -913,7 +913,7 @@ impl Node {
                                     if !sm.has_transfer(&bt.knot_id) {
                                         sm.auto_register_if_needed(bt.from);
                                         sm.auto_register_if_needed(bt.to);
-                                        if let Err(e) = sm.apply_transfer(
+                                        if let Err(e) = sm.apply_peer_transfer(
                                             bt.from,
                                             bt.to,
                                             bt.token_id,
@@ -922,7 +922,7 @@ impl Node {
                                             bt.memo.clone(),
                                             bt.timestamp,
                                         ) {
-                                            tracing::debug!("block transfer failed: {}", e);
+                                            tracing::debug!("peer block transfer failed: {}", e);
                                         }
                                     }
                                 }
@@ -1084,7 +1084,7 @@ impl Node {
                                         if !sm.has_transfer(&bt.knot_id) {
                                             sm.auto_register_if_needed(bt.from);
                                             sm.auto_register_if_needed(bt.to);
-                                            if let Err(e) = sm.apply_transfer(
+                                            if let Err(e) = sm.apply_peer_transfer(
                                                 bt.from,
                                                 bt.to,
                                                 bt.token_id,
@@ -1093,7 +1093,10 @@ impl Node {
                                                 bt.memo.clone(),
                                                 bt.timestamp,
                                             ) {
-                                                tracing::debug!("block transfer failed: {}", e);
+                                                tracing::debug!(
+                                                    "peer block transfer failed: {}",
+                                                    e
+                                                );
                                             }
                                         }
                                     }
@@ -1122,6 +1125,11 @@ impl Node {
                             );
                         }
                         NornMessage::FaucetCredit(fc) => {
+                            tracing::info!(
+                                recipient = %hex::encode(fc.recipient),
+                                amount = fc.amount,
+                                "received faucet credit from peer"
+                            );
                             // Apply faucet credit from a peer node.
                             let mut sm = self.state_manager.write().await;
                             if sm.has_transfer(&fc.knot_id) {
