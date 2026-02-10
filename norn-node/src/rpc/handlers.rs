@@ -731,8 +731,18 @@ impl NornRpcServer for NornRpcImpl {
             }
 
             let faucet_amount: u128 = 100 * ONE_NORN; // 100 NORN per faucet request
+            let faucet_address: [u8; 20] = [0u8; 20]; // Zero address = faucet source
 
-            // Register in WeaveEngine if not already known.
+            // Deterministic knot_id for dedup across nodes.
+            let knot_id = {
+                let mut data = Vec::with_capacity(6 + 20 + 8);
+                data.extend_from_slice(b"faucet");
+                data.extend_from_slice(&address);
+                data.extend_from_slice(&now.to_le_bytes());
+                norn_crypto::hash::blake3_hash(&data)
+            };
+
+            // Register recipient in WeaveEngine if not already known.
             {
                 let mut engine = self.weave_engine.write().await;
                 if !engine.known_threads().contains(&address) {
@@ -747,24 +757,72 @@ impl NornRpcServer for NornRpcImpl {
                 }
             }
 
-            // Register and credit in StateManager.
+            // Register and credit in StateManager (local apply).
             {
                 let mut sm = self.state_manager.write().await;
                 sm.auto_register_if_needed(address);
-                sm.credit(
+                if let Err(e) = sm.apply_peer_transfer(
+                    faucet_address,
                     address,
                     norn_types::primitives::NATIVE_TOKEN_ID,
                     faucet_amount,
-                )
-                .map_err(|e| {
-                    ErrorObjectOwned::owned(
+                    knot_id,
+                    Some(b"faucet".to_vec()),
+                    now,
+                ) {
+                    return Err(ErrorObjectOwned::owned(
                         -32000,
                         format!("faucet credit failed: {}", e),
                         None::<()>,
-                    )
-                })?;
+                    ));
+                }
+            }
 
-                sm.log_faucet_credit(address, faucet_amount, now);
+            // Queue BlockTransfer for inclusion in the next block.
+            let bt = norn_types::weave::BlockTransfer {
+                from: faucet_address,
+                to: address,
+                token_id: norn_types::primitives::NATIVE_TOKEN_ID,
+                amount: faucet_amount,
+                memo: Some(b"faucet".to_vec()),
+                knot_id,
+                timestamp: now,
+            };
+            {
+                let mut engine = self.weave_engine.write().await;
+                let _ = engine.add_transfer(bt);
+            }
+
+            // Fire pending transaction event for real-time subscribers.
+            let _ = self.broadcasters.pending_tx.send(PendingTransactionEvent {
+                tx_type: "faucet".to_string(),
+                hash: hex::encode(knot_id),
+                from: format_address(&faucet_address),
+                timestamp: now,
+            });
+
+            // Fire transfer event for real-time subscribers.
+            let _ = self.broadcasters.transfer_tx.send(TransferEvent {
+                from: format_address(&faucet_address),
+                to: format_address(&address),
+                amount: faucet_amount.to_string(),
+                token_id: None,
+                memo: Some("faucet".to_string()),
+                block_height: 0,
+            });
+
+            // Gossip faucet credit to peers so the block producer can include it.
+            if let Some(ref handle) = self.relay_handle {
+                let h = handle.clone();
+                let msg = NornMessage::FaucetCredit(norn_types::network::FaucetCredit {
+                    recipient: address,
+                    amount: faucet_amount,
+                    timestamp: now,
+                    knot_id,
+                });
+                tokio::spawn(async move {
+                    let _ = h.broadcast(msg).await;
+                });
             }
 
             Ok(SubmitResult {

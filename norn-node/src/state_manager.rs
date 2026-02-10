@@ -692,6 +692,7 @@ impl StateManager {
     }
 
     /// Log a faucet credit as a transfer record (from zero-address).
+    #[allow(dead_code)]
     pub fn log_faucet_credit(&mut self, address: Address, amount: Amount, timestamp: u64) {
         let record = TransferRecord {
             knot_id: [0u8; 32],

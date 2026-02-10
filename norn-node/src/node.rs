@@ -1121,6 +1121,41 @@ impl Node {
                                 "upgrade notice: newer protocol version detected on the network"
                             );
                         }
+                        NornMessage::FaucetCredit(fc) => {
+                            // Apply faucet credit from a peer node.
+                            let mut sm = self.state_manager.write().await;
+                            if sm.has_transfer(&fc.knot_id) {
+                                drop(sm);
+                            } else {
+                                let faucet_address: [u8; 20] = [0u8; 20];
+                                sm.auto_register_if_needed(fc.recipient);
+                                if let Err(e) = sm.apply_peer_transfer(
+                                    faucet_address,
+                                    fc.recipient,
+                                    norn_types::primitives::NATIVE_TOKEN_ID,
+                                    fc.amount,
+                                    fc.knot_id,
+                                    Some(b"faucet".to_vec()),
+                                    fc.timestamp,
+                                ) {
+                                    tracing::debug!("faucet credit failed: {}", e);
+                                } else {
+                                    // Queue for block inclusion.
+                                    let bt = norn_types::weave::BlockTransfer {
+                                        from: faucet_address,
+                                        to: fc.recipient,
+                                        token_id: norn_types::primitives::NATIVE_TOKEN_ID,
+                                        amount: fc.amount,
+                                        memo: Some(b"faucet".to_vec()),
+                                        knot_id: fc.knot_id,
+                                        timestamp: fc.timestamp,
+                                    };
+                                    drop(sm);
+                                    let mut engine = self.weave_engine.write().await;
+                                    let _ = engine.add_transfer(bt);
+                                }
+                            }
+                        }
                         other => {
                             // Forward all other messages to WeaveEngine.
                             let mut engine = self.weave_engine.write().await;

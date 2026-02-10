@@ -11,6 +11,17 @@ use crate::weave::{
     TokenMint, WeaveBlock,
 };
 
+/// A faucet credit for devnet/testnet token distribution.
+/// Gossipped between nodes so the block producer can include it in the next block.
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+pub struct FaucetCredit {
+    pub recipient: Address,
+    pub amount: Amount,
+    pub timestamp: u64,
+    /// Deterministic ID for dedup: blake3("faucet" || recipient || timestamp).
+    pub knot_id: Hash,
+}
+
 /// Network identifier for distinguishing dev, testnet, and mainnet environments.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -252,6 +263,8 @@ pub enum NornMessage {
     LoomExecution(Box<LoomStateTransition>),
     /// A staking operation (stake/unstake).
     StakeOperation(StakeOperation),
+    /// A faucet credit (devnet/testnet only).
+    FaucetCredit(FaucetCredit),
 }
 
 impl NornMessage {
@@ -280,6 +293,7 @@ impl NornMessage {
             NornMessage::LoomDeploy(_) => 18,
             NornMessage::LoomExecution(_) => 19,
             NornMessage::StakeOperation(_) => 20,
+            NornMessage::FaucetCredit(_) => 21,
         }
     }
 }
