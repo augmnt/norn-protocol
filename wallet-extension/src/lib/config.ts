@@ -1,9 +1,9 @@
 import type { NetworkConfig } from "@/types";
 
 export const DEFAULT_NETWORK: NetworkConfig = {
-  rpcUrl: "http://localhost:9741",
-  wsUrl: "ws://localhost:9741",
-  name: "Local Devnet",
+  rpcUrl: "https://seed.norn.network",
+  wsUrl: "wss://seed.norn.network",
+  name: "Norn Devnet",
 };
 
 export const NORN_DECIMALS = 12;
