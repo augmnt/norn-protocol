@@ -1,0 +1,99 @@
+export const metadata = {
+  title: "Contributing",
+};
+
+# Contributing
+
+Contributions to the Norn Protocol are welcome. This guide covers everything you need to get started.
+
+## Repository Structure
+
+| Crate / Package | Description |
+|-----------------|-------------|
+| `norn-types` | Shared type definitions (Thread, Knot, Weave, Loom, consensus, fraud proof, genesis, network message types) |
+| `norn-crypto` | Cryptographic operations (Ed25519, BLAKE3, Merkle trees, BIP-39, SLIP-0010, XChaCha20) |
+| `norn-thread` | Thread management (chain, Knot creation/validation, state management) |
+| `norn-storage` | Storage abstraction (KvStore trait with memory, SQLite, and RocksDB backends) |
+| `norn-relay` | P2P networking (libp2p, peer discovery, relay service, state sync) |
+| `norn-weave` | Anchor chain (block production, HotStuff consensus, dynamic fees, fraud proof verification) |
+| `norn-loom` | Smart contract runtime (Wasm, host functions, gas metering, dispute resolution) |
+| `norn-spindle` | Watchtower service (monitoring, fraud proof construction) |
+| `norn-sdk` | Contract SDK (`#![no_std]`, targets `wasm32-unknown-unknown`) |
+| `norn-node` | Full node binary (CLI, JSON-RPC server, wallet, NornNames, NT-1 tokens, Looms, metrics) |
+| `sdk/typescript` | TypeScript SDK (`@norn-protocol/sdk`) |
+| `explorer/` | Block explorer (Next.js 15) |
+| `wallet-extension/` | Chrome wallet extension |
+
+## Prerequisites
+
+- [Rust](https://www.rust-lang.org/tools/install) (stable toolchain)
+
+The repository includes a `rust-toolchain.toml` that pins the stable channel with `clippy` and `rustfmt` components.
+
+## Build
+
+```bash
+cargo build --workspace
+```
+
+## Test
+
+```bash
+cargo test --workspace
+```
+
+## Lint
+
+```bash
+cargo clippy --workspace -- -D warnings
+cargo fmt --check
+```
+
+All three commands must pass before submitting a pull request.
+
+## Getting Started
+
+1. **Fork** the repository on GitHub
+2. **Clone** your fork locally:
+   ```bash
+   git clone https://github.com/<your-username>/norn-protocol.git
+   cd norn-protocol
+   ```
+3. **Create a branch** for your work:
+   ```bash
+   git checkout -b feat/your-feature-name
+   ```
+4. Make your changes, commit, and push to your fork
+5. Open a **Pull Request** against the `main` branch
+
+## Branch Naming
+
+Use descriptive branch names with a type prefix:
+
+- `feat/description` -- New feature
+- `fix/description` -- Bug fix
+- `refactor/description` -- Code refactoring
+- `docs/description` -- Documentation changes
+- `test/description` -- Test additions or fixes
+
+## Commit Style
+
+This project follows [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+<type>[optional scope]: <description>
+```
+
+Common types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`.
+
+## Code Style
+
+- Run `cargo fmt` before committing
+- Run `cargo clippy --workspace -- -D warnings` and resolve all warnings
+- Use `thiserror` for error enums
+- Use `borsh` for serialization of protocol types
+- All new code must include tests
+
+## License
+
+This project is licensed under the [MIT License](https://github.com/augmnt/norn-protocol/blob/main/LICENSE).

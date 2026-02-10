@@ -1,0 +1,133 @@
+export const metadata = {
+  title: "Wallet CLI",
+};
+
+# Wallet CLI
+
+The `norn` binary includes a full-featured wallet CLI for key management, transfers, NornNames, custom tokens, Loom smart contracts, and more.
+
+Wallets are stored in `~/.norn/wallets/` with Argon2id key derivation and XChaCha20-Poly1305 authenticated encryption.
+
+## Creating and Managing Wallets
+
+```bash
+# Create a new wallet
+norn wallet create --name alice
+
+# List wallets
+norn wallet list
+
+# View active wallet dashboard
+norn wallet whoami
+
+# Export wallet (shows private key)
+norn wallet export alice --show-private-key
+```
+
+## Checking Balances
+
+```bash
+# Native NORN balance
+norn wallet balance --address <ADDRESS>
+
+# Custom token balance by symbol
+norn wallet balance --token MTK
+
+# All token balances for active wallet
+norn wallet token-balances
+```
+
+## Sending Transfers
+
+```bash
+# Send native NORN (by address or NornName)
+norn wallet transfer --to <ADDRESS_OR_NAME> --amount <AMOUNT>
+
+# Send custom tokens
+norn wallet transfer --to <ADDRESS_OR_NAME> --amount 100 --token MTK
+
+# Alias: 'send' works the same as 'transfer'
+norn wallet send --to alice --amount 10
+```
+
+The `--token` flag accepts token symbols (e.g., `MTK`), `NORN`/`native` for the native token, or a 64-character hex token ID.
+
+## NornNames
+
+```bash
+# Register a NornName (costs 1 NORN, burned)
+norn wallet register-name --name alice
+
+# Resolve a NornName to its owner address
+norn wallet resolve --name alice
+
+# List names owned by active wallet
+norn wallet names
+```
+
+Names work seamlessly in transfers -- pass a NornName instead of a hex address.
+
+## Token Management
+
+```bash
+# Create a custom fungible token (costs 10 NORN, burned)
+norn wallet create-token --name "My Token" --symbol MTK --decimals 8 \
+  --max-supply 1000000 --initial-supply 1000
+
+# Mint tokens (creator only)
+norn wallet mint-token --token MTK --to 0x<ADDRESS> --amount 500
+
+# Burn tokens (any holder)
+norn wallet burn-token --token MTK --amount 100
+
+# Query token metadata
+norn wallet token-info MTK
+
+# List all registered tokens
+norn wallet list-tokens
+```
+
+## Loom Smart Contracts
+
+```bash
+# Deploy a loom (costs 50 NORN, burned)
+norn wallet deploy-loom --name my-contract
+
+# Upload bytecode
+norn wallet upload-bytecode --loom-id <LOOM_ID> --bytecode path/to/contract.wasm
+
+# Execute a contract
+norn wallet execute-loom --loom-id <LOOM_ID> --input 01
+
+# Query a contract (read-only)
+norn wallet query-loom --loom-id <LOOM_ID>
+
+# Join/leave a loom
+norn wallet join-loom --loom-id <LOOM_ID>
+norn wallet leave-loom --loom-id <LOOM_ID>
+
+# Query loom metadata
+norn wallet loom-info <LOOM_ID>
+
+# List all deployed looms
+norn wallet list-looms
+```
+
+## Configuration
+
+```bash
+# Configure network
+norn wallet config --network testnet
+
+# Configure RPC URL
+norn wallet config --rpc-url http://my-node:9741
+
+# Check node connectivity
+norn wallet node-info
+
+# View current fees
+norn wallet fees
+
+# View validator set
+norn wallet validators
+```

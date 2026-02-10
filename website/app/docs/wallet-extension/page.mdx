@@ -1,0 +1,55 @@
+export const metadata = {
+  title: "Wallet Extension",
+};
+
+# Wallet Extension
+
+The **Norn Wallet** is a Chrome browser extension for managing NORN on the Norn Protocol. Send and receive tokens, browse activity, register NornNames, and manage multiple accounts -- all from the browser toolbar.
+
+## Features
+
+- Create new wallets or import from private key hex / CLI export
+- Send NORN to addresses or NornNames (e.g. `alice`)
+- Receive with QR code
+- Browse NT-1 tokens and transaction history
+- Register NornNames (1 NORN fee)
+- Multi-account support with auto-lock
+- Configurable RPC endpoint (defaults to `seed.norn.network`)
+
+## Installation
+
+### Build from Source
+
+```bash
+cd wallet-extension
+npm install
+npm run build
+```
+
+### Load in Chrome
+
+1. Open `chrome://extensions`
+2. Enable **Developer mode** (toggle in top right)
+3. Click **Load unpacked**
+4. Select the `wallet-extension/dist` directory
+
+The Norn Wallet icon will appear in your browser toolbar.
+
+## Importing a CLI Wallet
+
+If you already have a wallet created with the Norn CLI, you can import it into the extension:
+
+```bash
+# In terminal -- export your CLI wallet's private key
+norn wallet export <wallet-name> --show-private-key
+```
+
+Then paste the 64-character hex private key into the extension's **Import from CLI** page.
+
+## Configuring RPC Endpoint
+
+By default the extension connects to `seed.norn.network`. To point at a local node:
+
+1. Open the wallet extension
+2. Go to Settings
+3. Update the RPC URL to `http://localhost:9741`

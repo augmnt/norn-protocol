@@ -1,0 +1,96 @@
+export const metadata = {
+  title: "Quick Start",
+};
+
+# Quick Start
+
+Get up and running with Norn in minutes. Install the node, create a wallet, and join the devnet.
+
+## Installation
+
+### From Git (latest)
+
+```bash
+cargo install --git https://github.com/augmnt/norn-protocol norn-node
+```
+
+### From Source
+
+```bash
+git clone https://github.com/augmnt/norn-protocol
+cd norn-protocol
+cargo install --path norn-node
+```
+
+After installation, the `norn` command is available:
+
+```bash
+norn --version
+norn wallet create --name mywallet
+norn run --dev
+```
+
+## Join the Devnet
+
+```bash
+norn run --dev
+```
+
+This will:
+
+1. Connect to `seed.norn.network` as a peer (automatic)
+2. Sync all existing blocks from the network
+3. Store your thread and chain state locally (SQLite, persistent)
+4. Gossip any transactions you submit to the seed for inclusion in blocks
+
+Your wallet CLI works against your local node by default (`--rpc-url http://localhost:9741`), and transactions will propagate to the entire network.
+
+## Network Architecture
+
+Norn uses a **seed node** as the canonical block producer and bootstrap peer. All other nodes connect to the seed to sync blocks, submit transactions, and hold their local thread state.
+
+- **Seed node**: The source of truth. Produces blocks, serves the explorer and wallet extension.
+- **Local nodes**: Connect to the seed as peers. Hold your thread locally, sync blocks from the network, and gossip transactions to the seed for inclusion in blocks.
+
+## Network Modes
+
+| Mode | Chain ID | Faucet | Use Case |
+|------|----------|--------|----------|
+| `dev` | `norn-dev` | Enabled (60s cooldown) | Local development, solo validator |
+| `testnet` | `norn-testnet-1` | Enabled (1hr cooldown) | Public testing, multi-node |
+| `mainnet` | `norn-mainnet` | Disabled | Production deployment |
+
+## Common Flags
+
+| Flag | Description |
+|------|-------------|
+| `--dev` | Dev mode: faucet, solo validator, SQLite storage, auto-bootstrap to devnet seed |
+| `--no-bootstrap` | Run as the seed node (no outbound peers) |
+| `--storage <TYPE>` | Override storage: `sqlite` (default for --dev), `memory`, `rocksdb` |
+| `--boot-node <MULTIADDR>` | Add a custom bootstrap peer |
+| `--rpc-addr <ADDR:PORT>` | Bind RPC server (default `127.0.0.1:9741`) |
+| `--data-dir <PATH>` | Data directory (default `~/.norn/data`) |
+| `--reset-state` | Wipe data directory before starting |
+
+## Public Endpoints
+
+| Service | URL |
+|---------|-----|
+| RPC | `https://seed.norn.network` |
+| WebSocket | `wss://seed.norn.network` |
+| Explorer | [explorer.norn.network](https://explorer.norn.network) |
+| P2P Bootstrap | `/ip4/164.90.182.133/tcp/9740` |
+
+## Running the Seed Node
+
+The seed node runs with `--no-bootstrap` since it IS the bootstrap peer:
+
+```bash
+norn run --dev --no-bootstrap --rpc-addr 0.0.0.0:9741 --data-dir /var/lib/norn/norn-data
+```
+
+## Next Steps
+
+- [Wallet CLI](/docs/wallet) -- Create wallets and send transactions
+- [NornNames](/docs/names) -- Register a human-readable name
+- [Architecture](/docs/architecture) -- Understand how the protocol works

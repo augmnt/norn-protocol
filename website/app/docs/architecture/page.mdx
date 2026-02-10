@@ -1,0 +1,90 @@
+export const metadata = {
+  title: "Architecture",
+};
+
+# Architecture
+
+Norn reimagines the relationship between users and the chain. Rather than forcing every transaction through global consensus, Norn treats the chain as a **courtroom**, not a bank.
+
+Users transact directly with each other using cryptographic signatures, maintaining their own personal state histories called *Threads*. The chain intervenes only when there is a dispute, processing fraud proofs rather than transactions.
+
+## Core Components
+
+| Component | Description |
+|-----------|-------------|
+| **Threads** | Personal state chains -- each user maintains their own signed history of state transitions, stored locally on their device. |
+| **Knots** | Atomic state transitions -- bilateral or multilateral agreements that tie Threads together, signed by all participants. |
+| **Weave** | The anchor chain -- a minimal HotStuff BFT blockchain that processes commitments, registrations, and fraud proofs. |
+| **Looms** | Off-chain smart contracts -- WebAssembly programs that execute off-chain with on-chain fraud proof guarantees. |
+| **Spindles** | Watchtower services -- monitor the Weave on behalf of offline users and submit fraud proofs when misbehavior is detected. |
+| **Relays** | P2P message buffers -- asynchronous message delivery between Threads via the libp2p protocol stack. |
+
+## The Courtroom Model
+
+Traditional blockchains act as banks: every transaction must be processed, validated, and stored by every node. This creates inherent scalability limits -- throughput is bounded by block size and consensus overhead.
+
+Norn inverts this model. The vast majority of economic activity happens **off-chain** between two parties, using nothing but cryptographic signatures. The anchor chain (the Weave) serves as a minimal, efficient arbiter of last resort:
+
+- **Normal operation**: Alice and Bob exchange signed messages directly. The chain never sees their transactions.
+- **Periodic commitments**: Users publish cryptographic commitments (state hash + version) to the Weave, anchoring their off-chain state.
+- **Dispute resolution**: If someone cheats (e.g., signs conflicting states), the counterparty or a Spindle submits a fraud proof. The Weave adjudicates and penalizes the cheater.
+
+## Threads
+
+A Thread is a user's personal state chain -- an ordered sequence of signed state transitions stored on their own device. Each Thread entry contains:
+
+- A state hash (BLAKE3)
+- A version number (monotonically increasing)
+- The owner's Ed25519 signature
+
+Threads are never uploaded to the chain in full. Only commitments (hash + version) are periodically published to the Weave.
+
+## Knots
+
+A Knot is an atomic agreement between two or more parties. When Alice sends Bob 10 NORN:
+
+1. Alice creates a Knot proposing the transfer
+2. Bob validates and co-signs the Knot
+3. Both parties append the Knot to their respective Threads
+
+The transfer is final the moment both signatures exist. No block confirmation needed.
+
+## The Weave
+
+The Weave is Norn's anchor chain -- a minimal blockchain running HotStuff BFT consensus. It processes:
+
+- **Commitments** -- Cryptographic state anchors from users
+- **Registrations** -- NornNames, NT-1 tokens, Loom deployments
+- **Fraud proofs** -- Evidence of cheating, triggering economic penalties
+
+The Weave is intentionally minimal. It does not process transfers or smart contract executions.
+
+## Looms
+
+Looms are off-chain smart contracts powered by WebAssembly. They execute on participants' devices (not on-chain) but are backed by on-chain fraud proof guarantees:
+
+- Contracts are registered on the Weave (with bytecode stored off-chain)
+- Execution happens locally with gas metering
+- Disputes trigger on-chain fraud proof verification
+- Cross-contract calls supported (max depth: 8)
+
+## Spindles
+
+Spindles are watchtower services that monitor the Weave on behalf of offline users. They:
+
+- Watch for conflicting commitments
+- Construct and submit fraud proofs
+- Operate with rate limiting to prevent spam
+
+## Relays
+
+Relays provide asynchronous P2P message delivery between Threads using the libp2p protocol stack. They enable:
+
+- Message buffering for offline recipients
+- Peer discovery and gossip
+- State synchronization between nodes
+
+## Further Reading
+
+- [Protocol Specification](https://github.com/augmnt/norn-protocol/blob/main/docs/Norn_Protocol_Specification_v2.0.md) -- Complete technical specification
+- [White Paper](https://github.com/augmnt/norn-protocol/blob/main/docs/Norn_Protocol_White_Paper.md) -- Design philosophy and protocol comparison

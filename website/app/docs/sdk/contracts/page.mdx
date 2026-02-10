@@ -1,0 +1,225 @@
+export const metadata = {
+  title: "Contract SDK",
+};
+
+# Contract SDK
+
+The `norn-sdk` crate provides the building blocks for writing Norn loom smart contracts in Rust, targeting `wasm32-unknown-unknown`.
+
+## Overview
+
+Contracts export three entry points: `init()`, `execute(ptr, len)`, and `query(ptr, len)`. The SDK provides proc macros and abstractions to simplify development.
+
+## Setup
+
+Add these dependencies to your contract's `Cargo.toml`:
+
+```toml
+[dependencies]
+norn-sdk = { path = "../../norn-sdk" }
+norn-sdk-macros = { path = "../../norn-sdk-macros" }
+borsh = { version = "1", features = ["derive"] }
+
+[lib]
+crate-type = ["cdylib"]
+```
+
+Add the Wasm target:
+
+```bash
+rustup target add wasm32-unknown-unknown
+```
+
+## The `#[norn_contract]` Macro
+
+The `#[norn_contract]` proc macro generates boilerplate for your contract. Annotate a struct and its impl block:
+
+```rust
+use norn_sdk::prelude::*;
+use norn_sdk_macros::norn_contract;
+use borsh::{BorshDeserialize, BorshSerialize};
+
+#[norn_contract]
+pub struct Counter;
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub enum ExecuteMsg {
+    Increment,
+    Reset { count: u64 },
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub enum QueryMsg {
+    GetCount,
+}
+
+impl Contract for Counter {
+    type Init = ();
+    type Exec = ExecuteMsg;
+    type Query = QueryMsg;
+
+    #[init]
+    fn init(ctx: &mut Context, _msg: Self::Init) -> Result<Response, ContractError> {
+        COUNT.save(ctx, &0)?;
+        Ok(Response::new())
+    }
+
+    #[execute]
+    fn execute(ctx: &mut Context, msg: Self::Exec) -> Result<Response, ContractError> {
+        match msg {
+            ExecuteMsg::Increment => {
+                let count = COUNT.load(ctx)?.unwrap_or(0);
+                COUNT.save(ctx, &(count + 1))?;
+                Ok(Response::new().add_event(Event::new("increment")))
+            }
+            ExecuteMsg::Reset { count } => {
+                COUNT.save(ctx, &count)?;
+                Ok(Response::new())
+            }
+        }
+    }
+
+    #[query]
+    fn query(ctx: &Context, msg: Self::Query) -> Result<Vec<u8>, ContractError> {
+        match msg {
+            QueryMsg::GetCount => {
+                let count = COUNT.load(ctx)?.unwrap_or(0);
+                Ok(borsh::to_vec(&count)?)
+            }
+        }
+    }
+}
+
+const COUNT: Item<u64> = Item::new("count");
+
+norn_entry!(Counter);
+```
+
+## Entry Point Markers
+
+| Marker | Signature | Purpose |
+|--------|-----------|---------|
+| `#[init]` | `fn init(ctx: &mut Context, msg: Self::Init) -> Result<Response, ContractError>` | Called once when bytecode is uploaded |
+| `#[execute]` | `fn execute(ctx: &mut Context, msg: Self::Exec) -> Result<Response, ContractError>` | Called for state-mutating operations |
+| `#[query]` | `fn query(ctx: &Context, msg: Self::Query) -> Result<Vec<u8>, ContractError>` | Called for read-only queries |
+
+## Storage Primitives
+
+### `Item<T>`
+
+A single stored value.
+
+```rust
+const OWNER: Item<Address> = Item::new("owner");
+
+// Save
+OWNER.save(ctx, &address)?;
+
+// Load
+let owner: Option<Address> = OWNER.load(ctx)?;
+```
+
+### `Map<K, V>`
+
+A key-value map.
+
+```rust
+const BALANCES: Map<Address, u128> = Map::new("balances");
+
+// Save
+BALANCES.save(ctx, &address, &amount)?;
+
+// Load
+let balance: Option<u128> = BALANCES.load(ctx, &address)?;
+
+// Remove
+BALANCES.remove(ctx, &address);
+```
+
+### `IndexedMap<K, V>`
+
+A map that tracks all keys for iteration.
+
+```rust
+const ALLOWANCES: IndexedMap<(Address, Address), u128> = IndexedMap::new("allowances");
+
+// Save, load, remove -- same as Map
+// Additionally supports iteration over all entries
+```
+
+## Response Builder
+
+```rust
+Response::new()
+    .add_event(Event::new("transfer")
+        .add_attribute("from", sender_hex)
+        .add_attribute("to", recipient_hex)
+        .add_attribute("amount", amount.to_string()))
+```
+
+## Guard Macros
+
+```rust
+ensure!(amount > 0, ContractError::Custom("amount must be positive".into()));
+ensure_eq!(sender, owner, ContractError::Unauthorized);
+ensure_ne!(from, to, ContractError::Custom("cannot self-transfer".into()));
+```
+
+## Standard Library (stdlib)
+
+The SDK includes composable mixins:
+
+### `Ownable`
+
+Ownership management with transfer capability.
+
+### `Pausable`
+
+Emergency pause/unpause functionality.
+
+### `Norn20`
+
+Full NT-1 token implementation with mint, burn, transfer, and allowance support.
+
+## Cross-Contract Calls
+
+Contracts can call other contracts:
+
+```rust
+let result = ctx.call_contract_raw(target_loom_id, &input_bytes)?;
+```
+
+Maximum call depth is 8. Re-entrancy (calling back into the same contract) is detected and rejected.
+
+## Building
+
+```bash
+cargo build --target wasm32-unknown-unknown --release \
+  --manifest-path examples/counter/Cargo.toml
+```
+
+The compiled `.wasm` file will be at `target/wasm32-unknown-unknown/release/counter.wasm`.
+
+## Testing
+
+Use `TestEnv` for native testing without a Wasm runtime:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use norn_sdk::testing::TestEnv;
+
+    #[test]
+    fn test_increment() {
+        let mut env = TestEnv::new();
+        Counter::init(&mut env.ctx, ()).unwrap();
+
+        Counter::execute(&mut env.ctx, ExecuteMsg::Increment).unwrap();
+        let count: u64 = borsh::from_slice(
+            &Counter::query(&env.ctx, QueryMsg::GetCount).unwrap()
+        ).unwrap();
+        assert_eq!(count, 1);
+    }
+}
+```
