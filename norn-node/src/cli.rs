@@ -27,7 +27,7 @@ pub enum Command {
         /// Override RPC listen address (e.g., "0.0.0.0:9741" for LAN access)
         #[arg(long)]
         rpc_addr: Option<String>,
-        /// Storage backend for dev mode: "memory" (default), "sqlite", "rocksdb"
+        /// Storage backend: "sqlite" (default for --dev), "memory", "rocksdb"
         #[arg(long)]
         storage: Option<String>,
         /// Network: "dev" (default for --dev), "testnet", "mainnet"

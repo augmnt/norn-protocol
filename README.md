@@ -49,7 +49,7 @@ After installation, the `norn` command is available:
 ```bash
 norn --version
 norn wallet create --name mywallet
-norn run --dev
+norn run --dev   # Joins the devnet, syncs blocks, persists to SQLite
 ```
 
 ## Architecture
@@ -116,26 +116,24 @@ Norn uses a **seed node** as the canonical block producer and bootstrap peer. Al
 
 ### Quick Start (Join the Devnet)
 
-Connect to the public devnet seed node:
-
 ```bash
-norn run --dev --storage sqlite --bootstrap /ip4/164.90.182.133/tcp/9740
+norn run --dev
 ```
 
-This will:
-1. Connect to `seed.norn.network` as a peer
+That's it. This will:
+1. Connect to `seed.norn.network` as a peer (automatic)
 2. Sync all existing blocks from the network
-3. Store your thread and chain state locally (SQLite)
+3. Store your thread and chain state locally (SQLite, persistent)
 4. Gossip any transactions you submit to the seed for inclusion in blocks
 
-Your wallet CLI will work against your local node by default (`--rpc-url http://localhost:9741`), and transactions will propagate to the entire network.
+Your wallet CLI works against your local node by default (`--rpc-url http://localhost:9741`), and transactions will propagate to the entire network.
 
 ### Running the Seed Node
 
 The seed node runs with `--no-bootstrap` since it IS the bootstrap peer:
 
 ```bash
-norn run --dev --no-bootstrap --storage sqlite --rpc-addr 0.0.0.0:9741 --data-dir /var/lib/norn/norn-data
+norn run --dev --no-bootstrap --rpc-addr 0.0.0.0:9741 --data-dir /var/lib/norn/norn-data
 ```
 
 ### Network Modes
@@ -152,12 +150,13 @@ Norn supports three network modes, selectable via `--network` flag or `network_i
 
 | Flag | Description |
 |------|-------------|
-| `--dev` | Dev mode with faucet and solo validator |
-| `--storage sqlite` | Persist state to disk (default is in-memory) |
-| `--bootstrap /ip4/<IP>/tcp/<PORT>` | Connect to a seed node |
+| `--dev` | Dev mode: faucet, solo validator, SQLite storage, auto-bootstrap to devnet seed |
 | `--no-bootstrap` | Run as the seed node (no outbound peers) |
+| `--storage <TYPE>` | Override storage: `sqlite` (default for --dev), `memory`, `rocksdb` |
+| `--boot-node <MULTIADDR>` | Add a custom bootstrap peer |
 | `--rpc-addr <ADDR:PORT>` | Bind RPC server (default `127.0.0.1:9741`) |
-| `--data-dir <PATH>` | Data directory (default `~/.norn/`) |
+| `--data-dir <PATH>` | Data directory (default `~/.norn/data`) |
+| `--reset-state` | Wipe data directory before starting |
 
 ### Public Endpoints
 
