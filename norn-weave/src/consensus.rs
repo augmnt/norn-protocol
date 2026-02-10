@@ -67,6 +67,13 @@ impl HotStuffEngine {
         }
     }
 
+    /// Update the validator set (e.g., after staking changes).
+    pub fn update_validator_set(&mut self, new_vs: ValidatorSet) {
+        let validators: Vec<PublicKey> = new_vs.validators.iter().map(|v| v.pubkey).collect();
+        self.leader_rotation = LeaderRotation::new(validators);
+        self.validator_set = new_vs;
+    }
+
     /// Get the current view number.
     pub fn current_view(&self) -> u64 {
         self.current_view

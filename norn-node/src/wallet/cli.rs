@@ -472,4 +472,35 @@ pub enum WalletCommand {
         /// Project name (lowercase alphanumeric + hyphens)
         name: String,
     },
+    /// Stake tokens to become a validator
+    Stake {
+        /// Amount to stake (in base units)
+        amount: String,
+        /// Skip confirmation prompt
+        #[arg(long)]
+        yes: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
+    /// Unstake tokens (subject to bonding period)
+    Unstake {
+        /// Amount to unstake (in base units)
+        amount: String,
+        /// Skip confirmation prompt
+        #[arg(long)]
+        yes: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
+    /// Get staking information
+    StakingInfo {
+        /// Filter by validator public key (hex)
+        #[arg(long)]
+        validator: Option<String>,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
 }

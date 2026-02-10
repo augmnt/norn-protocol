@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
+use norn_crypto::hash::blake3_hash;
+use norn_crypto::keys::verify;
 use norn_types::primitives::*;
-use norn_types::weave::{Validator, ValidatorSet};
+use norn_types::weave::{StakeOperation, Validator, ValidatorSet};
 
 use crate::error::WeaveError;
 
@@ -195,6 +197,115 @@ impl StakingState {
     /// Get the stake for a validator.
     pub fn validator_stake(&self, pubkey: &PublicKey) -> Option<Amount> {
         self.validators.get(pubkey).map(|v| v.stake)
+    }
+
+    /// Get the minimum stake requirement.
+    pub fn min_stake(&self) -> Amount {
+        self.min_stake
+    }
+
+    /// Get the bonding period in blocks.
+    pub fn bonding_period(&self) -> u64 {
+        self.bonding_period
+    }
+
+    /// Get the total staked amount across all validators.
+    pub fn total_staked(&self) -> Amount {
+        self.validators.values().map(|v| v.stake).sum()
+    }
+}
+
+/// Compute the signing data for a stake operation.
+/// The wallet signs this data to authorize the stake/unstake.
+pub fn stake_operation_signing_data(op: &StakeOperation) -> Vec<u8> {
+    let mut data = Vec::new();
+    match op {
+        StakeOperation::Stake {
+            pubkey,
+            amount,
+            timestamp,
+            ..
+        } => {
+            data.extend_from_slice(pubkey);
+            data.extend_from_slice(&amount.to_le_bytes());
+            data.extend_from_slice(&timestamp.to_le_bytes());
+            data.extend_from_slice(b"stake");
+        }
+        StakeOperation::Unstake {
+            pubkey,
+            amount,
+            timestamp,
+            ..
+        } => {
+            data.extend_from_slice(pubkey);
+            data.extend_from_slice(&amount.to_le_bytes());
+            data.extend_from_slice(&timestamp.to_le_bytes());
+            data.extend_from_slice(b"unstake");
+        }
+    }
+    blake3_hash(&data).to_vec()
+}
+
+/// Validate a stake operation: check signature and parameters.
+pub fn validate_stake_operation(
+    op: &StakeOperation,
+    staking: &StakingState,
+) -> Result<(), WeaveError> {
+    let sig_data = stake_operation_signing_data(op);
+    match op {
+        StakeOperation::Stake {
+            pubkey,
+            amount,
+            signature,
+            ..
+        } => {
+            verify(&sig_data, signature, pubkey).map_err(|_| WeaveError::StakingError {
+                reason: "invalid stake signature".to_string(),
+            })?;
+            if *amount == 0 {
+                return Err(WeaveError::StakingError {
+                    reason: "stake amount must be positive".to_string(),
+                });
+            }
+            // For new validators, check amount meets minimum.
+            if staking.validator_stake(pubkey).is_none() && *amount < staking.min_stake() {
+                return Err(WeaveError::StakingError {
+                    reason: format!(
+                        "initial stake {} below minimum {}",
+                        amount,
+                        staking.min_stake()
+                    ),
+                });
+            }
+            Ok(())
+        }
+        StakeOperation::Unstake {
+            pubkey,
+            amount,
+            signature,
+            ..
+        } => {
+            verify(&sig_data, signature, pubkey).map_err(|_| WeaveError::StakingError {
+                reason: "invalid unstake signature".to_string(),
+            })?;
+            if *amount == 0 {
+                return Err(WeaveError::StakingError {
+                    reason: "unstake amount must be positive".to_string(),
+                });
+            }
+            let current =
+                staking
+                    .validator_stake(pubkey)
+                    .ok_or_else(|| WeaveError::StakingError {
+                        reason: "validator not found".to_string(),
+                    })?;
+            if *amount > current {
+                return Err(WeaveError::StakingError {
+                    reason: format!("unstake amount {} exceeds stake {}", amount, current),
+                });
+            }
+            Ok(())
+        }
     }
 }
 

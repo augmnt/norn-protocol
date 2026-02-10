@@ -34,6 +34,9 @@ pub fn create_genesis_block(config: &GenesisConfig) -> Result<(WeaveBlock, Weave
         token_burns_root: [0u8; 32],
         loom_deploys: Vec::new(),
         loom_deploys_root: [0u8; 32],
+        stake_operations: Vec::new(),
+        stake_operations_root: [0u8; 32],
+        state_root: [0u8; 32],
         timestamp: config.timestamp,
         proposer: [0u8; 32],
         validator_signatures: Vec::new(),
@@ -105,6 +108,7 @@ pub fn devnet_genesis() -> (GenesisConfig, Address) {
             fraud_proof_window: 86_400,
             min_validator_stake: 1_000_000_000_000,
             initial_base_fee: 100,
+            bonding_period: 100,
         },
         name_registrations: vec![GenesisNameRegistration {
             name: "augmnt".to_string(),
@@ -195,6 +199,7 @@ mod tests {
                 fraud_proof_window: 86_400,
                 min_validator_stake: 1_000_000_000_000,
                 initial_base_fee: 100,
+                bonding_period: 100,
             },
             name_registrations: Vec::new(),
         }

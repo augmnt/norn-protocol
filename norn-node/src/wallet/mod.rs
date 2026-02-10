@@ -215,5 +215,28 @@ pub async fn run(command: WalletCommand) -> Result<(), WalletError> {
             commands::leave_loom::run(&loom_id, rpc_url.as_deref()).await
         }
         WalletCommand::NewLoom { name } => commands::new_loom::run(&name),
+        WalletCommand::Stake {
+            amount,
+            yes,
+            rpc_url,
+        } => {
+            let amount: u128 = amount.parse().map_err(|_| {
+                crate::wallet::error::WalletError::Other("invalid amount".to_string())
+            })?;
+            commands::stake::run(amount, yes, rpc_url.as_deref()).await
+        }
+        WalletCommand::Unstake {
+            amount,
+            yes,
+            rpc_url,
+        } => {
+            let amount: u128 = amount.parse().map_err(|_| {
+                crate::wallet::error::WalletError::Other("invalid amount".to_string())
+            })?;
+            commands::unstake::run(amount, yes, rpc_url.as_deref()).await
+        }
+        WalletCommand::StakingInfo { validator, rpc_url } => {
+            commands::staking_info::run(validator.as_deref(), rpc_url.as_deref()).await
+        }
     }
 }

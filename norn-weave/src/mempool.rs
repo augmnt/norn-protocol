@@ -4,8 +4,8 @@ use norn_types::fraud::FraudProofSubmission;
 use norn_types::loom::LoomRegistration;
 use norn_types::primitives::ThreadId;
 use norn_types::weave::{
-    BlockTransfer, CommitmentUpdate, LoomAnchor, NameRegistration, Registration, TokenBurn,
-    TokenDefinition, TokenMint,
+    BlockTransfer, CommitmentUpdate, LoomAnchor, NameRegistration, Registration, StakeOperation,
+    TokenBurn, TokenDefinition, TokenMint,
 };
 
 use crate::error::WeaveError;
@@ -23,6 +23,7 @@ pub struct BlockContents {
     pub token_mints: Vec<TokenMint>,
     pub token_burns: Vec<TokenBurn>,
     pub loom_deploys: Vec<LoomRegistration>,
+    pub stake_operations: Vec<StakeOperation>,
 }
 
 /// Transaction mempool for pending weave transactions.
@@ -47,6 +48,8 @@ pub struct Mempool {
     token_burns: Vec<TokenBurn>,
     /// Pending loom deployments.
     loom_deploys: Vec<LoomRegistration>,
+    /// Pending stake operations.
+    stake_operations: Vec<StakeOperation>,
     /// Maximum total number of items in the mempool.
     max_size: usize,
 }
@@ -65,6 +68,7 @@ impl Mempool {
             token_mints: Vec::new(),
             token_burns: Vec::new(),
             loom_deploys: Vec::new(),
+            stake_operations: Vec::new(),
             max_size,
         }
     }
@@ -81,6 +85,7 @@ impl Mempool {
             + self.token_mints.len()
             + self.token_burns.len()
             + self.loom_deploys.len()
+            + self.stake_operations.len()
     }
 
     /// Add a commitment update (deduplicates by thread_id; latest wins).
@@ -165,6 +170,15 @@ impl Mempool {
         Ok(())
     }
 
+    /// Add a stake operation for block inclusion.
+    pub fn add_stake_operation(&mut self, op: StakeOperation) -> Result<(), WeaveError> {
+        if self.total_size() >= self.max_size {
+            return Err(WeaveError::MempoolFull);
+        }
+        self.stake_operations.push(op);
+        Ok(())
+    }
+
     /// Add a loom deployment for block inclusion.
     pub fn add_loom_deploy(&mut self, ld: LoomRegistration) -> Result<(), WeaveError> {
         if self.total_size() >= self.max_size {
@@ -203,6 +217,7 @@ impl Mempool {
         let token_mints = std::mem::take(&mut self.token_mints);
         let token_burns = std::mem::take(&mut self.token_burns);
         let loom_deploys = std::mem::take(&mut self.loom_deploys);
+        let stake_operations = std::mem::take(&mut self.stake_operations);
 
         BlockContents {
             commitments,
@@ -215,6 +230,7 @@ impl Mempool {
             token_mints,
             token_burns,
             loom_deploys,
+            stake_operations,
         }
     }
 

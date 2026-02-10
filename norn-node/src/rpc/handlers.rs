@@ -14,9 +14,9 @@ use norn_loom::lifecycle::LoomManager;
 
 use super::types::{
     AttributeInfo, BlockInfo, CommitmentProofInfo, EventInfo, ExecutionResult, FeeEstimateInfo,
-    HealthInfo, LoomInfo, NameInfo, NameResolution, QueryResult, SubmitResult, ThreadInfo,
-    ThreadStateInfo, TokenInfo, TransactionHistoryEntry, ValidatorInfo, ValidatorSetInfo,
-    WeaveStateInfo,
+    HealthInfo, LoomInfo, NameInfo, NameResolution, QueryResult, StakingInfo, StateProofInfo,
+    SubmitResult, ThreadInfo, ThreadStateInfo, TokenInfo, TransactionHistoryEntry, ValidatorInfo,
+    ValidatorSetInfo, ValidatorStakeInfo, WeaveStateInfo,
 };
 use crate::metrics::NodeMetrics;
 use crate::state_manager::StateManager;
@@ -246,6 +246,33 @@ pub trait NornRpc {
         loom_id_hex: String,
         participant_hex: String,
     ) -> Result<SubmitResult, ErrorObjectOwned>;
+
+    /// Submit a stake operation (hex-encoded borsh StakeOperation).
+    #[method(name = "norn_stake")]
+    async fn stake(&self, operation_hex: String) -> Result<SubmitResult, ErrorObjectOwned>;
+
+    /// Submit an unstake operation (hex-encoded borsh StakeOperation).
+    #[method(name = "norn_unstake")]
+    async fn unstake(&self, operation_hex: String) -> Result<SubmitResult, ErrorObjectOwned>;
+
+    /// Get staking info (all validators or specific).
+    #[method(name = "norn_getStakingInfo")]
+    async fn get_staking_info(
+        &self,
+        pubkey_hex: Option<String>,
+    ) -> Result<StakingInfo, ErrorObjectOwned>;
+
+    /// Get the current state root.
+    #[method(name = "norn_getStateRoot")]
+    async fn get_state_root(&self) -> Result<String, ErrorObjectOwned>;
+
+    /// Get a state proof for a balance.
+    #[method(name = "norn_getStateProof")]
+    async fn get_state_proof(
+        &self,
+        address_hex: String,
+        token_id_hex: Option<String>,
+    ) -> Result<StateProofInfo, ErrorObjectOwned>;
 }
 
 /// Implementation of the NornRpc trait.
@@ -332,6 +359,8 @@ impl NornRpcServer for NornRpcImpl {
                 token_mint_count: block.token_mints.len(),
                 token_burn_count: block.token_burns.len(),
                 loom_deploy_count: block.loom_deploys.len(),
+                stake_operation_count: block.stake_operations.len(),
+                state_root: hex::encode(block.state_root),
             }));
         }
         drop(sm);
@@ -356,6 +385,8 @@ impl NornRpcServer for NornRpcImpl {
                 token_mint_count: 0,
                 token_burn_count: 0,
                 loom_deploy_count: 0,
+                stake_operation_count: 0,
+                state_root: String::new(),
             }))
         } else {
             Ok(None)
@@ -382,6 +413,8 @@ impl NornRpcServer for NornRpcImpl {
                 token_mint_count: block.token_mints.len(),
                 token_burn_count: block.token_burns.len(),
                 loom_deploy_count: block.loom_deploys.len(),
+                stake_operation_count: block.stake_operations.len(),
+                state_root: hex::encode(block.state_root),
             }))
         } else {
             let state = engine.weave_state();
@@ -401,6 +434,8 @@ impl NornRpcServer for NornRpcImpl {
                 token_mint_count: 0,
                 token_burn_count: 0,
                 loom_deploy_count: 0,
+                stake_operation_count: 0,
+                state_root: String::new(),
             }))
         }
     }
@@ -1656,6 +1691,145 @@ impl NornRpcServer for NornRpcImpl {
             }),
         }
     }
+
+    async fn stake(&self, operation_hex: String) -> Result<SubmitResult, ErrorObjectOwned> {
+        let bytes = hex::decode(&operation_hex).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>)
+        })?;
+        let op: norn_types::weave::StakeOperation = borsh::from_slice(&bytes).map_err(|e| {
+            ErrorObjectOwned::owned(
+                -32602,
+                format!("invalid stake operation: {}", e),
+                None::<()>,
+            )
+        })?;
+
+        // Validate.
+        {
+            let engine = self.weave_engine.read().await;
+            if let Err(e) = norn_weave::staking::validate_stake_operation(&op, engine.staking()) {
+                return Ok(SubmitResult {
+                    success: false,
+                    reason: Some(e.to_string()),
+                });
+            }
+        }
+
+        // Add to mempool.
+        {
+            let mut engine = self.weave_engine.write().await;
+            let _ = engine.mempool_mut().add_stake_operation(op.clone());
+        }
+
+        // Broadcast via P2P.
+        if let Some(ref handle) = self.relay_handle {
+            let h = handle.clone();
+            let msg = NornMessage::StakeOperation(op);
+            tokio::spawn(async move {
+                let _ = h.broadcast(msg).await;
+            });
+        }
+
+        Ok(SubmitResult {
+            success: true,
+            reason: Some("stake operation submitted".to_string()),
+        })
+    }
+
+    async fn unstake(&self, operation_hex: String) -> Result<SubmitResult, ErrorObjectOwned> {
+        // Unstake uses the same code path as stake — both are StakeOperation variants.
+        self.stake(operation_hex).await
+    }
+
+    async fn get_staking_info(
+        &self,
+        pubkey_hex: Option<String>,
+    ) -> Result<StakingInfo, ErrorObjectOwned> {
+        let engine = self.weave_engine.read().await;
+        let staking = engine.staking();
+        let vs = staking.active_validators();
+
+        let validators: Vec<ValidatorStakeInfo> = vs
+            .validators
+            .iter()
+            .filter(|v| {
+                if let Some(ref hex) = pubkey_hex {
+                    hex::encode(v.pubkey) == *hex
+                } else {
+                    true
+                }
+            })
+            .map(|v| ValidatorStakeInfo {
+                pubkey: hex::encode(v.pubkey),
+                address: hex::encode(v.address),
+                stake: v.stake.to_string(),
+                active: v.active,
+            })
+            .collect();
+
+        Ok(StakingInfo {
+            validators,
+            total_staked: staking.total_staked().to_string(),
+            min_stake: staking.min_stake().to_string(),
+            bonding_period: staking.bonding_period(),
+        })
+    }
+
+    async fn get_state_root(&self) -> Result<String, ErrorObjectOwned> {
+        let mut sm = self.state_manager.write().await;
+        let root = sm.state_root();
+        Ok(hex::encode(root))
+    }
+
+    async fn get_state_proof(
+        &self,
+        address_hex: String,
+        token_id_hex: Option<String>,
+    ) -> Result<StateProofInfo, ErrorObjectOwned> {
+        let address_bytes = hex::decode(address_hex.trim_start_matches("0x")).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid address: {}", e), None::<()>)
+        })?;
+        if address_bytes.len() != 20 {
+            return Err(ErrorObjectOwned::owned(
+                -32602,
+                "address must be 20 bytes",
+                None::<()>,
+            ));
+        }
+        let mut address = [0u8; 20];
+        address.copy_from_slice(&address_bytes);
+
+        let token_id = if let Some(ref hex_str) = token_id_hex {
+            let bytes = hex::decode(hex_str.trim_start_matches("0x")).map_err(|e| {
+                ErrorObjectOwned::owned(-32602, format!("invalid token_id: {}", e), None::<()>)
+            })?;
+            if bytes.len() != 32 {
+                return Err(ErrorObjectOwned::owned(
+                    -32602,
+                    "token_id must be 32 bytes",
+                    None::<()>,
+                ));
+            }
+            let mut id = [0u8; 32];
+            id.copy_from_slice(&bytes);
+            id
+        } else {
+            NATIVE_TOKEN_ID
+        };
+
+        let mut sm = self.state_manager.write().await;
+        let balance = sm.get_balance(&address, &token_id);
+        let proof = sm.state_proof(&address, &token_id);
+        let root = sm.state_root();
+
+        Ok(StateProofInfo {
+            address: format!("0x{}", hex::encode(address)),
+            token_id: hex::encode(token_id),
+            balance: balance.to_string(),
+            state_root: hex::encode(root),
+            proof: proof.siblings.iter().map(hex::encode).collect(),
+        })
+    }
 }
 
 #[cfg(test)]
@@ -1682,6 +1856,8 @@ mod tests {
             token_mint_count: 0,
             token_burn_count: 0,
             loom_deploy_count: 0,
+            stake_operation_count: 0,
+            state_root: String::new(),
         };
     }
 }

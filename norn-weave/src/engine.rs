@@ -7,8 +7,8 @@ use norn_types::loom::LoomRegistration;
 use norn_types::network::NornMessage;
 use norn_types::primitives::*;
 use norn_types::weave::{
-    BlockTransfer, CommitmentUpdate, NameRegistration, Registration, TokenBurn, TokenDefinition,
-    TokenMint, ValidatorSet, WeaveBlock, WeaveState,
+    BlockTransfer, CommitmentUpdate, NameRegistration, Registration, StakeOperation, TokenBurn,
+    TokenDefinition, TokenMint, ValidatorSet, WeaveBlock, WeaveState,
 };
 use rayon::prelude::*;
 
@@ -41,6 +41,12 @@ pub struct WeaveEngine {
     last_block: Option<WeaveBlock>,
     /// Current timestamp, set by the node before each tick.
     current_timestamp: Timestamp,
+    /// Blocks proposed but not yet committed (multi-validator consensus path).
+    pending_blocks: HashMap<Hash, WeaveBlock>,
+    /// Height of last finalized (CommitBlock'd) block.
+    last_finalized_height: u64,
+    /// Total number of blocks finalized through consensus.
+    finalized_block_count: u64,
 }
 
 impl WeaveEngine {
@@ -66,6 +72,9 @@ impl WeaveEngine {
             known_looms: HashSet::new(),
             last_block: None,
             current_timestamp: 0,
+            pending_blocks: HashMap::new(),
+            last_finalized_height: 0,
+            finalized_block_count: 0,
         }
     }
 
@@ -133,6 +142,11 @@ impl WeaveEngine {
                 if crate::loom::validate_loom_registration(&ld, &self.known_looms).is_ok() {
                     let _ = self.mempool.add_loom_deploy(*ld);
                 }
+                vec![]
+            }
+
+            NornMessage::StakeOperation(op) => {
+                let _ = self.mempool.add_stake_operation(op);
                 vec![]
             }
 
@@ -223,71 +237,8 @@ impl WeaveEngine {
                     }
                 }
 
-                // All content is valid — apply commitments.
-                for c in &weave_block.commitments {
-                    let _ = commitment::apply_commitment(
-                        &mut self.weave_state,
-                        &mut self.merkle_tree,
-                        c,
-                    );
-                }
-                // Apply registrations.
-                for r in &weave_block.registrations {
-                    let _ = registration::apply_registration(
-                        &mut self.weave_state,
-                        &mut self.merkle_tree,
-                        r,
-                    );
-                    self.known_threads.insert(r.thread_id);
-                }
-                // Apply name registrations.
-                for nr in &weave_block.name_registrations {
-                    self.known_names.insert(nr.name.clone());
-                }
-                // Apply token definitions.
-                for td in &weave_block.token_definitions {
-                    let token_id = norn_types::token::compute_token_id(
-                        &td.creator,
-                        &td.name,
-                        &td.symbol,
-                        td.decimals,
-                        td.max_supply,
-                        td.timestamp,
-                    );
-                    self.known_symbols.insert(td.symbol.clone());
-                    self.known_tokens.insert(
-                        token_id,
-                        crate::token::TokenMeta {
-                            name: td.name.clone(),
-                            symbol: td.symbol.clone(),
-                            decimals: td.decimals,
-                            max_supply: td.max_supply,
-                            current_supply: td.initial_supply,
-                            creator: td.creator,
-                            created_at: td.timestamp,
-                        },
-                    );
-                }
-                // Apply token mints (update supply tracking).
-                for tm in &weave_block.token_mints {
-                    if let Some(meta) = self.known_tokens.get_mut(&tm.token_id) {
-                        meta.current_supply = meta.current_supply.saturating_add(tm.amount);
-                    }
-                }
-                // Apply token burns (update supply tracking).
-                for tb in &weave_block.token_burns {
-                    if let Some(meta) = self.known_tokens.get_mut(&tb.token_id) {
-                        meta.current_supply = meta.current_supply.saturating_sub(tb.amount);
-                    }
-                }
-                // Apply loom deployments.
-                for ld in &weave_block.loom_deploys {
-                    let loom_id = norn_types::loom::compute_loom_id(ld);
-                    self.known_looms.insert(loom_id);
-                }
-                // Update state.
-                self.weave_state.height = weave_block.height;
-                self.weave_state.latest_hash = weave_block.hash;
+                // All content is valid — apply block state changes.
+                self.apply_block_to_state(&weave_block);
 
                 vec![]
             }
@@ -302,7 +253,7 @@ impl WeaveEngine {
         self.current_timestamp = timestamp;
     }
 
-    /// Handle a periodic tick.
+    /// Handle a periodic tick (multi-validator consensus path).
     pub fn on_tick(&mut self, timestamp: Timestamp) -> Vec<NornMessage> {
         self.current_timestamp = timestamp;
         let mut messages = Vec::new();
@@ -316,10 +267,14 @@ impl WeaveEngine {
                 contents,
                 &self.keypair,
                 timestamp,
+                [0u8; 32], // state_root provided by node after state application
             );
 
             let block_hash = weave_block.hash;
             let block_data = borsh::to_vec(&weave_block).unwrap_or_default();
+
+            // Store the block so we can finalize it when CommitBlock arrives.
+            self.pending_blocks.insert(block_hash, weave_block);
 
             let actions = self
                 .consensus
@@ -331,7 +286,9 @@ impl WeaveEngine {
     }
 
     /// Convert consensus actions into NornMessages.
-    fn process_actions(&self, actions: Vec<ConsensusAction>) -> Vec<NornMessage> {
+    /// Handles CommitBlock by finalizing the pending block and broadcasting it.
+    /// Handles RequestViewChange by triggering consensus timeout.
+    fn process_actions(&mut self, actions: Vec<ConsensusAction>) -> Vec<NornMessage> {
         let mut messages = Vec::new();
 
         for action in actions {
@@ -344,11 +301,41 @@ impl WeaveEngine {
                     // For now, treat as broadcast.
                     messages.push(NornMessage::Consensus(msg));
                 }
-                ConsensusAction::CommitBlock(_hash) => {
-                    // Block commit is handled internally.
+                ConsensusAction::CommitBlock(hash) => {
+                    // Finalize: apply state changes and broadcast the block.
+                    if let Some(block) = self.pending_blocks.remove(&hash) {
+                        self.apply_block_to_state(&block);
+                        self.last_finalized_height = block.height;
+                        self.finalized_block_count += 1;
+                        tracing::info!(
+                            height = block.height,
+                            view = self.consensus.current_view().wrapping_sub(1),
+                            finalized = self.finalized_block_count,
+                            "block committed via consensus"
+                        );
+                        messages.push(NornMessage::Block(Box::new(block)));
+                    } else {
+                        tracing::warn!(
+                            hash = hex::encode(hash),
+                            "CommitBlock for unknown pending block"
+                        );
+                    }
                 }
                 ConsensusAction::RequestViewChange => {
-                    // Trigger timeout handling.
+                    // Trigger timeout — collect timeout actions and process them.
+                    let timeout_actions = self.consensus.on_timeout();
+                    for ta in timeout_actions {
+                        match ta {
+                            ConsensusAction::Broadcast(msg) => {
+                                messages.push(NornMessage::Consensus(msg));
+                            }
+                            ConsensusAction::SendTo(_, msg) => {
+                                messages.push(NornMessage::Consensus(msg));
+                            }
+                            // Don't recurse into CommitBlock/RequestViewChange from timeout.
+                            _ => {}
+                        }
+                    }
                 }
             }
         }
@@ -356,10 +343,10 @@ impl WeaveEngine {
         messages
     }
 
-    /// Produce a block directly, bypassing HotStuff consensus.
+    /// Produce a block directly, bypassing HotStuff consensus (solo mode).
     /// Drains the mempool, builds a block, applies all state changes, and returns it.
     /// Returns `None` if the mempool is empty.
-    pub fn produce_block(&mut self, timestamp: Timestamp) -> Option<WeaveBlock> {
+    pub fn produce_block(&mut self, timestamp: Timestamp, state_root: Hash) -> Option<WeaveBlock> {
         if self.mempool.is_empty() {
             return None;
         }
@@ -371,27 +358,36 @@ impl WeaveEngine {
             contents,
             &self.keypair,
             timestamp,
+            state_root,
         );
 
-        // Apply commitments to state.
-        for c in &weave_block.commitments {
+        self.apply_block_to_state(&weave_block);
+        self.last_block = Some(weave_block.clone());
+        Some(weave_block)
+    }
+
+    /// Apply a block's contents to the engine's internal state.
+    /// This is the single source of truth for block application, used by:
+    /// - `produce_block()` (solo mode)
+    /// - `on_network_message(Block)` (peer block reception)
+    /// - `process_actions(CommitBlock)` (multi-validator consensus finalization)
+    fn apply_block_to_state(&mut self, block: &WeaveBlock) {
+        // Apply commitments.
+        for c in &block.commitments {
             let _ = commitment::apply_commitment(&mut self.weave_state, &mut self.merkle_tree, c);
         }
-
-        // Apply registrations to state.
-        for r in &weave_block.registrations {
+        // Apply registrations.
+        for r in &block.registrations {
             let _ =
                 registration::apply_registration(&mut self.weave_state, &mut self.merkle_tree, r);
             self.known_threads.insert(r.thread_id);
         }
-
-        // Apply name registrations to state.
-        for nr in &weave_block.name_registrations {
+        // Apply name registrations.
+        for nr in &block.name_registrations {
             self.known_names.insert(nr.name.clone());
         }
-
-        // Apply token definitions to state.
-        for td in &weave_block.token_definitions {
+        // Apply token definitions.
+        for td in &block.token_definitions {
             let token_id = norn_types::token::compute_token_id(
                 &td.creator,
                 &td.name,
@@ -414,30 +410,62 @@ impl WeaveEngine {
                 },
             );
         }
-        // Apply token mints to state.
-        for tm in &weave_block.token_mints {
+        // Apply token mints.
+        for tm in &block.token_mints {
             if let Some(meta) = self.known_tokens.get_mut(&tm.token_id) {
                 meta.current_supply = meta.current_supply.saturating_add(tm.amount);
             }
         }
-        // Apply token burns to state.
-        for tb in &weave_block.token_burns {
+        // Apply token burns.
+        for tb in &block.token_burns {
             if let Some(meta) = self.known_tokens.get_mut(&tb.token_id) {
                 meta.current_supply = meta.current_supply.saturating_sub(tb.amount);
             }
         }
-        // Apply loom deployments to state.
-        for ld in &weave_block.loom_deploys {
+        // Apply loom deployments.
+        for ld in &block.loom_deploys {
             let loom_id = norn_types::loom::compute_loom_id(ld);
             self.known_looms.insert(loom_id);
         }
+        // Apply stake operations to staking state.
+        for op in &block.stake_operations {
+            match op {
+                StakeOperation::Stake { pubkey, amount, .. } => {
+                    let addr = norn_crypto::address::pubkey_to_address(pubkey);
+                    if let Err(e) = self.staking.stake(*pubkey, addr, *amount) {
+                        tracing::debug!("stake operation failed: {}", e);
+                    }
+                }
+                StakeOperation::Unstake { pubkey, amount, .. } => {
+                    if let Err(e) = self.staking.unstake(pubkey, *amount, block.height) {
+                        tracing::debug!("unstake operation failed: {}", e);
+                    }
+                }
+            }
+        }
 
-        // Update state.
-        self.weave_state.height = weave_block.height;
-        self.weave_state.latest_hash = weave_block.hash;
+        // Process epoch (bonding period completions, validator removal).
+        let removed = self.staking.process_epoch(block.height);
+        if !removed.is_empty() {
+            tracing::info!(
+                count = removed.len(),
+                "validators removed at height {}",
+                block.height
+            );
+        }
 
-        // Accumulate fees and update dynamic fee state based on block utilization.
-        let commitment_count = weave_block.commitments.len() as u64;
+        // Update consensus validator set from staking state.
+        let new_vs = self.staking.active_validators();
+        if !new_vs.is_empty() {
+            self.consensus.update_validator_set(new_vs);
+        }
+
+        // Update weave state.
+        self.weave_state.height = block.height;
+        self.weave_state.latest_hash = block.hash;
+
+        // Accumulate fees and update dynamic fee state.
+        let commitment_count = block.commitments.len() as u64;
         let total_fee = crate::fees::compute_fee(&self.weave_state.fee_state, commitment_count);
         self.weave_state.fee_state.epoch_fees = self
             .weave_state
@@ -450,8 +478,7 @@ impl WeaveEngine {
             MAX_COMMITMENTS_PER_BLOCK as u64,
         );
 
-        self.last_block = Some(weave_block.clone());
-        Some(weave_block)
+        self.last_block = Some(block.clone());
     }
 
     /// Validate and add a commitment update directly to the mempool.
@@ -598,6 +625,11 @@ impl WeaveEngine {
         &self.mempool
     }
 
+    /// Access the mempool mutably (for RPC handlers that add operations directly).
+    pub fn mempool_mut(&mut self) -> &mut Mempool {
+        &mut self.mempool
+    }
+
     /// Get the current active validator set.
     pub fn validator_set(&self) -> ValidatorSet {
         self.staking.active_validators()
@@ -612,6 +644,52 @@ impl WeaveEngine {
     pub fn commitment_proof(&mut self, thread_id: &[u8; 20]) -> norn_crypto::merkle::MerkleProof {
         let key = norn_crypto::hash::blake3_hash(thread_id);
         self.merkle_tree.prove(&key)
+    }
+
+    /// Seed staking state from genesis validators.
+    pub fn seed_staking(
+        &mut self,
+        validators: &[norn_types::weave::Validator],
+        min_stake: Amount,
+        bonding_period: u64,
+    ) {
+        self.staking = StakingState::new(min_stake, bonding_period);
+        for v in validators {
+            if let Err(e) = self.staking.stake(v.pubkey, v.address, v.stake) {
+                tracing::warn!(
+                    validator = hex::encode(v.pubkey),
+                    "failed to seed validator stake: {}",
+                    e
+                );
+            }
+        }
+        // Update consensus with the seeded validator set.
+        let new_vs = self.staking.active_validators();
+        if !new_vs.is_empty() {
+            self.consensus.update_validator_set(new_vs);
+        }
+    }
+
+    /// Get the height of the last finalized block (via consensus CommitBlock).
+    pub fn last_finalized_height(&self) -> u64 {
+        self.last_finalized_height
+    }
+
+    /// Get the total number of blocks finalized through consensus.
+    pub fn finalized_block_count(&self) -> u64 {
+        self.finalized_block_count
+    }
+
+    /// Handle a consensus timeout (called by the node when no block is committed
+    /// within the expected time). Returns messages to broadcast.
+    pub fn on_consensus_timeout(&mut self) -> Vec<NornMessage> {
+        let actions = self.consensus.on_timeout();
+        self.process_actions(actions)
+    }
+
+    /// Access the staking state.
+    pub fn staking(&self) -> &StakingState {
+        &self.staking
     }
 }
 

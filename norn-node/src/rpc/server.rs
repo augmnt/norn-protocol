@@ -104,6 +104,9 @@ mod auth_middleware {
         "norn_getLoomInfo",
         "norn_listLooms",
         "norn_queryLoom",
+        "norn_getStakingInfo",
+        "norn_getStateRoot",
+        "norn_getStateProof",
     ];
 
     /// Tower layer that wraps services with API key authentication.

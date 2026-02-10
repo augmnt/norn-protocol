@@ -20,6 +20,7 @@ pub fn build_block(
     contents: BlockContents,
     proposer_keypair: &Keypair,
     timestamp: Timestamp,
+    state_root: Hash,
 ) -> WeaveBlock {
     let commitments_root = compute_merkle_root_borsh(&contents.commitments);
     let registrations_root = compute_merkle_root_borsh(&contents.registrations);
@@ -31,6 +32,7 @@ pub fn build_block(
     let token_mints_root = compute_merkle_root_borsh(&contents.token_mints);
     let token_burns_root = compute_merkle_root_borsh(&contents.token_burns);
     let loom_deploys_root = compute_merkle_root_borsh(&contents.loom_deploys);
+    let stake_operations_root = compute_merkle_root_borsh(&contents.stake_operations);
 
     let mut block = WeaveBlock {
         height: prev_height + 1,
@@ -56,6 +58,9 @@ pub fn build_block(
         token_burns_root,
         loom_deploys: contents.loom_deploys,
         loom_deploys_root,
+        stake_operations: contents.stake_operations,
+        stake_operations_root,
+        state_root,
         timestamp,
         proposer: proposer_keypair.public_key(),
         validator_signatures: Vec::new(),
@@ -89,6 +94,8 @@ pub fn compute_block_hash(block: &WeaveBlock) -> Hash {
     data.extend_from_slice(&block.token_mints_root);
     data.extend_from_slice(&block.token_burns_root);
     data.extend_from_slice(&block.loom_deploys_root);
+    data.extend_from_slice(&block.stake_operations_root);
+    data.extend_from_slice(&block.state_root);
     data.extend_from_slice(&block.timestamp.to_le_bytes());
     data.extend_from_slice(&block.proposer);
 
@@ -122,6 +129,9 @@ pub fn compute_block_hash(block: &WeaveBlock) -> Hash {
     }
     if let Ok(ld_bytes) = borsh::to_vec(&block.loom_deploys) {
         data.extend_from_slice(&blake3_hash(&ld_bytes));
+    }
+    if let Ok(so_bytes) = borsh::to_vec(&block.stake_operations) {
+        data.extend_from_slice(&blake3_hash(&so_bytes));
     }
 
     blake3_hash(&data)
@@ -226,6 +236,13 @@ pub fn verify_block(block: &WeaveBlock, validator_set: &ValidatorSet) -> Result<
         });
     }
 
+    let expected_stake_operations_root = compute_merkle_root_borsh(&block.stake_operations);
+    if block.stake_operations_root != expected_stake_operations_root {
+        return Err(WeaveError::InvalidBlock {
+            reason: "stake operations merkle root mismatch".to_string(),
+        });
+    }
+
     // 4. Verify validator signatures (need at least quorum_size) using batch verification.
     let quorum = validator_set.quorum_size();
 
@@ -309,9 +326,10 @@ mod tests {
             token_mints: vec![],
             token_burns: vec![],
             loom_deploys: vec![],
+            stake_operations: vec![],
         };
 
-        let block = build_block([0u8; 32], 0, contents, &kp, 1000);
+        let block = build_block([0u8; 32], 0, contents, &kp, 1000, [0u8; 32]);
 
         assert_eq!(block.height, 1);
         assert_ne!(block.hash, [0u8; 32]);
@@ -336,8 +354,9 @@ mod tests {
             token_mints: vec![],
             token_burns: vec![],
             loom_deploys: vec![],
+            stake_operations: vec![],
         };
-        let block = build_block([0u8; 32], 0, contents, &kp, 1000);
+        let block = build_block([0u8; 32], 0, contents, &kp, 1000, [0u8; 32]);
 
         let hash1 = compute_block_hash(&block);
         let hash2 = compute_block_hash(&block);
@@ -358,8 +377,9 @@ mod tests {
             token_mints: vec![],
             token_burns: vec![],
             loom_deploys: vec![],
+            stake_operations: vec![],
         };
-        let mut block = build_block([0u8; 32], 0, contents, &kp, 1000);
+        let mut block = build_block([0u8; 32], 0, contents, &kp, 1000, [0u8; 32]);
         block.hash[0] ^= 0xff;
 
         let vs = make_validator_set(&[&kp]);
@@ -381,8 +401,9 @@ mod tests {
             token_mints: vec![],
             token_burns: vec![],
             loom_deploys: vec![],
+            stake_operations: vec![],
         };
-        let block = build_block([0u8; 32], 0, contents, &kp, 1000);
+        let block = build_block([0u8; 32], 0, contents, &kp, 1000, [0u8; 32]);
 
         // Validator set only has other_kp.
         let vs = make_validator_set(&[&other_kp]);
@@ -414,8 +435,9 @@ mod tests {
             token_mints: vec![],
             token_burns: vec![],
             loom_deploys: vec![],
+            stake_operations: vec![],
         };
-        let block = build_block([0u8; 32], 0, contents, &kp, 1000);
+        let block = build_block([0u8; 32], 0, contents, &kp, 1000, [0u8; 32]);
 
         // The commitments root should not be the empty hash.
         assert_ne!(block.commitments_root, [0u8; 32]);
@@ -436,8 +458,9 @@ mod tests {
             token_mints: vec![],
             token_burns: vec![],
             loom_deploys: vec![],
+            stake_operations: vec![],
         };
-        let mut block = build_block([0u8; 32], 0, contents, &kp, 1000);
+        let mut block = build_block([0u8; 32], 0, contents, &kp, 1000, [0u8; 32]);
         let vs = make_validator_set(&[&kp]);
 
         // Inject more commitments than allowed directly into the block.

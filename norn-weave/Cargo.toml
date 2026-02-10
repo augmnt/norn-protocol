@@ -7,10 +7,10 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-norn-types = { path = "../norn-types", version = "0.15.0" }
-norn-crypto = { path = "../norn-crypto", version = "0.15.0" }
-norn-storage = { path = "../norn-storage", version = "0.15.0" }
-norn-loom = { path = "../norn-loom", version = "0.15.0" }
+norn-types = { path = "../norn-types", version = "0.16.0" }
+norn-crypto = { path = "../norn-crypto", version = "0.16.0" }
+norn-storage = { path = "../norn-storage", version = "0.16.0" }
+norn-loom = { path = "../norn-loom", version = "0.16.0" }
 borsh = { workspace = true }
 hex = "0.4"
 serde = { workspace = true }
@@ -20,4 +20,4 @@ tracing = { workspace = true }
 rayon = "1"
 
 [dev-dependencies]
-norn-spindle = { path = "../norn-spindle", version = "0.15.0" }
+norn-spindle = { path = "../norn-spindle", version = "0.16.0" }

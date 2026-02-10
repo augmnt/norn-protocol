@@ -78,4 +78,11 @@ pub struct GenesisParameters {
     pub min_validator_stake: Amount,
     /// Initial base fee.
     pub initial_base_fee: Amount,
+    /// Bonding period for unstaking (in blocks). Defaults to 100 blocks (~5 min at 3s blocks).
+    #[serde(default = "default_bonding_period")]
+    pub bonding_period: u64,
+}
+
+fn default_bonding_period() -> u64 {
+    100
 }

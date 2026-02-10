@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 
+use norn_crypto::merkle::SparseMerkleTree;
 use norn_types::constants::MAX_SUPPLY;
 use norn_types::error::NornError;
 use norn_types::loom::LOOM_DEPLOY_FEE;
@@ -96,6 +97,8 @@ pub struct StateManager {
     symbol_index: HashMap<String, TokenId>,
     /// Registry of deployed looms by loom_id.
     loom_registry: HashMap<LoomId, LoomRecord>,
+    /// Sparse Merkle tree for computing cumulative state roots.
+    state_smt: SparseMerkleTree,
 }
 
 impl Default for StateManager {
@@ -119,6 +122,7 @@ impl StateManager {
             token_registry: HashMap::new(),
             symbol_index: HashMap::new(),
             loom_registry: HashMap::new(),
+            state_smt: SparseMerkleTree::new(),
         }
     }
 
@@ -137,6 +141,21 @@ impl StateManager {
             .map(|s| s.balance(&NATIVE_TOKEN_ID))
             .sum();
         let known_knot_ids = transfer_log.iter().map(|r| r.knot_id).collect();
+
+        // Rebuild the SMT from all persisted balances.
+        let mut state_smt = SparseMerkleTree::new();
+        for (address, state) in &thread_states {
+            for (token_id, &balance) in &state.balances {
+                if balance > 0 {
+                    let mut data = Vec::with_capacity(20 + 32);
+                    data.extend_from_slice(address);
+                    data.extend_from_slice(token_id);
+                    let key = norn_crypto::hash::blake3_hash(&data);
+                    state_smt.insert(key, balance.to_le_bytes().to_vec());
+                }
+            }
+        }
+
         Self {
             thread_states,
             thread_meta,
@@ -150,6 +169,7 @@ impl StateManager {
             token_registry: HashMap::new(),
             symbol_index: HashMap::new(),
             loom_registry: HashMap::new(),
+            state_smt,
         }
     }
 
@@ -231,6 +251,40 @@ impl StateManager {
         self.total_supply_cache
     }
 
+    /// Compute the current state root from the sparse Merkle tree.
+    pub fn state_root(&mut self) -> Hash {
+        self.state_smt.root()
+    }
+
+    /// Generate a Merkle proof for a specific balance.
+    pub fn state_proof(
+        &mut self,
+        address: &Address,
+        token_id: &TokenId,
+    ) -> norn_crypto::merkle::MerkleProof {
+        let smt_key = self.smt_key(address, token_id);
+        self.state_smt.prove(&smt_key)
+    }
+
+    /// Compute the SMT key for a balance entry: BLAKE3(address ++ token_id).
+    fn smt_key(&self, address: &Address, token_id: &TokenId) -> Hash {
+        let mut data = Vec::with_capacity(20 + 32);
+        data.extend_from_slice(address);
+        data.extend_from_slice(token_id);
+        norn_crypto::hash::blake3_hash(&data)
+    }
+
+    /// Update the SMT for a balance change.
+    fn update_smt(&mut self, address: &Address, token_id: &TokenId) {
+        let balance = self
+            .thread_states
+            .get(address)
+            .map(|s| s.balance(token_id))
+            .unwrap_or(0);
+        let key = self.smt_key(address, token_id);
+        self.state_smt.insert(key, balance.to_le_bytes().to_vec());
+    }
+
     /// Credit tokens to an address (e.g., faucet).
     /// For native tokens, enforces MAX_SUPPLY cap.
     pub fn credit(
@@ -269,6 +323,9 @@ impl StateManager {
         if let Some(meta) = self.thread_meta.get_mut(&address) {
             meta.state_hash = norn_thread::state::compute_state_hash(state);
         }
+
+        // Update SMT.
+        self.update_smt(&address, &token_id);
 
         // Persist
         if let Some(ref store) = self.state_store {
@@ -335,6 +392,10 @@ impl StateManager {
             meta.state_hash =
                 norn_thread::state::compute_state_hash(self.thread_states.get(&to).unwrap());
         }
+
+        // Update SMT for both sender and receiver.
+        self.update_smt(&from, &token_id);
+        self.update_smt(&to, &token_id);
 
         // Track knot_id for dedup.
         self.known_knot_ids.insert(knot_id);
@@ -408,6 +469,9 @@ impl StateManager {
                         self.thread_states.get(&from).unwrap(),
                     );
                 }
+
+                // Update SMT for sender.
+                self.update_smt(&from, &token_id);
             } else {
                 tracing::warn!(
                     "peer transfer: sender {} has insufficient balance for {} (available: {})",
@@ -435,6 +499,9 @@ impl StateManager {
             meta.state_hash =
                 norn_thread::state::compute_state_hash(self.thread_states.get(&to).unwrap());
         }
+
+        // Update SMT for receiver.
+        self.update_smt(&to, &token_id);
 
         // Track knot_id for dedup.
         self.known_knot_ids.insert(knot_id);
@@ -520,6 +587,9 @@ impl StateManager {
             meta.state_hash =
                 norn_thread::state::compute_state_hash(self.thread_states.get(&address).unwrap());
         }
+
+        // Update SMT.
+        self.update_smt(&address, &NATIVE_TOKEN_ID);
 
         // Persist.
         if let Some(ref store) = self.state_store {
@@ -691,6 +761,9 @@ impl StateManager {
             meta.state_hash =
                 norn_thread::state::compute_state_hash(self.thread_states.get(&owner).unwrap());
         }
+
+        // Update SMT.
+        self.update_smt(&owner, &NATIVE_TOKEN_ID);
 
         // Log the fee burn as a transfer to the zero address.
         let fee_record = TransferRecord {
@@ -878,6 +951,12 @@ impl StateManager {
                 norn_thread::state::compute_state_hash(self.thread_states.get(&creator).unwrap());
         }
 
+        // Update SMT (native fee debit + optional token credit).
+        self.update_smt(&creator, &NATIVE_TOKEN_ID);
+        if initial_supply > 0 {
+            self.update_smt(&creator, &token_id);
+        }
+
         // Register the token.
         let record = TokenRecord {
             name: name.to_string(),
@@ -952,6 +1031,9 @@ impl StateManager {
                     self.thread_states.get(&creator).unwrap(),
                 );
             }
+
+            // Update SMT for initial supply credit.
+            self.update_smt(&creator, &token_id);
         }
 
         let record = TokenRecord {
@@ -1022,6 +1104,9 @@ impl StateManager {
                 norn_thread::state::compute_state_hash(self.thread_states.get(&to).unwrap());
         }
 
+        // Update SMT.
+        self.update_smt(&to, &token_id);
+
         // Update supply.
         let record = self.token_registry.get_mut(&token_id).unwrap();
         record.current_supply = record.current_supply.saturating_add(amount);
@@ -1083,6 +1168,9 @@ impl StateManager {
                 norn_thread::state::compute_state_hash(self.thread_states.get(&burner).unwrap());
         }
 
+        // Update SMT.
+        self.update_smt(&burner, &token_id);
+
         // Update supply.
         let record = self.token_registry.get_mut(&token_id).unwrap();
         record.current_supply = record.current_supply.saturating_sub(amount);
@@ -1124,6 +1212,9 @@ impl StateManager {
                         self.thread_states.get(&burner).unwrap(),
                     );
                 }
+
+                // Update SMT.
+                self.update_smt(&burner, &token_id);
             } else {
                 tracing::warn!(
                     "peer token burn: burner {} has insufficient balance for {}",
@@ -1412,6 +1503,9 @@ mod tests {
             token_burns_root: [0u8; 32],
             loom_deploys: vec![],
             loom_deploys_root: [0u8; 32],
+            stake_operations: vec![],
+            stake_operations_root: [0u8; 32],
+            state_root: [0u8; 32],
             timestamp: 1000,
             proposer: [0u8; 32],
             validator_signatures: vec![],

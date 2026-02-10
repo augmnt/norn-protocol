@@ -5,7 +5,7 @@ use jsonrpsee::rpc_params;
 
 use crate::rpc::types::{
     BlockInfo, ExecutionResult, FeeEstimateInfo, HealthInfo, LoomInfo, NameInfo, NameResolution,
-    QueryResult, SubmitResult, TokenInfo, TransactionHistoryEntry, ValidatorSetInfo,
+    QueryResult, StakingInfo, SubmitResult, TokenInfo, TransactionHistoryEntry, ValidatorSetInfo,
     WeaveStateInfo,
 };
 
@@ -482,6 +482,34 @@ impl RpcClient {
         let result: SubmitResult = self
             .client
             .request("norn_leaveLoom", rpc_params![loom_id_hex, participant_hex])
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    pub async fn submit_stake(&self, hex_data: &str) -> Result<SubmitResult, WalletError> {
+        let pb = Self::spinner("Submitting stake operation...");
+        let result: SubmitResult = self
+            .client
+            .request("norn_stake", rpc_params![hex_data])
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    pub async fn get_staking_info(
+        &self,
+        pubkey_hex: Option<&str>,
+    ) -> Result<StakingInfo, WalletError> {
+        let pb = Self::spinner("Fetching staking info...");
+        let result: StakingInfo = self
+            .client
+            .request(
+                "norn_getStakingInfo",
+                rpc_params![pubkey_hex.map(|s| s.to_string())],
+            )
             .await
             .map_err(|e| Self::map_rpc_error(&e))?;
         pb.finish_and_clear();

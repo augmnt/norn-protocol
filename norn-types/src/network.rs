@@ -7,8 +7,8 @@ use crate::knot::Knot;
 use crate::loom::{LoomRegistration, LoomStateTransition};
 use crate::primitives::*;
 use crate::weave::{
-    CommitmentUpdate, NameRegistration, Registration, TokenBurn, TokenDefinition, TokenMint,
-    WeaveBlock,
+    CommitmentUpdate, NameRegistration, Registration, StakeOperation, TokenBurn, TokenDefinition,
+    TokenMint, WeaveBlock,
 };
 
 /// Network identifier for distinguishing dev, testnet, and mainnet environments.
@@ -250,6 +250,8 @@ pub enum NornMessage {
     LoomDeploy(Box<LoomRegistration>),
     /// A loom state transition (execution result).
     LoomExecution(Box<LoomStateTransition>),
+    /// A staking operation (stake/unstake).
+    StakeOperation(StakeOperation),
 }
 
 impl NornMessage {
@@ -277,6 +279,7 @@ impl NornMessage {
             NornMessage::TokenBurn(_) => 17,
             NornMessage::LoomDeploy(_) => 18,
             NornMessage::LoomExecution(_) => 19,
+            NornMessage::StakeOperation(_) => 20,
         }
     }
 }

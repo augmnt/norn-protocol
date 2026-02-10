@@ -52,6 +52,12 @@ pub struct BlockInfo {
     /// Number of loom deployments in this block.
     #[serde(default)]
     pub loom_deploy_count: usize,
+    /// Number of stake operations in this block.
+    #[serde(default)]
+    pub stake_operation_count: usize,
+    /// Cumulative state root as hex string.
+    #[serde(default)]
+    pub state_root: String,
 }
 
 /// Information about the current weave state.
@@ -317,6 +323,47 @@ pub struct NameInfo {
     pub registered_at: u64,
 }
 
+/// Staking information for all validators or a specific one.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StakingInfo {
+    /// Active validators with their stakes.
+    pub validators: Vec<ValidatorStakeInfo>,
+    /// Total staked across all validators.
+    pub total_staked: String,
+    /// Minimum stake required.
+    pub min_stake: String,
+    /// Bonding period in blocks.
+    pub bonding_period: u64,
+}
+
+/// Per-validator staking details.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidatorStakeInfo {
+    /// Public key as hex string.
+    pub pubkey: String,
+    /// Address as hex string.
+    pub address: String,
+    /// Staked amount as string.
+    pub stake: String,
+    /// Whether the validator is active.
+    pub active: bool,
+}
+
+/// State proof for a balance.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StateProofInfo {
+    /// Address as hex string.
+    pub address: String,
+    /// Token ID as hex string.
+    pub token_id: String,
+    /// Balance as string.
+    pub balance: String,
+    /// State root as hex string.
+    pub state_root: String,
+    /// Merkle proof sibling hashes as hex strings.
+    pub proof: Vec<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -339,6 +386,8 @@ mod tests {
             token_mint_count: 2,
             token_burn_count: 0,
             loom_deploy_count: 4,
+            stake_operation_count: 1,
+            state_root: "ff".repeat(32),
         };
         let json = serde_json::to_string(&info).unwrap();
         let deserialized: BlockInfo = serde_json::from_str(&json).unwrap();
@@ -349,6 +398,7 @@ mod tests {
         assert_eq!(deserialized.token_mint_count, 2);
         assert_eq!(deserialized.token_burn_count, 0);
         assert_eq!(deserialized.loom_deploy_count, 4);
+        assert_eq!(deserialized.stake_operation_count, 1);
     }
 
     #[test]

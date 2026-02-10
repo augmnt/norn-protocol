@@ -143,7 +143,7 @@ fn main() {
     // ── 5. Produce Block #1 (registrations) ──
     println!("[5] Producing Block #1...");
     let block1 = engine
-        .produce_block(1001)
+        .produce_block(1001, [0u8; 32])
         .expect("block should be produced");
     println!("    Block #{} produced!", block1.height);
     println!("    Hash:          {}", hex::encode(block1.hash));
@@ -246,7 +246,7 @@ fn main() {
     // ── 9. Produce Block #2 (commitments) ──
     println!("[9] Producing Block #2...");
     let block2 = engine
-        .produce_block(1004)
+        .produce_block(1004, [0u8; 32])
         .expect("block should be produced");
     println!("    Block #{} produced!", block2.height);
     println!("    Hash:          {}", hex::encode(block2.hash));

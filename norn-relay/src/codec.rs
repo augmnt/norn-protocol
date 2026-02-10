@@ -223,7 +223,7 @@ pub fn encode_message(msg: &NornMessage) -> Result<Vec<u8>, RelayError> {
 ///
 /// Wire format: `[4-byte BE length][1-byte LEGACY_PROTOCOL_VERSION(3)][borsh NornMessage]`
 pub fn encode_message_legacy(msg: &NornMessage) -> Result<Vec<u8>, RelayError> {
-    if msg.discriminant() > 13 {
+    if msg.discriminant() > 19 {
         return Err(RelayError::CodecError {
             reason: format!(
                 "message type {} not supported in legacy protocol v{}",
@@ -411,10 +411,11 @@ mod tests {
 
     #[test]
     fn test_legacy_encode_rejects_new_variants() {
-        let msg = NornMessage::UpgradeNotice(norn_types::network::UpgradeNotice {
-            protocol_version: 5,
-            message: "test".to_string(),
+        let msg = NornMessage::StakeOperation(norn_types::weave::StakeOperation::Stake {
+            pubkey: [0u8; 32],
+            amount: 1000,
             timestamp: 1000,
+            signature: [0u8; 64],
         });
         let result = encode_message_legacy(&msg);
         assert!(result.is_err());

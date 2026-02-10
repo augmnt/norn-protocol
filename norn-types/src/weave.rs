@@ -223,6 +223,12 @@ pub struct WeaveBlock {
     pub loom_deploys: Vec<LoomRegistration>,
     /// Merkle root of all loom deployments in this block.
     pub loom_deploys_root: Hash,
+    /// Stake operations included in this block.
+    pub stake_operations: Vec<StakeOperation>,
+    /// Merkle root of all stake operations in this block.
+    pub stake_operations_root: Hash,
+    /// Cumulative state root at this block height.
+    pub state_root: Hash,
     /// Block timestamp.
     pub timestamp: Timestamp,
     /// Block proposer's public key.

@@ -216,9 +216,29 @@ impl Node {
 
         let weave_engine = Arc::new(RwLock::new(WeaveEngine::new(
             keypair,
-            validator_set,
+            validator_set.clone(),
             effective_state,
         )));
+
+        // Seed staking state from genesis validators.
+        {
+            let bonding_period = genesis_config_opt
+                .as_ref()
+                .map(|gc| gc.parameters.bonding_period)
+                .unwrap_or(100);
+            let min_stake = genesis_config_opt
+                .as_ref()
+                .map(|gc| gc.parameters.min_validator_stake)
+                .unwrap_or(1000);
+            let mut engine = weave_engine.write().await;
+            engine.seed_staking(&validator_set.validators, min_stake, bonding_period);
+            tracing::info!(
+                validators = validator_set.validators.len(),
+                min_stake = min_stake,
+                bonding_period = bonding_period,
+                "seeded staking from genesis"
+            );
+        }
 
         let metrics = Arc::new(NodeMetrics::new());
 
@@ -1125,7 +1145,12 @@ impl Node {
 
                         if self.config.validator.solo_mode {
                             // Solo mode: produce blocks directly, bypassing consensus.
-                            if let Some(block) = engine.produce_block(timestamp) {
+                            // Compute state root from StateManager.
+                            let state_root = {
+                                let mut sm = self.state_manager.write().await;
+                                sm.state_root()
+                            };
+                            if let Some(block) = engine.produce_block(timestamp, state_root) {
                                 tracing::info!(
                                     height = block.height,
                                     commitments = block.commitments.len(),
@@ -1240,31 +1265,143 @@ impl Node {
                                         token_mint_count: block.token_mints.len(),
                                         token_burn_count: block.token_burns.len(),
                                         loom_deploy_count: block.loom_deploys.len(),
+                                        stake_operation_count: block.stake_operations.len(),
+                                        state_root: hex::encode(block.state_root),
                                     };
                                     let _ = tx.send(info);
                                 }
                             }
+                            drop(engine); // Release lock before metrics.
                         } else {
                             let messages = engine.on_tick(timestamp);
-                            // Route consensus messages through P2P relay.
-                            if !messages.is_empty() {
-                                if let Some(ref handle) = self.relay_handle {
-                                    for msg in messages {
-                                        let h = handle.clone();
-                                        tokio::spawn(
-                                            async move { let _ = h.broadcast(msg).await; },
-                                        );
+                            drop(engine); // Release lock before processing committed blocks.
+                            // Process messages: committed blocks need state + persistence.
+                            for msg in messages {
+                                if let NornMessage::Block(ref committed_block) = msg {
+                                    // A block was finalized through consensus — persist and apply.
+                                    let block = committed_block.as_ref();
+                                    tracing::info!(
+                                        height = block.height,
+                                        commitments = block.commitments.len(),
+                                        "block finalized via consensus"
+                                    );
+                                    self.metrics.blocks_produced.inc();
+
+                                    // Persist block and state.
+                                    {
+                                        let engine = self.weave_engine.read().await;
+                                        self.persist_block(block, engine.weave_state());
                                     }
+
+                                    // Apply block contents to StateManager (same as solo mode).
+                                    {
+                                        let engine = self.weave_engine.read().await;
+                                        let mut sm = self.state_manager.write().await;
+                                        for reg in &block.registrations {
+                                            sm.register_thread(reg.thread_id, reg.owner);
+                                            self.spindle.watch_thread(reg.thread_id);
+                                        }
+                                        for name_reg in &block.name_registrations {
+                                            if let Err(e) = sm.register_name(
+                                                &name_reg.name,
+                                                name_reg.owner,
+                                                name_reg.timestamp,
+                                            ) {
+                                                tracing::debug!("consensus name registration skipped: {}", e);
+                                            }
+                                        }
+                                        for td in &block.token_definitions {
+                                            if let Err(e) = sm.create_token(
+                                                &td.name, &td.symbol, td.decimals, td.max_supply,
+                                                td.initial_supply, td.creator, td.timestamp,
+                                            ) {
+                                                tracing::debug!("consensus token creation skipped: {}", e);
+                                            }
+                                        }
+                                        for tm in &block.token_mints {
+                                            if let Err(e) = sm.mint_token(tm.token_id, tm.to, tm.amount) {
+                                                tracing::debug!("consensus token mint skipped: {}", e);
+                                            }
+                                        }
+                                        for tb in &block.token_burns {
+                                            if let Err(e) = sm.burn_token(tb.token_id, tb.burner, tb.amount) {
+                                                tracing::debug!("consensus token burn skipped: {}", e);
+                                            }
+                                        }
+                                        for ld in &block.loom_deploys {
+                                            let loom_id = norn_types::loom::compute_loom_id(ld);
+                                            let operator_addr = pubkey_to_address(&ld.operator);
+                                            if let Err(e) = sm.deploy_loom(
+                                                loom_id,
+                                                &ld.config.name,
+                                                ld.operator,
+                                                operator_addr,
+                                                ld.timestamp,
+                                            ) {
+                                                tracing::debug!("consensus loom deploy skipped: {}", e);
+                                            }
+                                        }
+                                        let fee_per = norn_weave::fees::compute_fee(
+                                            &engine.weave_state().fee_state,
+                                            1,
+                                        );
+                                        for commit in &block.commitments {
+                                            sm.record_commitment(
+                                                commit.thread_id,
+                                                commit.version,
+                                                commit.state_hash,
+                                                commit.prev_commitment_hash,
+                                                commit.knot_count,
+                                            );
+                                            sm.debit_fee(commit.thread_id, fee_per);
+                                        }
+                                        sm.archive_block(block.clone());
+                                    }
+
+                                    // Notify WebSocket subscribers.
+                                    if let Some(ref tx) = self.block_tx {
+                                        let info = crate::rpc::types::BlockInfo {
+                                            height: block.height,
+                                            hash: hex::encode(block.hash),
+                                            prev_hash: hex::encode(block.prev_hash),
+                                            timestamp: block.timestamp,
+                                            proposer: hex::encode(block.proposer),
+                                            commitment_count: block.commitments.len(),
+                                            registration_count: block.registrations.len(),
+                                            anchor_count: block.anchors.len(),
+                                            fraud_proof_count: block.fraud_proofs.len(),
+                                            name_registration_count: block.name_registrations.len(),
+                                            transfer_count: block.transfers.len(),
+                                            token_definition_count: block.token_definitions.len(),
+                                            token_mint_count: block.token_mints.len(),
+                                            token_burn_count: block.token_burns.len(),
+                                            loom_deploy_count: block.loom_deploys.len(),
+                                            stake_operation_count: block.stake_operations.len(),
+                                            state_root: hex::encode(block.state_root),
+                                        };
+                                        let _ = tx.send(info);
+                                    }
+                                }
+
+                                // Broadcast all messages (both consensus and committed blocks).
+                                if let Some(ref handle) = self.relay_handle {
+                                    let h = handle.clone();
+                                    tokio::spawn(async move {
+                                        let _ = h.broadcast(msg).await;
+                                    });
                                 }
                             }
                         }
 
-                        // Update metrics.
-                        let state = engine.weave_state();
-                        self.metrics.weave_height.set(state.height as i64);
-                        self.metrics
-                            .mempool_size
-                            .set(engine.mempool().total_size() as i64);
+                        // Update metrics (re-acquire lock since multi-validator path drops it).
+                        {
+                            let engine = self.weave_engine.read().await;
+                            let state = engine.weave_state();
+                            self.metrics.weave_height.set(state.height as i64);
+                            self.metrics
+                                .mempool_size
+                                .set(engine.mempool().total_size() as i64);
+                        }
                     }
                 }
                 _ = async { if let Some(ref mut s) = sync_retry { s.await } else { std::future::pending().await } } => {

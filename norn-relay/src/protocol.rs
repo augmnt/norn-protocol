@@ -1,6 +1,6 @@
 /// Wire protocol version. Bump this whenever a breaking change is made to
 /// NornMessage variants or any borsh-serialized P2P type.
-pub const PROTOCOL_VERSION: u8 = 6;
+pub const PROTOCOL_VERSION: u8 = 7;
 
 /// Envelope wire header version. The first byte after the 4-byte length prefix.
 /// Since this is 1 and the old LEGACY_PROTOCOL_VERSION was 3, the codec can
