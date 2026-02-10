@@ -73,7 +73,7 @@ export function NetworkActivityChart({ data }: NetworkActivityChartProps) {
       </CardHeader>
       <CardContent>
         <div className="h-[200px] animate-fade-in">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <AreaChart
               data={display}
               margin={{ top: 4, right: 4, bottom: 0, left: -20 }}
