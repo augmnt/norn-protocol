@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "cd ../sdk/typescript && npm install && npm run build && cd ../../explorer && next build",
     "start": "next start",
     "lint": "next lint"
   },
