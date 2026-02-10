@@ -604,6 +604,37 @@ assert_eq!(err, ContractError::Unauthorized); // PartialEq on ContractError
 BALANCES.update_or(&addr, 0, |bal| Ok(bal + amount))?;
 ```
 
+#### Display on ContractError
+
+```rust
+// Before:
+let msg = err.message();
+log::error!("contract failed: {msg}");
+
+// After:
+log::error!("contract failed: {err}");
+```
+
+#### u64 safe math
+
+```rust
+// Before:
+let new_val = val.checked_add(1).ok_or(ContractError::Overflow)?;
+
+// After:
+let new_val = safe_add_u64(val, 1)?;
+// Also: safe_sub_u64, safe_mul_u64
+```
+
+#### Response::merge() for stdlib composability
+
+```rust
+// Compose stdlib response with your own attributes:
+let stdlib_resp = Norn20::mint(&to, amount)?;
+Ok(Response::with_action("mint_tokens").merge(stdlib_resp))
+// Result: your "action" attribute + stdlib's Mint event + data
+```
+
 ### New Features
 
 - **Tuple `StorageKey`** — `Map<(Address, Address), u128>` eliminates hand-rolled composite key functions
@@ -616,6 +647,9 @@ BALANCES.update_or(&addr, 0, |bal| Ok(bal + amount))?;
 - **`Item::init()`/`Map::init()`** — panicking save for contract initialization
 - **`Item::update_or()`/`Map::update_or()`** — update with default value
 - **`PartialEq` on `ContractError`** — enables `assert_eq!(err, ContractError::Unauthorized)`
+- **`Display` on `ContractError`** — enables `format!("{err}")` and `{err}` in format strings
+- **`safe_add_u64`/`safe_sub_u64`/`safe_mul_u64`** — u64 checked arithmetic variants
+- **`Response::merge(other)`** — combine attributes, events, and data from another response (stdlib composability)
 - **Test address constants** — `ALICE`, `BOB`, `CHARLIE`, `DAVE` in `norn_sdk::testing`
 - **`assert_data::<T>()`** — combines `from_response().unwrap()` + `assert_eq!`
 - **`assert_err_contains()`** — checks error message substring

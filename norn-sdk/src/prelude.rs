@@ -17,7 +17,7 @@ pub use crate::addr::{addr_to_hex, hex_to_addr, ZERO_ADDRESS};
 pub use crate::storage::{IndexedMap, Item, Map, StorageKey};
 
 // SDK v6 — safe math
-pub use crate::math::{safe_add, safe_mul, safe_sub};
+pub use crate::math::{safe_add, safe_add_u64, safe_mul, safe_mul_u64, safe_sub, safe_sub_u64};
 
 // SDK v3 — standard library
 pub use crate::stdlib::{Norn20, Norn20Info, Ownable, Pausable};

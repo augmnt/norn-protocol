@@ -48,6 +48,12 @@ impl ContractError {
     }
 }
 
+impl core::fmt::Display for ContractError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.message())
+    }
+}
+
 impl From<&str> for ContractError {
     fn from(msg: &str) -> Self {
         ContractError::Custom(String::from(msg))

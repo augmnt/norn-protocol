@@ -19,3 +19,20 @@ pub fn safe_sub(a: u128, b: u128) -> Result<u128, ContractError> {
 pub fn safe_mul(a: u128, b: u128) -> Result<u128, ContractError> {
     a.checked_mul(b).ok_or(ContractError::Overflow)
 }
+
+// ── u64 variants ──────────────────────────────────────────────────────────
+
+/// Add two `u64` values, returning `ContractError::Overflow` on overflow.
+pub fn safe_add_u64(a: u64, b: u64) -> Result<u64, ContractError> {
+    a.checked_add(b).ok_or(ContractError::Overflow)
+}
+
+/// Subtract `b` from `a` (`u64`), returning `ContractError::InsufficientFunds` on underflow.
+pub fn safe_sub_u64(a: u64, b: u64) -> Result<u64, ContractError> {
+    a.checked_sub(b).ok_or(ContractError::InsufficientFunds)
+}
+
+/// Multiply two `u64` values, returning `ContractError::Overflow` on overflow.
+pub fn safe_mul_u64(a: u64, b: u64) -> Result<u64, ContractError> {
+    a.checked_mul(b).ok_or(ContractError::Overflow)
+}

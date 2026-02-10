@@ -193,6 +193,25 @@ impl Response {
         self
     }
 
+    /// Merge another response into this one.
+    ///
+    /// Appends the other response's attributes and events. If the other
+    /// response has data and this one doesn't, adopts the other's data.
+    /// This enables composing stdlib responses with contract-specific attributes:
+    ///
+    /// ```ignore
+    /// let stdlib_resp = Norn20::mint(&to, amount)?;
+    /// Ok(Response::with_action("mint").merge(stdlib_resp))
+    /// ```
+    pub fn merge(mut self, other: Response) -> Self {
+        self.attributes.extend(other.attributes);
+        self.events.extend(other.events);
+        if self.data.is_empty() && !other.data.is_empty() {
+            self.data = other.data;
+        }
+        self
+    }
+
     /// Get the response data bytes.
     pub fn data(&self) -> &[u8] {
         &self.data

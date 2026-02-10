@@ -20,9 +20,10 @@ use alloc::string::String;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 
-use crate::addr::{addr_to_hex, ZERO_ADDRESS};
+use crate::addr::ZERO_ADDRESS;
 use crate::contract::Context;
 use crate::error::ContractError;
+use crate::math::safe_add;
 use crate::response::{ContractResult, Event, Response};
 use crate::storage::{Item, Map};
 use crate::types::Address;
@@ -128,7 +129,7 @@ impl Norn20 {
         ensure_ne!(*to, ZERO_ADDRESS, "cannot mint to zero address");
 
         let bal = N20_BALANCES.load_or(to, 0);
-        let new_bal = bal.checked_add(amount).ok_or(ContractError::Overflow)?;
+        let new_bal = safe_add(bal, amount)?;
         N20_BALANCES.save(to, &new_bal)?;
 
         let supply = N20_TOTAL_SUPPLY.load_or(0);
@@ -137,8 +138,8 @@ impl Norn20 {
         Ok(Response::new()
             .add_event(
                 Event::new("Mint")
-                    .add_attribute("to", addr_to_hex(to))
-                    .add_attribute("amount", alloc::format!("{amount}")),
+                    .add_address("to", to)
+                    .add_u128("amount", amount),
             )
             .set_data(&new_bal))
     }
@@ -160,8 +161,8 @@ impl Norn20 {
         Ok(Response::new()
             .add_event(
                 Event::new("Burn")
-                    .add_attribute("from", addr_to_hex(from))
-                    .add_attribute("amount", alloc::format!("{amount}")),
+                    .add_address("from", from)
+                    .add_u128("amount", amount),
             )
             .set_data(&(bal - amount)))
     }
@@ -183,9 +184,9 @@ impl Norn20 {
 
         Ok(Response::new().add_event(
             Event::new("Transfer")
-                .add_attribute("from", addr_to_hex(&sender))
-                .add_attribute("to", addr_to_hex(to))
-                .add_attribute("amount", alloc::format!("{amount}")),
+                .add_address("from", &sender)
+                .add_address("to", to)
+                .add_u128("amount", amount),
         ))
     }
 
@@ -198,9 +199,9 @@ impl Norn20 {
 
         Ok(Response::new().add_event(
             Event::new("Approval")
-                .add_attribute("owner", addr_to_hex(&sender))
-                .add_attribute("spender", addr_to_hex(spender))
-                .add_attribute("amount", alloc::format!("{amount}")),
+                .add_address("owner", &sender)
+                .add_address("spender", spender)
+                .add_u128("amount", amount),
         ))
     }
 
@@ -229,9 +230,9 @@ impl Norn20 {
 
         Ok(Response::new().add_event(
             Event::new("Transfer")
-                .add_attribute("from", addr_to_hex(from))
-                .add_attribute("to", addr_to_hex(to))
-                .add_attribute("amount", alloc::format!("{amount}")),
+                .add_address("from", from)
+                .add_address("to", to)
+                .add_u128("amount", amount),
         ))
     }
 }
