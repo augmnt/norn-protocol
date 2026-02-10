@@ -96,12 +96,17 @@ export default function TokenDetailPage({
     );
   }
 
-  const supplyPercent =
-    BigInt(token.max_supply) > 0n
-      ? Number(
-          (BigInt(token.current_supply) * 100n) / BigInt(token.max_supply)
-        )
-      : 0;
+  let supplyPercent = 0;
+  try {
+    const maxSupply = BigInt(token.max_supply || "0");
+    if (maxSupply > 0n) {
+      supplyPercent = Number(
+        (BigInt(token.current_supply || "0") * 100n) / maxSupply
+      );
+    }
+  } catch {
+    // Non-numeric supply values — leave at 0
+  }
 
   return (
     <PageContainer title={`${token.name} (${token.symbol})`}>
@@ -191,8 +196,9 @@ export default function TokenDetailPage({
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Max Supply</span>
                 <span className="font-mono tabular-nums">
-                  {formatAmount(token.max_supply, token.decimals)}{" "}
-                  {token.symbol}
+                  {BigInt(token.max_supply || "0") === 0n
+                    ? "Unlimited"
+                    : `${formatAmount(token.max_supply, token.decimals)} ${token.symbol}`}
                 </span>
               </div>
             </div>
