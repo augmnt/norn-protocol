@@ -435,10 +435,37 @@ impl NornRpcServer for NornRpcImpl {
                 state_root: hex::encode(block.state_root),
             }))
         } else {
-            let state = engine.weave_state();
+            let height = engine.weave_state().height;
+            let latest_hash = engine.weave_state().latest_hash;
+            drop(engine);
+
+            // Try the StateManager archive before returning a placeholder.
+            let sm = self.state_manager.read().await;
+            if let Some(block) = sm.get_block(height) {
+                return Ok(Some(BlockInfo {
+                    height: block.height,
+                    hash: hex::encode(block.hash),
+                    prev_hash: hex::encode(block.prev_hash),
+                    timestamp: block.timestamp,
+                    proposer: hex::encode(block.proposer),
+                    commitment_count: block.commitments.len(),
+                    registration_count: block.registrations.len(),
+                    anchor_count: block.anchors.len(),
+                    fraud_proof_count: block.fraud_proofs.len(),
+                    name_registration_count: block.name_registrations.len(),
+                    transfer_count: block.transfers.len(),
+                    token_definition_count: block.token_definitions.len(),
+                    token_mint_count: block.token_mints.len(),
+                    token_burn_count: block.token_burns.len(),
+                    loom_deploy_count: block.loom_deploys.len(),
+                    stake_operation_count: block.stake_operations.len(),
+                    state_root: hex::encode(block.state_root),
+                }));
+            }
+
             Ok(Some(BlockInfo {
-                height: state.height,
-                hash: hex::encode(state.latest_hash),
+                height,
+                hash: hex::encode(latest_hash),
                 prev_hash: String::new(),
                 timestamp: 0,
                 proposer: String::new(),

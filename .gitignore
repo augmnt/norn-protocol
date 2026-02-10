@@ -1,6 +1,17 @@
 /target
+**/target/
 **/*.rs.bk
 *.pdb
 *.pdf
 .DS_Store
 norn-data/
+
+# JS/TS build artifacts
+node_modules/
+dist/
+.next/
+*.tsbuildinfo
+
+# Environment files
+.env.local
+.env.*.local

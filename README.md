@@ -112,8 +112,8 @@ norn run --network mainnet --genesis genesis/mainnet.json
 
 ## Repository Structure
 
-| Crate | Description |
-|-------|-------------|
+| Crate / Package | Description |
+|-----------------|-------------|
 | `norn-types` | Shared type definitions (Thread, Knot, Weave, Loom, consensus, fraud proof, genesis, network message types) |
 | `norn-crypto` | Cryptographic operations (Ed25519 keys, BLAKE3 hashing, Merkle trees, BIP-39 seeds, SLIP-0010 HD derivation, XChaCha20 encryption) |
 | `norn-thread` | Thread management (Thread chain, Knot creation/validation, state management, version tracking) |
@@ -124,6 +124,9 @@ norn run --network mainnet --genesis genesis/mainnet.json
 | `norn-spindle` | Watchtower service (Weave monitoring, fraud proof construction, rate limiting, service orchestration) |
 | `norn-sdk` | Contract SDK for writing Norn loom smart contracts (`#![no_std]`, targets `wasm32-unknown-unknown`) |
 | `norn-node` | Full node binary (CLI, node configuration, genesis handling, JSON-RPC server with API key auth, wallet CLI, NornNames, NT-1 tokens, Loom smart contracts with execution, Prometheus metrics endpoint, fraud proof submission, spindle watchtower integration) |
+| `sdk/typescript` | TypeScript SDK (`@norn-protocol/sdk`) — wallet primitives, transaction builders, RPC client, WebSocket subscriptions |
+| `explorer/` | [Block explorer](#explorer) — Next.js 15 web app for browsing blocks, transactions, accounts, tokens, and contracts |
+| `wallet-extension/` | [Browser wallet](#wallet-extension) — Chrome extension for sending/receiving NORN, managing accounts, and registering names |
 
 ## Getting Started
 
@@ -428,6 +431,92 @@ NORN has a fixed maximum supply of **1,000,000,000 NORN** (1 billion), enforced 
 **Deflationary mechanics:** NornNames registration burns 1 NORN per name. NT-1 token creation burns 10 NORN per token. Loom deployment burns 50 NORN per contract. Future fee burning (EIP-1559-style) planned.
 
 For full details, see the [Protocol Specification](docs/Norn_Protocol_Specification_v2.0.md).
+
+## Explorer
+
+The **Norn Explorer** is a block explorer web app for browsing the Norn network — blocks, transactions, accounts, tokens, and smart contracts. Built with Next.js 15, React 19, shadcn/ui, and the `@norn-protocol/sdk`.
+
+```bash
+cd explorer
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). Configure the RPC endpoint in `.env.local`:
+
+```env
+NEXT_PUBLIC_RPC_URL=http://localhost:9944
+NEXT_PUBLIC_WS_URL=ws://localhost:9944
+```
+
+**Key pages:**
+
+| Route | Description |
+|-------|-------------|
+| `/` | Dashboard with network stats, recent blocks, and transactions |
+| `/blocks` | Paginated block list |
+| `/block/[height]` | Block detail with metadata and activity counts |
+| `/transactions` | Live transaction feed with pending transactions |
+| `/address/[address]` | Account balances, transaction history, registered names |
+| `/tokens` | Token registry with supply information |
+| `/contracts` | Deployed smart contracts |
+
+Real-time updates are powered by WebSocket subscriptions — blocks and transactions stream in as they are produced.
+
+See [`explorer/README.md`](explorer/README.md) for full setup instructions, environment variables, and troubleshooting.
+
+## Wallet Extension
+
+The **Norn Wallet** is a Chrome browser extension for managing NORN on the Norn Protocol. Send and receive tokens, browse activity, register NornNames, and manage multiple accounts — all from the browser toolbar.
+
+```bash
+cd wallet-extension
+npm install
+npm run build
+```
+
+Then load the `wallet-extension/dist` directory as an unpacked extension in `chrome://extensions` (Developer mode).
+
+**Features:**
+
+- Create new wallets or import from private key hex / CLI export
+- Send NORN to addresses or NornNames (e.g. `alice`)
+- Receive with QR code
+- Browse NT-1 tokens and transaction history
+- Register NornNames (1 NORN fee)
+- Multi-account support with auto-lock
+- Configurable RPC endpoint (local node or devnet)
+
+**Importing a CLI wallet:**
+
+```bash
+# In terminal — export your CLI wallet's private key
+norn wallet export <wallet-name> --show-private-key
+
+# Then paste the 64-char hex into the extension's "Import from CLI" page
+```
+
+See [`wallet-extension/README.md`](wallet-extension/README.md) for full setup instructions, page reference, and security details.
+
+## TypeScript SDK
+
+The `@norn-protocol/sdk` package provides wallet primitives, transaction builders, an RPC client, and WebSocket subscription helpers for building TypeScript/JavaScript applications on Norn.
+
+```bash
+cd sdk/typescript
+npm install
+npm run build
+```
+
+Both the Explorer and Wallet Extension depend on this SDK via local file link. Build it first before running either project.
+
+```typescript
+import { Wallet, NornClient } from "@norn-protocol/sdk";
+
+const wallet = Wallet.generate();
+const client = new NornClient("http://localhost:9944");
+const balance = await client.getBalance(wallet.address);
+```
 
 ## Documentation
 

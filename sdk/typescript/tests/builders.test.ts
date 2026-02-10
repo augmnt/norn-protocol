@@ -68,7 +68,7 @@ describe("buildTransfer", () => {
     expect(() => fromHex(hex)).not.toThrow();
   });
 
-  it("contains the sender address", () => {
+  it("contains a valid Knot structure with sender pubkey in before_states", () => {
     const wallet = Wallet.fromPrivateKey(new Uint8Array(32).fill(1));
     const hex = buildTransfer(wallet, {
       to: "0x" + "02".repeat(20),
@@ -76,8 +76,29 @@ describe("buildTransfer", () => {
     });
     const bytes = fromHex(hex);
     const r = new BorshReader(bytes);
-    const from = r.readFixedBytes(20);
-    expect(toHex(from)).toBe(toHex(wallet.address));
+
+    // id: [u8; 32]
+    const knotId = r.readFixedBytes(32);
+    expect(knotId.length).toBe(32);
+
+    // knot_type: KnotType::Transfer = 0
+    expect(r.readU8()).toBe(0);
+
+    // timestamp: u64
+    const ts = r.readU64();
+    expect(ts).toBeGreaterThan(0n);
+
+    // expiry: Option<u64> = None
+    expect(r.readU8()).toBe(0);
+
+    // before_states: Vec<ParticipantState> length = 1
+    expect(r.readU32()).toBe(1);
+    // before_states[0].thread_id = sender address
+    const threadId = r.readFixedBytes(20);
+    expect(toHex(threadId)).toBe(toHex(wallet.address));
+    // before_states[0].pubkey = sender public key
+    const pubkey = r.readFixedBytes(32);
+    expect(toHex(pubkey)).toBe(toHex(wallet.publicKey));
   });
 });
 

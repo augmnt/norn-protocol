@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Norn Wallet",
+  "description": "A secure wallet for the Norn Protocol blockchain",
+  "version": "0.1.0",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "permissions": ["storage", "alarms"],
+  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*", "https://*/*"]
+}

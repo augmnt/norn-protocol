@@ -36,10 +36,10 @@ export function publicKeyFromPrivate(privateKey: Uint8Array): Uint8Array {
   return getPublicKey(privateKey);
 }
 
-/** Derive a 20-byte address from a 32-byte public key: BLAKE3(pubkey)[12..32]. */
+/** Derive a 20-byte address from a 32-byte public key: BLAKE3(pubkey)[0..20]. */
 export function publicKeyToAddress(publicKey: Uint8Array): Uint8Array {
   const hash = blake3Hash(publicKey);
-  return hash.slice(12, 32);
+  return hash.slice(0, 20);
 }
 
 /** Convert a Uint8Array to hex string. */

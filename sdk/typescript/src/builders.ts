@@ -1,6 +1,5 @@
 import {
   BorshWriter,
-  transferSigningData,
   nameRegistrationSigningData,
   tokenDefinitionSigningData,
   tokenMintSigningData,
@@ -50,7 +49,9 @@ function now(): bigint {
 /**
  * Build and sign a transfer transaction.
  *
- * Returns hex-encoded borsh bytes ready to submit via `submitKnot`.
+ * Returns hex-encoded borsh bytes of a full Knot struct ready to submit via
+ * `submitKnot`. The Rust handler expects: id, knot_type, timestamp, expiry,
+ * before_states, after_states, payload (KnotPayload::Transfer), signatures.
  */
 export function buildTransfer(
   wallet: Wallet,
@@ -61,8 +62,8 @@ export function buildTransfer(
     memo?: string;
   },
 ): string {
-  const from = wallet.address;
-  const to = fromHex(params.to);
+  const from = wallet.address; // 20 bytes
+  const to = fromHex(params.to); // 20 bytes
   const tokenId = params.tokenId
     ? fromHex(params.tokenId)
     : NATIVE_TOKEN_ID;
@@ -71,27 +72,51 @@ export function buildTransfer(
     ? new TextEncoder().encode(params.memo)
     : undefined;
 
-  // Build signing data and sign.
-  const sigData = transferSigningData({
-    from,
-    to,
-    tokenId,
-    amount: params.amount,
-    timestamp,
-    memo: memoBytes,
-  });
-  const signature = wallet.sign(sigData);
+  // Serialize the knot body (all fields except id and signatures).
+  // This matches Rust's compute_knot_id: BLAKE3(knot_type ++ timestamp ++
+  // expiry ++ before_states ++ after_states ++ payload).
+  const body = new BorshWriter();
 
-  // Serialize the full knot structure for the RPC.
+  // knot_type: KnotType::Transfer = variant 0
+  body.writeU8(0);
+
+  // timestamp: u64
+  body.writeU64(timestamp);
+
+  // expiry: Option<u64> = None
+  body.writeU8(0);
+
+  // before_states: Vec<ParticipantState> — 1 entry for sender
+  body.writeU32(1);
+  body.writeFixedBytes(from); // thread_id: [u8; 20]
+  body.writeFixedBytes(wallet.publicKey); // pubkey: [u8; 32]
+  body.writeU64(0n); // version: u64
+  body.writeFixedBytes(new Uint8Array(32)); // state_hash: [u8; 32]
+
+  // after_states: Vec<ParticipantState> — empty
+  body.writeU32(0);
+
+  // payload: KnotPayload::Transfer(TransferPayload)
+  body.writeU8(0); // Transfer variant tag
+  body.writeFixedBytes(tokenId); // token_id: [u8; 32]
+  body.writeU128(params.amount); // amount: u128
+  body.writeFixedBytes(from); // from: [u8; 20]
+  body.writeFixedBytes(to); // to: [u8; 20]
+  body.writeOptionBytes(memoBytes ?? null); // memo: Option<Vec<u8>>
+
+  const bodyBytes = body.toBytes();
+
+  // Compute knot ID = BLAKE3(body) and sign it.
+  const knotId = blake3Hash(bodyBytes);
+  const signature = wallet.sign(knotId);
+
+  // Serialize the full Knot struct.
   const w = new BorshWriter();
-  w.writeFixedBytes(from); // 20 bytes
-  w.writeFixedBytes(to); // 20 bytes
-  w.writeFixedBytes(tokenId); // 32 bytes
-  w.writeU128(params.amount);
-  w.writeU64(timestamp);
-  w.writeOptionBytes(memoBytes ?? null);
-  w.writeFixedBytes(wallet.publicKey); // 32 bytes
-  w.writeFixedBytes(signature); // 64 bytes
+  w.writeFixedBytes(knotId); // id: [u8; 32]
+  w.writeFixedBytes(bodyBytes); // knot_type through payload
+  // signatures: Vec<Signature> — 1 entry
+  w.writeU32(1);
+  w.writeFixedBytes(signature); // [u8; 64]
 
   return toHex(w.toBytes());
 }

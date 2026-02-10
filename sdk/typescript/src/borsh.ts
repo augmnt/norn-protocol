@@ -157,7 +157,8 @@ export function nameRegistrationSigningData(params: {
   feePaid: bigint;
 }): Uint8Array {
   const w = new BorshWriter();
-  w.writeString(params.name);
+  // Rust uses raw name bytes (no borsh length prefix) for signing data
+  w.writeFixedBytes(new TextEncoder().encode(params.name));
   w.writeFixedBytes(params.owner); // 20 bytes
   w.writeU64(params.timestamp);
   w.writeU128(params.feePaid);

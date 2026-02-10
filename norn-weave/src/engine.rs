@@ -576,6 +576,8 @@ impl WeaveEngine {
     ) {
         self.known_names.extend(names);
         self.known_threads.extend(threads);
+        // Reconcile thread_count with actual known threads after seeding
+        self.weave_state.thread_count = self.known_threads.len() as u64;
     }
 
     /// Validate and add a loom deployment to the mempool.
