@@ -83,9 +83,6 @@ mod tests {
     use super::*;
     use crate::testing::*;
 
-    const ALICE: Address = [1u8; 20];
-    const BOB: Address = [2u8; 20];
-
     #[test]
     fn test_init_and_owner() {
         let _env = TestEnv::new().with_sender(ALICE);
@@ -105,7 +102,7 @@ mod tests {
         let env = TestEnv::new().with_sender(BOB);
         Ownable::init(&ALICE).unwrap();
         let err = Ownable::require_owner(&env.ctx()).unwrap_err();
-        assert!(matches!(err, ContractError::Unauthorized));
+        assert_eq!(err, ContractError::Unauthorized);
     }
 
     #[test]
@@ -122,7 +119,7 @@ mod tests {
         let env = TestEnv::new().with_sender(BOB);
         Ownable::init(&ALICE).unwrap();
         let err = Ownable::transfer_ownership(&env.ctx(), &BOB).unwrap_err();
-        assert!(matches!(err, ContractError::Unauthorized));
+        assert_eq!(err, ContractError::Unauthorized);
     }
 
     #[test]

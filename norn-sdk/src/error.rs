@@ -3,7 +3,7 @@
 use alloc::string::String;
 
 /// Errors that a contract can return from `execute` or `query`.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ContractError {
     /// A custom error with a free-form message.
     Custom(String),

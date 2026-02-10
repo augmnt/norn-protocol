@@ -84,7 +84,7 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
 name = "norn-sdk"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "borsh",
  "dlmalloc",
@@ -93,7 +93,7 @@ dependencies = [
 
 [[package]]
 name = "norn-sdk-macros"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -102,7 +102,7 @@ dependencies = [
 
 [[package]]
 name = "norn20-token"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "borsh",
  "norn-sdk",

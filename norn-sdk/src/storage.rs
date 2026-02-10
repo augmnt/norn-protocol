@@ -69,6 +69,17 @@ impl StorageKey for alloc::string::String {
     }
 }
 
+impl<A: StorageKey, B: StorageKey> StorageKey for (A, B) {
+    fn storage_key(&self) -> Vec<u8> {
+        let a = self.0.storage_key();
+        let b = self.1.storage_key();
+        let mut key = Vec::with_capacity(a.len() + b.len());
+        key.extend_from_slice(&a);
+        key.extend_from_slice(&b);
+        key
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Item<T> — single-value storage
 // ═══════════════════════════════════════════════════════════════════════════
@@ -97,6 +108,15 @@ impl<T> Item<T> {
 }
 
 impl<T: BorshSerialize + BorshDeserialize> Item<T> {
+    /// Save a value to storage, panicking on serialization failure.
+    ///
+    /// Use this in `init` methods where failure is a bug.
+    /// Avoids `.save(&val).unwrap()` noise.
+    pub fn init(&self, value: &T) {
+        let bytes = borsh::to_vec(value).expect("Item::init: serialization failed");
+        host::state_set(self.namespace.as_bytes(), &bytes);
+    }
+
     /// Save a value to storage.
     pub fn save(&self, value: &T) -> Result<(), ContractError> {
         let bytes = borsh::to_vec(value)
@@ -150,6 +170,17 @@ impl<T: BorshSerialize + BorshDeserialize> Item<T> {
         self.save(&updated)?;
         Ok(updated)
     }
+
+    /// Load (or use `default` if absent), apply a function, save, and return the result.
+    pub fn update_or<F>(&self, default: T, f: F) -> Result<T, ContractError>
+    where
+        F: FnOnce(T) -> Result<T, ContractError>,
+    {
+        let value = self.load().unwrap_or(default);
+        let updated = f(value)?;
+        self.save(&updated)?;
+        Ok(updated)
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -190,6 +221,15 @@ impl<K: StorageKey, V: BorshSerialize + BorshDeserialize> Map<K, V> {
         full.push(0x00); // separator
         full.extend_from_slice(&k);
         full
+    }
+
+    /// Save a value at the given key, panicking on serialization failure.
+    ///
+    /// Use this in `init` methods where failure is a bug.
+    /// Avoids `.save(key, &val).unwrap()` noise.
+    pub fn init(&self, key: &K, value: &V) {
+        let bytes = borsh::to_vec(value).expect("Map::init: serialization failed");
+        host::state_set(&self.full_key(key), &bytes);
     }
 
     /// Save a value at the given key.
@@ -241,6 +281,17 @@ impl<K: StorageKey, V: BorshSerialize + BorshDeserialize> Map<K, V> {
         F: FnOnce(V) -> Result<V, ContractError>,
     {
         let value = self.load(key)?;
+        let updated = f(value)?;
+        self.save(key, &updated)?;
+        Ok(updated)
+    }
+
+    /// Load (or use `default` if absent), apply a function, save, and return the result.
+    pub fn update_or<F>(&self, key: &K, default: V, f: F) -> Result<V, ContractError>
+    where
+        F: FnOnce(V) -> Result<V, ContractError>,
+    {
+        let value = self.load(key).unwrap_or(default);
         let updated = f(value)?;
         self.save(key, &updated)?;
         Ok(updated)

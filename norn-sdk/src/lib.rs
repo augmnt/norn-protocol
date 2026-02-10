@@ -1,6 +1,6 @@
 //! SDK for writing Norn Protocol loom smart contracts.
 //!
-//! # SDK v5 — Proc-Macro DX
+//! # SDK v6 — DX Polish
 //!
 //! The recommended way to write contracts uses `#[norn_contract]`:
 //!
@@ -64,11 +64,37 @@ pub mod addr;
 pub mod guard;
 pub mod storage;
 
+// -- SDK v6 modules --
+pub mod math;
+
 // -- SDK v3 standard library --
 pub mod stdlib;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod testing;
+
+/// Create a structured [`Event`](response::Event) with auto-converted attribute values.
+///
+/// Uses [`ToAttributeValue`](response::ToAttributeValue) for type dispatch:
+/// - `Address` → hex string
+/// - `u128` / `u64` → decimal string
+/// - `&str` / `String` → passthrough
+///
+/// ```ignore
+/// event!("Transfer", from: sender, to: recipient, amount: amount)
+/// ```
+#[macro_export]
+macro_rules! event {
+    ($ty:expr $(, $key:ident : $val:expr)* $(,)?) => {
+        $crate::response::Event::new($ty)
+        $(
+            .add_attribute(
+                stringify!($key),
+                <_ as $crate::response::ToAttributeValue>::to_attribute_value(&$val),
+            )
+        )*
+    };
+}
 
 // Re-export key types at crate root for convenience.
 pub use contract::{Context, Contract};

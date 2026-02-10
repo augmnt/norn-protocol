@@ -263,6 +263,14 @@ mod mock {
     pub fn mock_reset_events() {
         EVENTS.with(|e| e.borrow_mut().clear());
     }
+
+    pub fn mock_get_transfers() -> Vec<TransferRecord> {
+        TRANSFERS.with(|t| t.borrow().clone())
+    }
+
+    pub fn mock_reset_transfers() {
+        TRANSFERS.with(|t| t.borrow_mut().clear());
+    }
 }
 
 // ── Re-export native stubs as public module-level functions ────────────────
@@ -356,4 +364,23 @@ pub fn mock_get_events() -> alloc::vec::Vec<MockEvent> {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn mock_reset_events() {
     mock::mock_reset_events();
+}
+
+/// A captured transfer record: `(from, to, token_id, amount)`.
+#[cfg(not(target_arch = "wasm32"))]
+pub type MockTransfer = (
+    alloc::vec::Vec<u8>,
+    alloc::vec::Vec<u8>,
+    alloc::vec::Vec<u8>,
+    u128,
+);
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn mock_get_transfers() -> alloc::vec::Vec<MockTransfer> {
+    mock::mock_get_transfers()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn mock_reset_transfers() {
+    mock::mock_reset_transfers();
 }

@@ -121,10 +121,6 @@ mod tests {
     use super::*;
     use norn_sdk::testing::*;
 
-    const ALICE: Address = [1u8; 20];
-    const BOB: Address = [2u8; 20];
-    const CHARLIE: Address = [3u8; 20];
-
     fn setup() -> (TestEnv, Norn20Token) {
         let env = TestEnv::new().with_sender(ALICE);
         let token = Norn20Token::new(
@@ -153,8 +149,7 @@ mod tests {
     fn test_owner() {
         let (env, token) = setup();
         let resp = token.owner(&env.ctx()).unwrap();
-        let owner: Address = from_response(&resp).unwrap();
-        assert_eq!(owner, ALICE);
+        assert_data::<Address>(&resp, &ALICE);
     }
 
     #[test]
@@ -189,7 +184,7 @@ mod tests {
         // Non-owner can't mint
         env.set_sender(BOB);
         let err = token.mint(&env.ctx(), BOB, 100).unwrap_err();
-        assert!(matches!(err, ContractError::Unauthorized));
+        assert_eq!(err, ContractError::Unauthorized);
     }
 
     #[test]
@@ -201,7 +196,7 @@ mod tests {
 
         env.set_sender(BOB);
         let err = token.burn(&env.ctx(), ALICE, 1).unwrap_err();
-        assert!(matches!(err, ContractError::Unauthorized));
+        assert_eq!(err, ContractError::Unauthorized);
     }
 
     #[test]
@@ -223,7 +218,7 @@ mod tests {
         let (env, mut token) = setup();
         env.set_sender(BOB);
         let err = token.pause(&env.ctx()).unwrap_err();
-        assert!(matches!(err, ContractError::Unauthorized));
+        assert_eq!(err, ContractError::Unauthorized);
     }
 
     #[test]
@@ -235,7 +230,7 @@ mod tests {
 
         // Alice can no longer mint
         let err = token.mint(&env.ctx(), ALICE, 1).unwrap_err();
-        assert!(matches!(err, ContractError::Unauthorized));
+        assert_eq!(err, ContractError::Unauthorized);
 
         // Bob can now mint
         env.set_sender(BOB);
@@ -246,13 +241,11 @@ mod tests {
     fn test_query_is_paused() {
         let (env, mut token) = setup();
         let resp = token.is_paused(&env.ctx()).unwrap();
-        let paused: bool = from_response(&resp).unwrap();
-        assert!(!paused);
+        assert_data::<bool>(&resp, &false);
 
         token.pause(&env.ctx()).unwrap();
         let resp = token.is_paused(&env.ctx()).unwrap();
-        let paused: bool = from_response(&resp).unwrap();
-        assert!(paused);
+        assert_data::<bool>(&resp, &true);
     }
 
     #[test]

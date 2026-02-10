@@ -39,7 +39,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-norn-sdk = {{ git = "https://github.com/augmnt/norn-protocol", tag = "v0.14.0" }}
+norn-sdk = {{ git = "https://github.com/augmnt/norn-protocol", tag = "v0.15.0" }}
 borsh = {{ version = "1.5", default-features = false, features = ["derive"] }}
 
 [profile.release]
@@ -56,7 +56,7 @@ target = "wasm32-unknown-unknown"
 "#;
     fs::write(dir.join(".cargo/config.toml"), cargo_config)?;
 
-    // src/lib.rs — SDK v5 contract template with #[norn_contract] proc macro.
+    // src/lib.rs — SDK v6 contract template with #[norn_contract] proc macro.
     let lib_rs = format!(
         r#"//! {} — a Norn loom smart contract.
 
@@ -80,8 +80,8 @@ pub struct MyContract;
 impl MyContract {{
     #[init]
     pub fn new(ctx: &Context) -> Self {{
-        OWNER.save(&ctx.sender()).unwrap();
-        VALUE.save(&0u64).unwrap();
+        OWNER.init(&ctx.sender());
+        VALUE.init(&0u64);
         MyContract
     }}
 
@@ -90,9 +90,8 @@ impl MyContract {{
         let owner = OWNER.load()?;
         ctx.require_sender(&owner)?;
         VALUE.save(&value)?;
-        Ok(Response::new()
-            .add_attribute("action", "set_value")
-            .add_attribute("value", format!("{{value}}"))
+        Ok(Response::with_action("set_value")
+            .add_u128("value", value as u128)
             .set_data(&value))
     }}
 
@@ -109,8 +108,6 @@ mod tests {{
     use super::*;
     use norn_sdk::testing::*;
 
-    const ALICE: Address = [1u8; 20];
-
     #[test]
     fn test_set_and_get() {{
         let env = TestEnv::new().with_sender(ALICE);
@@ -120,8 +117,7 @@ mod tests {{
         assert_attribute(&resp, "action", "set_value");
 
         let resp = contract.get_value(&env.ctx()).unwrap();
-        let val: u64 = from_response(&resp).unwrap();
-        assert_eq!(val, 42);
+        assert_data::<u64>(&resp, &42);
     }}
 
     #[test]
@@ -129,9 +125,9 @@ mod tests {{
         let env = TestEnv::new().with_sender(ALICE);
         let mut contract = MyContract::new(&env.ctx());
 
-        env.set_sender([2u8; 20]); // different sender
+        env.set_sender(BOB);
         let err = contract.set_value(&env.ctx(), 99).unwrap_err();
-        assert!(matches!(err, ContractError::Unauthorized));
+        assert_eq!(err, ContractError::Unauthorized);
     }}
 }}
 "#,

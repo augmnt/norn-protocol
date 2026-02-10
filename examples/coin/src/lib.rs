@@ -19,7 +19,7 @@ pub struct Coin;
 impl Coin {
     #[init]
     pub fn new(ctx: &Context) -> Self {
-        MINTER.save(&ctx.sender()).unwrap();
+        MINTER.init(&ctx.sender());
         Coin
     }
 
@@ -28,30 +28,23 @@ impl Coin {
         let minter = MINTER.load()?;
         ctx.require_sender(&minter)?;
         let bal = BALANCES.load_or(&to, 0);
-        BALANCES.save(&to, &(bal + amount))?;
+        let new_bal = safe_add(bal, amount)?;
+        BALANCES.save(&to, &new_bal)?;
         Ok(Response::new()
-            .add_event(
-                Event::new("Mint")
-                    .add_attribute("to", addr_to_hex(&to))
-                    .add_attribute("amount", format!("{amount}")),
-            )
-            .set_data(&(bal + amount)))
+            .add_event(event!("Mint", to: to, amount: amount))
+            .set_data(&new_bal))
     }
 
     #[execute]
     pub fn send(&mut self, ctx: &Context, to: Address, amount: u128) -> ContractResult {
         let sender = ctx.sender();
         let from_bal = BALANCES.load_or(&sender, 0);
-        ensure!(amount <= from_bal, ContractError::InsufficientFunds);
+        let new_from = safe_sub(from_bal, amount)?;
         let to_bal = BALANCES.load_or(&to, 0);
-        BALANCES.save(&sender, &(from_bal - amount))?;
+        BALANCES.save(&sender, &new_from)?;
         BALANCES.save(&to, &(to_bal + amount))?;
-        Ok(Response::new().add_event(
-            Event::new("Transfer")
-                .add_attribute("from", addr_to_hex(&sender))
-                .add_attribute("to", addr_to_hex(&to))
-                .add_attribute("amount", format!("{amount}")),
-        ))
+        Ok(Response::new()
+            .add_event(event!("Transfer", from: sender, to: to, amount: amount)))
     }
 
     #[query]
@@ -72,17 +65,12 @@ mod tests {
     use super::*;
     use norn_sdk::testing::*;
 
-    const ALICE: Address = [1u8; 20];
-    const BOB: Address = [2u8; 20];
-    const CHARLIE: Address = [3u8; 20];
-
     #[test]
     fn test_init() {
         let env = TestEnv::new().with_sender(ALICE);
         let coin = Coin::new(&env.ctx());
         let resp = coin.minter(&env.ctx()).unwrap();
-        let m: Address = from_response(&resp).unwrap();
-        assert_eq!(m, ALICE);
+        assert_data::<Address>(&resp, &ALICE);
     }
 
     #[test]
@@ -91,8 +79,7 @@ mod tests {
         let mut coin = Coin::new(&env.ctx());
         let resp = coin.mint(&env.ctx(), BOB, 1000).unwrap();
         assert_event(&resp, "Mint");
-        let bal: u128 = from_response(&resp).unwrap();
-        assert_eq!(bal, 1000);
+        assert_data::<u128>(&resp, &1000);
     }
 
     #[test]
@@ -101,7 +88,7 @@ mod tests {
         let mut coin = Coin::new(&env.ctx());
         env.set_sender(BOB);
         let err = coin.mint(&env.ctx(), BOB, 100).unwrap_err();
-        assert!(matches!(err, ContractError::Unauthorized));
+        assert_eq!(err, ContractError::Unauthorized);
     }
 
     #[test]
@@ -114,12 +101,10 @@ mod tests {
         assert_event(&resp, "Transfer");
 
         let resp = coin.balance_of(&env.ctx(), ALICE).unwrap();
-        let bal: u128 = from_response(&resp).unwrap();
-        assert_eq!(bal, 300);
+        assert_data::<u128>(&resp, &300);
 
         let resp = coin.balance_of(&env.ctx(), BOB).unwrap();
-        let bal: u128 = from_response(&resp).unwrap();
-        assert_eq!(bal, 200);
+        assert_data::<u128>(&resp, &200);
     }
 
     #[test]
@@ -129,7 +114,7 @@ mod tests {
         coin.mint(&env.ctx(), ALICE, 50).unwrap();
 
         let err = coin.send(&env.ctx(), BOB, 100).unwrap_err();
-        assert!(matches!(err, ContractError::InsufficientFunds));
+        assert_eq!(err, ContractError::InsufficientFunds);
     }
 
     #[test]
@@ -143,10 +128,10 @@ mod tests {
         coin.send(&env.ctx(), CHARLIE, 150).unwrap();
 
         let resp = coin.balance_of(&env.ctx(), ALICE).unwrap();
-        assert_eq!(from_response::<u128>(&resp).unwrap(), 600);
+        assert_data::<u128>(&resp, &600);
         let resp = coin.balance_of(&env.ctx(), BOB).unwrap();
-        assert_eq!(from_response::<u128>(&resp).unwrap(), 250);
+        assert_data::<u128>(&resp, &250);
         let resp = coin.balance_of(&env.ctx(), CHARLIE).unwrap();
-        assert_eq!(from_response::<u128>(&resp).unwrap(), 150);
+        assert_data::<u128>(&resp, &150);
     }
 }

@@ -31,10 +31,10 @@ pub struct TokenVault;
 impl TokenVault {
     #[init]
     pub fn new(ctx: &Context) -> Self {
-        OWNER.save(&ctx.sender()).unwrap();
-        NAME.save(&String::from("vault")).unwrap();
-        BALANCE.save(&0u128).unwrap();
-        TOKEN_ID.save(&[0u8; 32]).unwrap();
+        OWNER.init(&ctx.sender());
+        NAME.init(&String::from("vault"));
+        BALANCE.init(&0u128);
+        TOKEN_ID.init(&[0u8; 32]);
         TokenVault
     }
 
@@ -42,11 +42,10 @@ impl TokenVault {
     pub fn deposit(&mut self, _ctx: &Context, amount: u128) -> ContractResult {
         ensure!(amount > 0, "deposit amount must be positive");
         let bal = BALANCE.load_or(0u128);
-        let new_bal = bal.checked_add(amount).ok_or(ContractError::Overflow)?;
+        let new_bal = safe_add(bal, amount)?;
         BALANCE.save(&new_bal)?;
-        Ok(Response::new()
-            .add_attribute("action", "deposit")
-            .add_attribute("amount", format!("{amount}"))
+        Ok(Response::with_action("deposit")
+            .add_u128("amount", amount)
             .set_data(&new_bal))
     }
 
@@ -60,9 +59,8 @@ impl TokenVault {
         BALANCE.save(&new_bal)?;
         let token = TOKEN_ID.load_or([0u8; 32]);
         ctx.transfer(&owner, &to, &token, amount);
-        Ok(Response::new()
-            .add_attribute("action", "withdraw")
-            .add_attribute("amount", format!("{amount}"))
+        Ok(Response::with_action("withdraw")
+            .add_u128("amount", amount)
             .set_data(&new_bal))
     }
 
@@ -71,8 +69,7 @@ impl TokenVault {
         let owner = OWNER.load()?;
         ctx.require_sender(&owner)?;
         NAME.save(&name)?;
-        Ok(Response::new()
-            .add_attribute("action", "set_name")
+        Ok(Response::with_action("set_name")
             .add_attribute("name", name))
     }
 
@@ -94,9 +91,6 @@ mod tests {
     use super::*;
     use norn_sdk::testing::*;
 
-    const ALICE: Address = [1u8; 20];
-    const BOB: Address = [2u8; 20];
-
     #[test]
     fn test_init_sets_owner() {
         let env = TestEnv::new().with_sender(ALICE);
@@ -112,8 +106,7 @@ mod tests {
         let resp = vault.deposit(&env.ctx(), 500).unwrap();
         assert_attribute(&resp, "action", "deposit");
         assert_attribute(&resp, "amount", "500");
-        let bal: u128 = from_response(&resp).unwrap();
-        assert_eq!(bal, 500);
+        assert_data::<u128>(&resp, &500);
     }
 
     #[test]
@@ -133,13 +126,12 @@ mod tests {
         // Bob tries to withdraw
         env.set_sender(BOB);
         let err = vault.withdraw(&env.ctx(), BOB, 50).unwrap_err();
-        assert!(matches!(err, ContractError::Unauthorized));
+        assert_eq!(err, ContractError::Unauthorized);
 
         // Alice withdraws
         env.set_sender(ALICE);
         let resp = vault.withdraw(&env.ctx(), BOB, 50).unwrap();
-        let bal: u128 = from_response(&resp).unwrap();
-        assert_eq!(bal, 50);
+        assert_data::<u128>(&resp, &50);
     }
 
     #[test]
@@ -148,7 +140,7 @@ mod tests {
         let mut vault = TokenVault::new(&env.ctx());
         vault.deposit(&env.ctx(), 10).unwrap();
         let err = vault.withdraw(&env.ctx(), BOB, 100).unwrap_err();
-        assert!(matches!(err, ContractError::InsufficientFunds));
+        assert_eq!(err, ContractError::InsufficientFunds);
     }
 
     #[test]

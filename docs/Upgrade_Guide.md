@@ -14,6 +14,8 @@
 | v0.10.x     | v0.11.0    | Yes            | Yes              | Restart node (SDK-only changes, no protocol/schema bump) |
 | v0.11.x     | v0.12.0    | Yes            | Yes              | Restart node (SDK-only changes, no protocol/schema bump) |
 | v0.12.x     | v0.13.0    | Yes            | Yes              | Restart node (SDK + runtime internal changes, no protocol/schema bump) |
+| v0.13.x     | v0.14.0    | Yes            | Yes              | Restart node (SDK-only changes, no protocol/schema bump) |
+| v0.14.x     | v0.15.0    | Yes            | Yes              | Restart node (SDK-only changes, no protocol/schema bump) |
 
 \* Within a minor version line, compatibility depends on whether PROTOCOL_VERSION or SCHEMA_VERSION was bumped. Check the release notes.
 
@@ -499,3 +501,126 @@ impl Counter {
 ### Scaffolding
 
 `norn wallet new-loom` now generates v0.14.0 templates with `#[norn_contract]` syntax.
+
+---
+
+## Upgrading from v0.14.x to v0.15.0
+
+**P2P and state compatible** — SDK-only changes, no protocol or schema bump required.
+
+1. Restart your node with the new binary. No `--reset-state` needed.
+2. Update contract crate dependencies: `norn-sdk` tag `v0.14.0` → `v0.15.0`.
+
+### Migration Examples
+
+#### Composite Map keys with tuples (replaces hand-rolled key builders)
+
+```rust
+// Before (v0.14.0):
+const ALLOWANCES: Map<[u8; 40], u128> = Map::new("allow");
+fn allowance_key(owner: &Address, spender: &Address) -> [u8; 40] {
+    let mut key = [0u8; 40];
+    key[..20].copy_from_slice(owner);
+    key[20..].copy_from_slice(spender);
+    key
+}
+ALLOWANCES.load(&allowance_key(&owner, &spender));
+
+// After (v0.15.0):
+const ALLOWANCES: Map<(Address, Address), u128> = Map::new("allow");
+ALLOWANCES.load(&(owner, spender));
+```
+
+**Note**: Do NOT change storage keys in deployed contracts — tuple keys produce the same byte layout as the manual approach for fixed-width types like `Address`, but only for new contracts.
+
+#### Safe math
+
+```rust
+// Before:
+let new_bal = bal.checked_add(amount).ok_or(ContractError::Overflow)?;
+
+// After:
+let new_bal = safe_add(bal, amount)?;
+// Also: safe_sub(a, b) returns InsufficientFunds, safe_mul(a, b) returns Overflow
+```
+
+#### Response helpers
+
+```rust
+// Before:
+Ok(Response::new()
+    .add_attribute("action", "mint")
+    .add_attribute("to", addr_to_hex(&to))
+    .add_attribute("amount", format!("{amount}")))
+
+// After:
+Ok(Response::with_action("mint")
+    .add_address("to", &to)
+    .add_u128("amount", amount))
+```
+
+#### event! macro
+
+```rust
+// Before:
+Event::new("Transfer")
+    .add_attribute("from", addr_to_hex(&sender))
+    .add_attribute("to", addr_to_hex(&to))
+    .add_attribute("amount", format!("{amount}"))
+
+// After:
+event!("Transfer", from: sender, to: to, amount: amount)
+```
+
+#### Item::init() / Map::init() (panicking save for initialization)
+
+```rust
+// Before:
+OWNER.save(&ctx.sender()).unwrap();
+
+// After:
+OWNER.init(&ctx.sender());
+```
+
+#### Test helpers
+
+```rust
+// Before:
+const ALICE: Address = [1u8; 20];
+const BOB: Address = [2u8; 20];
+let bal: u128 = from_response(&resp).unwrap();
+assert_eq!(bal, 42);
+assert!(matches!(err, ContractError::Unauthorized));
+
+// After (ALICE, BOB, CHARLIE, DAVE are in norn_sdk::testing::*):
+assert_data::<u128>(&resp, &42);
+assert_eq!(err, ContractError::Unauthorized); // PartialEq on ContractError
+```
+
+#### Map::update_or() / Item::update_or()
+
+```rust
+// Load-or-default + transform + save in one call:
+BALANCES.update_or(&addr, 0, |bal| Ok(bal + amount))?;
+```
+
+### New Features
+
+- **Tuple `StorageKey`** — `Map<(Address, Address), u128>` eliminates hand-rolled composite key functions
+- **`safe_add`/`safe_sub`/`safe_mul`** — checked arithmetic returning `ContractError`
+- **`Response::with_action()`** — creates response with "action" attribute pre-set
+- **`Response::add_address()`/`add_u128()`** — auto-converting attribute builders
+- **`Event::add_address()`/`add_u128()`** — same on events
+- **`event!` macro** — `event!("Transfer", from: sender, to: to, amount: amount)`
+- **`ToAttributeValue` trait** — compile-time type dispatch for attribute values
+- **`Item::init()`/`Map::init()`** — panicking save for contract initialization
+- **`Item::update_or()`/`Map::update_or()`** — update with default value
+- **`PartialEq` on `ContractError`** — enables `assert_eq!(err, ContractError::Unauthorized)`
+- **Test address constants** — `ALICE`, `BOB`, `CHARLIE`, `DAVE` in `norn_sdk::testing`
+- **`assert_data::<T>()`** — combines `from_response().unwrap()` + `assert_eq!`
+- **`assert_err_contains()`** — checks error message substring
+- **`TestEnv::transfers()`/`clear_transfers()`** — access captured mock transfers
+
+### Scaffolding
+
+`norn wallet new-loom` now generates v0.15.0 templates with all SDK v6 features.

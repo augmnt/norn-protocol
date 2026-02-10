@@ -241,10 +241,6 @@ mod tests {
     use super::*;
     use crate::testing::*;
 
-    const ALICE: Address = [1u8; 20];
-    const BOB: Address = [2u8; 20];
-    const CHARLIE: Address = [3u8; 20];
-
     fn setup() -> TestEnv {
         let env = TestEnv::new().with_sender(ALICE);
         Norn20::init("Test Token", "TEST", 18).unwrap();
@@ -308,7 +304,7 @@ mod tests {
         let _env = setup();
         Norn20::mint(&ALICE, 100).unwrap();
         let err = Norn20::burn(&ALICE, 200).unwrap_err();
-        assert!(matches!(err, ContractError::InsufficientFunds));
+        assert_eq!(err, ContractError::InsufficientFunds);
     }
 
     #[test]
@@ -326,7 +322,7 @@ mod tests {
         let env = setup();
         Norn20::mint(&ALICE, 50).unwrap();
         let err = Norn20::transfer(&env.ctx(), &BOB, 100).unwrap_err();
-        assert!(matches!(err, ContractError::InsufficientFunds));
+        assert_eq!(err, ContractError::InsufficientFunds);
     }
 
     #[test]
@@ -386,7 +382,7 @@ mod tests {
 
         env.set_sender(BOB);
         let err = Norn20::transfer_from(&env.ctx(), &ALICE, &CHARLIE, 200).unwrap_err();
-        assert!(matches!(err, ContractError::InsufficientFunds));
+        assert_eq!(err, ContractError::InsufficientFunds);
     }
 
     #[test]

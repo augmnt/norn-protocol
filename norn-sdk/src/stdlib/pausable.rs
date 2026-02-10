@@ -75,10 +75,6 @@ impl Pausable {
 mod tests {
     use super::*;
     use crate::testing::*;
-    use crate::types::Address;
-
-    const ALICE: Address = [1u8; 20];
-    const BOB: Address = [2u8; 20];
 
     fn setup() -> TestEnv {
         let env = TestEnv::new().with_sender(ALICE);
@@ -124,7 +120,7 @@ mod tests {
         let env = setup();
         env.set_sender(BOB);
         let err = Pausable::pause(&env.ctx()).unwrap_err();
-        assert!(matches!(err, ContractError::Unauthorized));
+        assert_eq!(err, ContractError::Unauthorized);
     }
 
     #[test]

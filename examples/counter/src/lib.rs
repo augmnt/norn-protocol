@@ -22,26 +22,20 @@ impl Counter {
     #[execute]
     pub fn increment(&mut self, _ctx: &Context) -> ContractResult {
         self.value += 1;
-        Ok(Response::new()
-            .add_attribute("action", "increment")
-            .set_data(&self.value))
+        Ok(Response::with_action("increment").set_data(&self.value))
     }
 
     #[execute]
     pub fn decrement(&mut self, _ctx: &Context) -> ContractResult {
         ensure!(self.value > 0, "counter is already zero");
         self.value -= 1;
-        Ok(Response::new()
-            .add_attribute("action", "decrement")
-            .set_data(&self.value))
+        Ok(Response::with_action("decrement").set_data(&self.value))
     }
 
     #[execute]
     pub fn reset(&mut self, _ctx: &Context) -> ContractResult {
         self.value = 0;
-        Ok(Response::new()
-            .add_attribute("action", "reset")
-            .set_data(&self.value))
+        Ok(Response::with_action("reset").set_data(&self.value))
     }
 
     #[query]
@@ -70,8 +64,7 @@ mod tests {
         let mut counter = Counter::new(&env.ctx());
         let resp = counter.increment(&env.ctx()).unwrap();
         assert_attribute(&resp, "action", "increment");
-        let val: u64 = from_response(&resp).unwrap();
-        assert_eq!(val, 1);
+        assert_data::<u64>(&resp, &1);
     }
 
     #[test]
@@ -81,8 +74,7 @@ mod tests {
         counter.increment(&env.ctx()).unwrap();
         let resp = counter.decrement(&env.ctx()).unwrap();
         assert_attribute(&resp, "action", "decrement");
-        let val: u64 = from_response(&resp).unwrap();
-        assert_eq!(val, 0);
+        assert_data::<u64>(&resp, &0);
     }
 
     #[test]
@@ -100,8 +92,7 @@ mod tests {
         counter.increment(&env.ctx()).unwrap();
         counter.increment(&env.ctx()).unwrap();
         let resp = counter.reset(&env.ctx()).unwrap();
-        let val: u64 = from_response(&resp).unwrap();
-        assert_eq!(val, 0);
+        assert_data::<u64>(&resp, &0);
     }
 
     #[test]
@@ -110,7 +101,6 @@ mod tests {
         let mut counter = Counter::new(&env.ctx());
         counter.increment(&env.ctx()).unwrap();
         let resp = counter.get_value(&env.ctx()).unwrap();
-        let val: u64 = from_response(&resp).unwrap();
-        assert_eq!(val, 1);
+        assert_data::<u64>(&resp, &1);
     }
 }

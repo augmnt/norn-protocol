@@ -9,6 +9,52 @@ use alloc::vec::Vec;
 use borsh::BorshSerialize;
 
 use crate::error::ContractError;
+use crate::types::Address;
+
+/// Trait for types that can be converted to attribute string values.
+///
+/// Implemented for common contract types to enable ergonomic attribute building
+/// on [`Response`] and [`Event`].
+pub trait ToAttributeValue {
+    /// Convert to a string suitable for use as an attribute value.
+    fn to_attribute_value(&self) -> String;
+}
+
+impl ToAttributeValue for &str {
+    fn to_attribute_value(&self) -> String {
+        String::from(*self)
+    }
+}
+
+impl ToAttributeValue for String {
+    fn to_attribute_value(&self) -> String {
+        self.clone()
+    }
+}
+
+impl ToAttributeValue for u128 {
+    fn to_attribute_value(&self) -> String {
+        alloc::format!("{self}")
+    }
+}
+
+impl ToAttributeValue for u64 {
+    fn to_attribute_value(&self) -> String {
+        alloc::format!("{self}")
+    }
+}
+
+impl ToAttributeValue for Address {
+    fn to_attribute_value(&self) -> String {
+        crate::addr::addr_to_hex(self)
+    }
+}
+
+impl ToAttributeValue for &Address {
+    fn to_attribute_value(&self) -> String {
+        crate::addr::addr_to_hex(self)
+    }
+}
 
 /// The result type returned by contract `execute` and `query` methods.
 pub type ContractResult = Result<Response, ContractError>;
@@ -61,6 +107,16 @@ impl Event {
         });
         self
     }
+
+    /// Add an address attribute (auto-converts to hex string).
+    pub fn add_address(self, key: impl Into<String>, addr: &Address) -> Self {
+        self.add_attribute(key, crate::addr::addr_to_hex(addr))
+    }
+
+    /// Add a u128 attribute (auto-converts to decimal string).
+    pub fn add_u128(self, key: impl Into<String>, value: u128) -> Self {
+        self.add_attribute(key, alloc::format!("{value}"))
+    }
 }
 
 /// Structured contract response with optional data, key-value attributes,
@@ -93,6 +149,11 @@ impl Response {
         }
     }
 
+    /// Create a response with an "action" attribute pre-set.
+    pub fn with_action(action: impl Into<String>) -> Self {
+        Self::new().add_attribute("action", action)
+    }
+
     /// Set the response data by borsh-serializing a value.
     pub fn set_data<T: BorshSerialize>(mut self, value: &T) -> Self {
         if let Ok(bytes) = borsh::to_vec(value) {
@@ -114,6 +175,16 @@ impl Response {
             value: value.into(),
         });
         self
+    }
+
+    /// Add an address attribute (auto-converts to hex string).
+    pub fn add_address(self, key: impl Into<String>, addr: &Address) -> Self {
+        self.add_attribute(key, crate::addr::addr_to_hex(addr))
+    }
+
+    /// Add a u128 attribute (auto-converts to decimal string).
+    pub fn add_u128(self, key: impl Into<String>, value: u128) -> Self {
+        self.add_attribute(key, alloc::format!("{value}"))
     }
 
     /// Add a structured event to the response.

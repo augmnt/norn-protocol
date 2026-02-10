@@ -10,7 +10,7 @@
 //!
 //! #[test]
 //! fn test_something() {
-//!     let env = TestEnv::new().with_sender([1u8; 20]);
+//!     let env = TestEnv::new().with_sender(ALICE);
 //!     let ctx = env.ctx();
 //!     // ... use ctx with your contract ...
 //!     assert!(env.logs().iter().any(|l| l.contains("action")));
@@ -19,6 +19,7 @@
 
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::fmt::Debug;
 
 use borsh::BorshDeserialize;
 
@@ -27,6 +28,23 @@ use crate::error::ContractError;
 use crate::host;
 use crate::response::Response;
 use crate::types::Address;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Test address constants
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Test address constant for the first actor.
+pub const ALICE: Address = [1u8; 20];
+/// Test address constant for the second actor.
+pub const BOB: Address = [2u8; 20];
+/// Test address constant for the third actor.
+pub const CHARLIE: Address = [3u8; 20];
+/// Test address constant for the fourth actor.
+pub const DAVE: Address = [4u8; 20];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TestEnv
+// ═══════════════════════════════════════════════════════════════════════════
 
 /// Test environment that resets all mock state on creation.
 ///
@@ -101,6 +119,16 @@ impl TestEnv {
     pub fn clear_events(&self) {
         host::mock_reset_events();
     }
+
+    /// Get all transfers captured since the last reset.
+    pub fn transfers(&self) -> Vec<host::MockTransfer> {
+        host::mock_get_transfers()
+    }
+
+    /// Clear captured transfers.
+    pub fn clear_transfers(&self) {
+        host::mock_reset_transfers();
+    }
 }
 
 impl Default for TestEnv {
@@ -108,6 +136,10 @@ impl Default for TestEnv {
         Self::new()
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Assertion helpers
+// ═══════════════════════════════════════════════════════════════════════════
 
 /// Assert that a `Response` contains an attribute with the given key and value.
 ///
@@ -135,6 +167,25 @@ pub fn assert_attribute(response: &Response, key: &str, value: &str) {
 pub fn from_response<T: BorshDeserialize>(response: &Response) -> Result<T, ContractError> {
     BorshDeserialize::try_from_slice(response.data())
         .map_err(|e| ContractError::Custom(alloc::format!("deserialize response: {e}")))
+}
+
+/// Assert that a `Response` contains borsh-encoded data equal to `expected`.
+///
+/// Combines `from_response().unwrap()` + `assert_eq!` into one call.
+pub fn assert_data<T: BorshDeserialize + Debug + PartialEq>(response: &Response, expected: &T) {
+    let actual: T = from_response(response).expect("assert_data: failed to deserialize response");
+    assert_eq!(&actual, expected);
+}
+
+/// Assert that a `ContractError`'s message contains the given substring.
+pub fn assert_err_contains(err: &ContractError, substring: &str) {
+    let msg = err.message();
+    assert!(
+        msg.contains(substring),
+        "expected error containing '{}', got: '{}'",
+        substring,
+        msg
+    );
 }
 
 /// Assert that a `Response` contains an event with the given type name.
