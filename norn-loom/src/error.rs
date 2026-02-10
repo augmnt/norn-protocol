@@ -33,6 +33,12 @@ pub enum LoomError {
     #[error("Host error: {reason}")]
     HostError { reason: String },
 
+    #[error("Re-entrancy detected: loom {loom_id:?} is already on the call stack")]
+    ReentrancyDetected { loom_id: [u8; 32] },
+
+    #[error("Call depth exceeded: {depth} > {max}")]
+    CallDepthExceeded { depth: u8, max: u8 },
+
     #[error("Storage error: {0}")]
     StorageError(#[from] norn_storage::error::StorageError),
 }

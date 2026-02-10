@@ -1,10 +1,17 @@
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
-use norn_types::primitives::{Address, Amount, TokenId};
+use norn_types::primitives::{Address, Amount, LoomId, TokenId};
 use wasmtime::StoreLimits;
 
+use crate::call_stack::CallStack;
 use crate::error::LoomError;
 use crate::gas::*;
+
+/// Shared cross-call loom state map: LoomId -> key-value state.
+pub type SharedLoomStates = Arc<Mutex<HashMap<LoomId, HashMap<Vec<u8>, Vec<u8>>>>>;
+/// Shared cross-call bytecode map: LoomId -> wasm bytecode.
+pub type SharedLoomBytecodes = Arc<Mutex<HashMap<LoomId, Vec<u8>>>>;
 
 /// Maximum WASM memory: 16 MB.
 pub const MAX_WASM_MEMORY_BYTES: usize = 16 * 1024 * 1024;
@@ -54,6 +61,16 @@ pub struct LoomHostState {
     pub timestamp: u64,
     /// Store limits for memory capping.
     pub store_limits: StoreLimits,
+
+    // ── Cross-contract call fields (set only during cross-call execution) ──
+    /// Shared call stack for tracking nested cross-contract calls.
+    pub call_stack: Option<Arc<Mutex<CallStack>>>,
+    /// Shared mutable access to all loom states (for cross-call reads/writes).
+    pub loom_states: Option<SharedLoomStates>,
+    /// Shared access to all loom bytecodes (for instantiating target contracts).
+    pub loom_bytecodes: Option<SharedLoomBytecodes>,
+    /// The loom ID of the currently executing contract (for cross-call context).
+    pub current_loom_id: Option<LoomId>,
 }
 
 impl LoomHostState {
@@ -72,6 +89,10 @@ impl LoomHostState {
             store_limits: StoreLimitsBuilder::new()
                 .memory_size(MAX_WASM_MEMORY_BYTES)
                 .build(),
+            call_stack: None,
+            loom_states: None,
+            loom_bytecodes: None,
+            current_loom_id: None,
         }
     }
 

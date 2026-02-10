@@ -10,7 +10,7 @@ pub use crate::error::ContractError;
 pub use crate::response::{
     ok, ok_bytes, ok_empty, Attribute, ContractResult, Event, Response, ToAttributeValue,
 };
-pub use crate::types::{Address, Empty, TokenId};
+pub use crate::types::{Address, Empty, LoomId, TokenId};
 
 // SDK v3 — storage, guards, address helpers
 pub use crate::addr::{addr_to_hex, hex_to_addr, ZERO_ADDRESS};

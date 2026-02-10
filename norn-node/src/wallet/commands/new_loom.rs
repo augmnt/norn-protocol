@@ -39,7 +39,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-norn-sdk = {{ git = "https://github.com/augmnt/norn-protocol", tag = "v0.15.0" }}
+norn-sdk = {{ git = "https://github.com/augmnt/norn-protocol", tag = "v0.17.0" }}
 borsh = {{ version = "1.5", default-features = false, features = ["derive"] }}
 
 [profile.release]

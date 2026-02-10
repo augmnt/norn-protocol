@@ -3096,7 +3096,7 @@ dependencies = [
 
 [[package]]
 name = "norn-crypto"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "bip39",
  "blake3",
@@ -3116,7 +3116,7 @@ dependencies = [
 
 [[package]]
 name = "norn-loom"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "borsh",
  "norn-crypto",
@@ -3132,7 +3132,7 @@ dependencies = [
 
 [[package]]
 name = "norn-node"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "argon2",
  "bip39",
@@ -3173,7 +3173,7 @@ dependencies = [
 
 [[package]]
 name = "norn-relay"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "blake3",
@@ -3191,7 +3191,7 @@ dependencies = [
 
 [[package]]
 name = "norn-sdk"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "borsh",
  "dlmalloc",
@@ -3200,7 +3200,7 @@ dependencies = [
 
 [[package]]
 name = "norn-sdk-macros"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3209,7 +3209,7 @@ dependencies = [
 
 [[package]]
 name = "norn-spindle"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "borsh",
  "norn-crypto",
@@ -3224,7 +3224,7 @@ dependencies = [
 
 [[package]]
 name = "norn-storage"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "borsh",
  "norn-crypto",
@@ -3237,7 +3237,7 @@ dependencies = [
 
 [[package]]
 name = "norn-thread"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "borsh",
  "norn-crypto",
@@ -3249,7 +3249,7 @@ dependencies = [
 
 [[package]]
 name = "norn-types"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "blake3",
  "borsh",
@@ -3259,7 +3259,7 @@ dependencies = [
 
 [[package]]
 name = "norn-weave"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "borsh",
  "hex",

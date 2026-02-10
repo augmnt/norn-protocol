@@ -26,6 +26,12 @@ pub const GAS_LOG: u64 = 50;
 /// Cost for emitting a structured event.
 pub const GAS_EMIT_EVENT: u64 = 75;
 
+/// Cost for a cross-contract call (base overhead).
+pub const GAS_CROSS_CALL: u64 = 2_500;
+
+/// Maximum nested cross-contract call depth.
+pub const MAX_CALL_DEPTH: u8 = 8;
+
 /// Default gas limit when none is specified.
 pub const DEFAULT_GAS_LIMIT: u64 = 10_000_000;
 

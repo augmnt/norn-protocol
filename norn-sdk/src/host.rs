@@ -21,6 +21,14 @@ extern "C" {
     fn norn_block_height() -> i64;
     fn norn_timestamp() -> i64;
     fn norn_emit_event(type_ptr: i32, type_len: i32, data_ptr: i32, data_len: i32);
+    fn norn_call_contract(
+        target_id_ptr: i32,
+        target_id_len: i32,
+        input_ptr: i32,
+        input_len: i32,
+        output_ptr: i32,
+        output_max_len: i32,
+    ) -> i32;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -136,6 +144,32 @@ pub fn emit_event(ty: &str, attributes: &[crate::response::Attribute]) {
     }
 }
 
+/// Call another contract during execution (cross-contract call).
+///
+/// Returns the output bytes on success, or `None` on failure.
+/// The output buffer is limited to 16KB.
+#[cfg(target_arch = "wasm32")]
+pub fn call_contract(target_id: &[u8; 32], input: &[u8]) -> Option<Vec<u8>> {
+    const MAX_OUTPUT: usize = 16 * 1024;
+    let mut buf = vec![0u8; MAX_OUTPUT];
+    unsafe {
+        let result = norn_call_contract(
+            target_id.as_ptr() as i32,
+            32,
+            input.as_ptr() as i32,
+            input.len() as i32,
+            buf.as_mut_ptr() as i32,
+            MAX_OUTPUT as i32,
+        );
+        if result < 0 {
+            None
+        } else {
+            buf.truncate(result as usize);
+            Some(buf)
+        }
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Native implementations — thread-local mock storage for `cargo test`
 // ═══════════════════════════════════════════════════════════════════════════
@@ -156,6 +190,9 @@ mod mock {
         pub attributes: Vec<(String, String)>,
     }
 
+    /// Type alias for a cross-contract call handler function.
+    pub type CrossCallHandler = std::boxed::Box<dyn Fn(&[u8; 32], &[u8]) -> Option<Vec<u8>>>;
+
     std::thread_local! {
         static STATE: RefCell<BTreeMap<Vec<u8>, Vec<u8>>> = const { RefCell::new(BTreeMap::new()) };
         static LOGS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
@@ -164,6 +201,7 @@ mod mock {
         static TIMESTAMP: RefCell<u64> = const { RefCell::new(0) };
         static TRANSFERS: RefCell<Vec<TransferRecord>> = const { RefCell::new(Vec::new()) };
         static EVENTS: RefCell<Vec<MockEvent>> = const { RefCell::new(Vec::new()) };
+        static CROSS_CALL_HANDLER: RefCell<Option<CrossCallHandler>> = const { RefCell::new(None) };
     }
 
     // ── Host function implementations ──────────────────────────────────────
@@ -224,6 +262,13 @@ mod mock {
         });
     }
 
+    pub fn call_contract(target_id: &[u8; 32], input: &[u8]) -> Option<Vec<u8>> {
+        CROSS_CALL_HANDLER.with(|h| {
+            let handler = h.borrow();
+            handler.as_ref().and_then(|f| f(target_id, input))
+        })
+    }
+
     // ── Mock control functions ─────────────────────────────────────────────
 
     pub fn mock_reset() {
@@ -234,6 +279,14 @@ mod mock {
         TIMESTAMP.with(|t| *t.borrow_mut() = 0);
         TRANSFERS.with(|t| t.borrow_mut().clear());
         EVENTS.with(|e| e.borrow_mut().clear());
+        CROSS_CALL_HANDLER.with(|h| *h.borrow_mut() = None);
+    }
+
+    pub fn mock_set_cross_call_handler<F>(handler: F)
+    where
+        F: Fn(&[u8; 32], &[u8]) -> Option<Vec<u8>> + 'static,
+    {
+        CROSS_CALL_HANDLER.with(|h| *h.borrow_mut() = Some(std::boxed::Box::new(handler)));
     }
 
     pub fn mock_set_sender(addr: [u8; 20]) {
@@ -315,6 +368,16 @@ pub fn timestamp() -> u64 {
     mock::timestamp()
 }
 
+/// Call another contract during execution (cross-contract call).
+///
+/// Returns the output bytes on success, or `None` on failure.
+/// In native mock mode, this delegates to a handler set via
+/// `mock_set_cross_call_handler()`.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn call_contract(target_id: &[u8; 32], input: &[u8]) -> Option<Vec<u8>> {
+    mock::call_contract(target_id, input)
+}
+
 // ── Mock control (native only, public) ─────────────────────────────────────
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -383,4 +446,16 @@ pub fn mock_get_transfers() -> alloc::vec::Vec<MockTransfer> {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn mock_reset_transfers() {
     mock::mock_reset_transfers();
+}
+
+/// Set a mock handler for cross-contract calls in tests.
+///
+/// The handler receives `(target_loom_id, input_bytes)` and returns
+/// `Some(output)` on success or `None` on failure.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn mock_set_cross_call_handler<F>(handler: F)
+where
+    F: Fn(&[u8; 32], &[u8]) -> Option<Vec<u8>> + 'static,
+{
+    mock::mock_set_cross_call_handler(handler);
 }

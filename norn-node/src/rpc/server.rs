@@ -9,10 +9,46 @@ use norn_types::network::NetworkId;
 use norn_weave::engine::WeaveEngine;
 
 use super::handlers::{NornRpcImpl, NornRpcServer};
-use super::types::BlockInfo;
+use super::types::{
+    BlockInfo, LoomExecutionEvent, PendingTransactionEvent, TokenEvent, TransferEvent,
+};
 use crate::error::NodeError;
 use crate::metrics::NodeMetrics;
 use crate::state_manager::StateManager;
+
+/// Groups all broadcast channels for WebSocket subscription events.
+#[derive(Clone)]
+pub struct RpcBroadcasters {
+    pub block_tx: tokio::sync::broadcast::Sender<BlockInfo>,
+    pub transfer_tx: tokio::sync::broadcast::Sender<TransferEvent>,
+    pub token_tx: tokio::sync::broadcast::Sender<TokenEvent>,
+    pub loom_tx: tokio::sync::broadcast::Sender<LoomExecutionEvent>,
+    pub pending_tx: tokio::sync::broadcast::Sender<PendingTransactionEvent>,
+}
+
+impl Default for RpcBroadcasters {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RpcBroadcasters {
+    /// Create a new set of broadcast channels.
+    pub fn new() -> Self {
+        let (block_tx, _) = tokio::sync::broadcast::channel::<BlockInfo>(64);
+        let (transfer_tx, _) = tokio::sync::broadcast::channel::<TransferEvent>(256);
+        let (token_tx, _) = tokio::sync::broadcast::channel::<TokenEvent>(64);
+        let (loom_tx, _) = tokio::sync::broadcast::channel::<LoomExecutionEvent>(64);
+        let (pending_tx, _) = tokio::sync::broadcast::channel::<PendingTransactionEvent>(256);
+        Self {
+            block_tx,
+            transfer_tx,
+            token_tx,
+            loom_tx,
+            pending_tx,
+        }
+    }
+}
 
 /// Start the JSON-RPC HTTP+WS server.
 #[allow(clippy::too_many_arguments)]
@@ -26,15 +62,15 @@ pub async fn start_rpc_server(
     network_id: NetworkId,
     is_validator: bool,
     api_key: Option<String>,
-) -> Result<(ServerHandle, tokio::sync::broadcast::Sender<BlockInfo>), NodeError> {
-    let (block_tx, _) = tokio::sync::broadcast::channel::<BlockInfo>(64);
+) -> Result<(ServerHandle, RpcBroadcasters), NodeError> {
+    let broadcasters = RpcBroadcasters::new();
 
     let rpc_impl = NornRpcImpl {
         weave_engine,
         state_manager,
         loom_manager,
         metrics,
-        block_tx: block_tx.clone(),
+        broadcasters: broadcasters.clone(),
         relay_handle,
         network_id,
         is_validator,
@@ -67,7 +103,7 @@ pub async fn start_rpc_server(
         server.start(rpc_impl.into_rpc())
     };
 
-    Ok((handle, block_tx))
+    Ok((handle, broadcasters))
 }
 
 /// Tower middleware for API key authentication on RPC mutation methods.

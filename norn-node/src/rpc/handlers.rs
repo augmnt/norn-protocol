@@ -14,11 +14,13 @@ use norn_loom::lifecycle::LoomManager;
 
 use super::types::{
     AttributeInfo, BlockInfo, CommitmentProofInfo, EventInfo, ExecutionResult, FeeEstimateInfo,
-    HealthInfo, LoomInfo, NameInfo, NameResolution, QueryResult, StakingInfo, StateProofInfo,
-    SubmitResult, ThreadInfo, ThreadStateInfo, TokenInfo, TransactionHistoryEntry, ValidatorInfo,
-    ValidatorSetInfo, ValidatorStakeInfo, WeaveStateInfo,
+    HealthInfo, LoomExecutionEvent, LoomInfo, NameInfo, NameResolution, PendingTransactionEvent,
+    QueryResult, StakingInfo, StateProofInfo, SubmitResult, ThreadInfo, ThreadStateInfo,
+    TokenEvent, TokenInfo, TransactionHistoryEntry, TransferEvent, ValidatorInfo, ValidatorSetInfo,
+    ValidatorStakeInfo, WeaveStateInfo,
 };
 use crate::metrics::NodeMetrics;
+use crate::rpc::server::RpcBroadcasters;
 use crate::state_manager::StateManager;
 use norn_types::constants::NORN_DECIMALS;
 use norn_types::primitives::NATIVE_TOKEN_ID;
@@ -116,6 +118,22 @@ pub trait NornRpc {
     /// Subscribe to new blocks.
     #[subscription(name = "norn_subscribeNewBlocks" => "norn_newBlocks", unsubscribe = "norn_unsubscribeNewBlocks", item = BlockInfo)]
     async fn subscribe_new_blocks(&self) -> SubscriptionResult;
+
+    /// Subscribe to transfer events, optionally filtered by address.
+    #[subscription(name = "norn_subscribeTransfers" => "norn_transfers", unsubscribe = "norn_unsubscribeTransfers", item = TransferEvent)]
+    async fn subscribe_transfers(&self, address_hex: Option<String>) -> SubscriptionResult;
+
+    /// Subscribe to token events (create/mint/burn), optionally filtered by token ID.
+    #[subscription(name = "norn_subscribeTokenEvents" => "norn_tokenEvents", unsubscribe = "norn_unsubscribeTokenEvents", item = TokenEvent)]
+    async fn subscribe_token_events(&self, token_id_hex: Option<String>) -> SubscriptionResult;
+
+    /// Subscribe to loom execution events, optionally filtered by loom ID.
+    #[subscription(name = "norn_subscribeLoomEvents" => "norn_loomEvents", unsubscribe = "norn_unsubscribeLoomEvents", item = LoomExecutionEvent)]
+    async fn subscribe_loom_events(&self, loom_id_hex: Option<String>) -> SubscriptionResult;
+
+    /// Subscribe to pending transactions entering the mempool.
+    #[subscription(name = "norn_subscribePendingTransactions" => "norn_pendingTransactions", unsubscribe = "norn_unsubscribePendingTransactions", item = PendingTransactionEvent)]
+    async fn subscribe_pending_transactions(&self) -> SubscriptionResult;
 
     /// Get transaction history for an address.
     #[method(name = "norn_getTransactionHistory")]
@@ -282,7 +300,7 @@ pub struct NornRpcImpl {
     pub state_manager: Arc<RwLock<StateManager>>,
     pub loom_manager: Arc<RwLock<LoomManager>>,
     pub metrics: Arc<NodeMetrics>,
-    pub block_tx: tokio::sync::broadcast::Sender<BlockInfo>,
+    pub broadcasters: RpcBroadcasters,
     pub relay_handle: Option<norn_relay::relay::RelayHandle>,
     pub network_id: norn_types::network::NetworkId,
     pub is_validator: bool,
@@ -816,19 +834,44 @@ impl NornRpcServer for NornRpcImpl {
                 drop(sm);
                 self.metrics.knots_validated.inc();
 
+                // Fire pending transaction event.
+                let _ = self.broadcasters.pending_tx.send(PendingTransactionEvent {
+                    tx_type: "transfer".to_string(),
+                    hash: hex::encode(knot_id),
+                    from: format_address(&from),
+                    timestamp,
+                });
+
                 // Queue BlockTransfer so solo-mode blocks include this transfer.
                 let bt = norn_types::weave::BlockTransfer {
                     from,
                     to,
                     token_id,
                     amount,
-                    memo,
+                    memo: memo.clone(),
                     knot_id,
                     timestamp,
                 };
                 let mut engine = self.weave_engine.write().await;
                 let _ = engine.add_transfer(bt);
                 drop(engine);
+
+                // Fire transfer event for subscribers.
+                let native = norn_types::primitives::NATIVE_TOKEN_ID;
+                let _ = self.broadcasters.transfer_tx.send(TransferEvent {
+                    from: format_address(&from),
+                    to: format_address(&to),
+                    amount: amount.to_string(),
+                    token_id: if token_id == native {
+                        None
+                    } else {
+                        Some(hex::encode(token_id))
+                    },
+                    memo: memo
+                        .as_ref()
+                        .and_then(|m| String::from_utf8(m.clone()).ok()),
+                    block_height: 0, // Not yet in a block.
+                });
 
                 if let Some(ref handle) = self.relay_handle {
                     let h = handle.clone();
@@ -897,12 +940,126 @@ impl NornRpcServer for NornRpcImpl {
     }
 
     async fn subscribe_new_blocks(&self, pending: PendingSubscriptionSink) -> SubscriptionResult {
-        let mut rx = self.block_tx.subscribe();
+        let mut rx = self.broadcasters.block_tx.subscribe();
         let sink = pending.accept().await?;
 
         tokio::spawn(async move {
             while let Ok(block_info) = rx.recv().await {
                 match jsonrpsee::SubscriptionMessage::from_json(&block_info) {
+                    Ok(msg) => {
+                        if sink.send(msg).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    async fn subscribe_transfers(
+        &self,
+        pending: PendingSubscriptionSink,
+        address_hex: Option<String>,
+    ) -> SubscriptionResult {
+        let mut rx = self.broadcasters.transfer_tx.subscribe();
+        let sink = pending.accept().await?;
+        let filter_addr = address_hex.clone();
+
+        tokio::spawn(async move {
+            while let Ok(event) = rx.recv().await {
+                // Apply optional address filter.
+                if let Some(ref addr) = filter_addr {
+                    if event.from != *addr && event.to != *addr {
+                        continue;
+                    }
+                }
+                match jsonrpsee::SubscriptionMessage::from_json(&event) {
+                    Ok(msg) => {
+                        if sink.send(msg).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    async fn subscribe_token_events(
+        &self,
+        pending: PendingSubscriptionSink,
+        token_id_hex: Option<String>,
+    ) -> SubscriptionResult {
+        let mut rx = self.broadcasters.token_tx.subscribe();
+        let sink = pending.accept().await?;
+        let filter_token = token_id_hex.clone();
+
+        tokio::spawn(async move {
+            while let Ok(event) = rx.recv().await {
+                if let Some(ref tid) = filter_token {
+                    if event.token_id != *tid {
+                        continue;
+                    }
+                }
+                match jsonrpsee::SubscriptionMessage::from_json(&event) {
+                    Ok(msg) => {
+                        if sink.send(msg).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    async fn subscribe_loom_events(
+        &self,
+        pending: PendingSubscriptionSink,
+        loom_id_hex: Option<String>,
+    ) -> SubscriptionResult {
+        let mut rx = self.broadcasters.loom_tx.subscribe();
+        let sink = pending.accept().await?;
+        let filter_loom = loom_id_hex.clone();
+
+        tokio::spawn(async move {
+            while let Ok(event) = rx.recv().await {
+                if let Some(ref lid) = filter_loom {
+                    if event.loom_id != *lid {
+                        continue;
+                    }
+                }
+                match jsonrpsee::SubscriptionMessage::from_json(&event) {
+                    Ok(msg) => {
+                        if sink.send(msg).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    async fn subscribe_pending_transactions(
+        &self,
+        pending: PendingSubscriptionSink,
+    ) -> SubscriptionResult {
+        let mut rx = self.broadcasters.pending_tx.subscribe();
+        let sink = pending.accept().await?;
+
+        tokio::spawn(async move {
+            while let Ok(event) = rx.recv().await {
+                match jsonrpsee::SubscriptionMessage::from_json(&event) {
                     Ok(msg) => {
                         if sink.send(msg).await.is_err() {
                             break;
@@ -1165,8 +1322,32 @@ impl NornRpcServer for NornRpcImpl {
 
         // Add to WeaveEngine mempool (validates signature, symbol, duplicates).
         let mut engine = self.weave_engine.write().await;
+        let block_height = engine.weave_state().height;
         match engine.add_token_definition(token_def.clone()) {
             Ok(_) => {
+                // Fire token event.
+                let tid = norn_types::token::compute_token_id(
+                    &token_def.creator,
+                    &token_def.name,
+                    &token_def.symbol,
+                    token_def.decimals,
+                    token_def.max_supply,
+                    token_def.timestamp,
+                );
+                let _ = self.broadcasters.token_tx.send(TokenEvent {
+                    event_type: "created".to_string(),
+                    token_id: hex::encode(tid),
+                    symbol: token_def.symbol.clone(),
+                    actor: format_address(&token_def.creator),
+                    amount: None,
+                    block_height,
+                });
+                let _ = self.broadcasters.pending_tx.send(PendingTransactionEvent {
+                    tx_type: "token_create".to_string(),
+                    hash: hex::encode(tid),
+                    from: format_address(&token_def.creator),
+                    timestamp: token_def.timestamp,
+                });
                 // Broadcast to P2P network.
                 if let Some(ref handle) = self.relay_handle {
                     let h = handle.clone();
@@ -1200,8 +1381,24 @@ impl NornRpcServer for NornRpcImpl {
 
         // Add to WeaveEngine mempool (validates authority, supply cap, etc.).
         let mut engine = self.weave_engine.write().await;
+        let block_height = engine.weave_state().height;
         match engine.add_token_mint(token_mint.clone()) {
             Ok(_) => {
+                // Fire token event.
+                let sm = self.state_manager.read().await;
+                let symbol = sm
+                    .get_token(&token_mint.token_id)
+                    .map(|r| r.symbol.clone())
+                    .unwrap_or_default();
+                drop(sm);
+                let _ = self.broadcasters.token_tx.send(TokenEvent {
+                    event_type: "minted".to_string(),
+                    token_id: hex::encode(token_mint.token_id),
+                    symbol,
+                    actor: format_address(&token_mint.to),
+                    amount: Some(token_mint.amount.to_string()),
+                    block_height,
+                });
                 // Broadcast to P2P network.
                 if let Some(ref handle) = self.relay_handle {
                     let h = handle.clone();
@@ -1235,8 +1432,24 @@ impl NornRpcServer for NornRpcImpl {
 
         // Add to WeaveEngine mempool (validates signature, token exists, etc.).
         let mut engine = self.weave_engine.write().await;
+        let block_height = engine.weave_state().height;
         match engine.add_token_burn(token_burn.clone()) {
             Ok(_) => {
+                // Fire token event.
+                let sm = self.state_manager.read().await;
+                let symbol = sm
+                    .get_token(&token_burn.token_id)
+                    .map(|r| r.symbol.clone())
+                    .unwrap_or_default();
+                drop(sm);
+                let _ = self.broadcasters.token_tx.send(TokenEvent {
+                    event_type: "burned".to_string(),
+                    token_id: hex::encode(token_burn.token_id),
+                    symbol,
+                    actor: format_address(&token_burn.burner),
+                    amount: Some(token_burn.amount.to_string()),
+                    block_height,
+                });
                 // Broadcast to P2P network.
                 if let Some(ref handle) = self.relay_handle {
                     let h = handle.clone();
@@ -1552,6 +1765,15 @@ impl NornRpcServer for NornRpcImpl {
                     })
                     .collect();
 
+                // Fire loom execution event for subscribers.
+                let _ = self.broadcasters.loom_tx.send(LoomExecutionEvent {
+                    loom_id: loom_id_hex.clone(),
+                    caller: sender_hex.clone(),
+                    gas_used: outcome.gas_used,
+                    events: events.clone(),
+                    block_height,
+                });
+
                 Ok(ExecutionResult {
                     success: true,
                     output_hex: Some(hex::encode(&outcome.transition.outputs)),
@@ -1720,6 +1942,22 @@ impl NornRpcServer for NornRpcImpl {
             let mut engine = self.weave_engine.write().await;
             let _ = engine.mempool_mut().add_stake_operation(op.clone());
         }
+
+        // Fire pending transaction event.
+        let (stake_pubkey, stake_timestamp) = match &op {
+            norn_types::weave::StakeOperation::Stake {
+                pubkey, timestamp, ..
+            } => (*pubkey, *timestamp),
+            norn_types::weave::StakeOperation::Unstake {
+                pubkey, timestamp, ..
+            } => (*pubkey, *timestamp),
+        };
+        let _ = self.broadcasters.pending_tx.send(PendingTransactionEvent {
+            tx_type: "stake".to_string(),
+            hash: hex::encode(norn_crypto::hash::blake3_hash(&bytes)),
+            from: format_address(&norn_crypto::address::pubkey_to_address(&stake_pubkey)),
+            timestamp: stake_timestamp,
+        });
 
         // Broadcast via P2P.
         if let Some(ref handle) = self.relay_handle {

@@ -30,7 +30,7 @@ pub struct Node {
     state_manager: Arc<RwLock<StateManager>>,
     metrics: Arc<NodeMetrics>,
     rpc_handle: Option<jsonrpsee::server::ServerHandle>,
-    block_tx: Option<tokio::sync::broadcast::Sender<crate::rpc::types::BlockInfo>>,
+    broadcasters: Option<crate::rpc::server::RpcBroadcasters>,
     loom_manager: Arc<RwLock<LoomManager>>,
     weave_store: WeaveStore<Arc<dyn KvStore>>,
     relay: Option<RelayNode>,
@@ -485,8 +485,8 @@ impl Node {
         }
 
         // Start the RPC server if enabled.
-        let (rpc_handle, block_tx) = if config.rpc.enabled {
-            let (handle, tx) = crate::rpc::server::start_rpc_server(
+        let (rpc_handle, broadcasters) = if config.rpc.enabled {
+            let (handle, bc) = crate::rpc::server::start_rpc_server(
                 &config.rpc.listen_addr,
                 weave_engine.clone(),
                 state_manager.clone(),
@@ -498,7 +498,7 @@ impl Node {
                 config.rpc.api_key.clone(),
             )
             .await?;
-            (Some(handle), Some(tx))
+            (Some(handle), Some(bc))
         } else {
             (None, None)
         };
@@ -519,7 +519,7 @@ impl Node {
             loom_manager,
             metrics,
             rpc_handle,
-            block_tx,
+            broadcasters,
             weave_store,
             relay,
             relay_rx,
@@ -940,7 +940,13 @@ impl Node {
                             // Forward to WeaveEngine.
                             let mut engine = self.weave_engine.write().await;
                             engine.set_timestamp(current_timestamp());
-                            let _responses = engine.on_network_message(NornMessage::Block(block));
+                            let _responses =
+                                engine.on_network_message(NornMessage::Block(block.clone()));
+
+                            // Fix: notify WebSocket subscribers for peer blocks too.
+                            if let Some(ref bc) = self.broadcasters {
+                                let _ = bc.block_tx.send(block_info_from_weave(&block));
+                            }
                         }
                         NornMessage::StateRequest {
                             current_height,
@@ -1248,27 +1254,8 @@ impl Node {
                                 }
 
                                 // Notify WebSocket subscribers.
-                                if let Some(ref tx) = self.block_tx {
-                                    let info = crate::rpc::types::BlockInfo {
-                                        height: block.height,
-                                        hash: hex::encode(block.hash),
-                                        prev_hash: hex::encode(block.prev_hash),
-                                        timestamp: block.timestamp,
-                                        proposer: hex::encode(block.proposer),
-                                        commitment_count: block.commitments.len(),
-                                        registration_count: block.registrations.len(),
-                                        anchor_count: block.anchors.len(),
-                                        fraud_proof_count: block.fraud_proofs.len(),
-                                        name_registration_count: block.name_registrations.len(),
-                                        transfer_count: block.transfers.len(),
-                                        token_definition_count: block.token_definitions.len(),
-                                        token_mint_count: block.token_mints.len(),
-                                        token_burn_count: block.token_burns.len(),
-                                        loom_deploy_count: block.loom_deploys.len(),
-                                        stake_operation_count: block.stake_operations.len(),
-                                        state_root: hex::encode(block.state_root),
-                                    };
-                                    let _ = tx.send(info);
+                                if let Some(ref bc) = self.broadcasters {
+                                    let _ = bc.block_tx.send(block_info_from_weave(&block));
                                 }
                             }
                             drop(engine); // Release lock before metrics.
@@ -1359,27 +1346,8 @@ impl Node {
                                     }
 
                                     // Notify WebSocket subscribers.
-                                    if let Some(ref tx) = self.block_tx {
-                                        let info = crate::rpc::types::BlockInfo {
-                                            height: block.height,
-                                            hash: hex::encode(block.hash),
-                                            prev_hash: hex::encode(block.prev_hash),
-                                            timestamp: block.timestamp,
-                                            proposer: hex::encode(block.proposer),
-                                            commitment_count: block.commitments.len(),
-                                            registration_count: block.registrations.len(),
-                                            anchor_count: block.anchors.len(),
-                                            fraud_proof_count: block.fraud_proofs.len(),
-                                            name_registration_count: block.name_registrations.len(),
-                                            transfer_count: block.transfers.len(),
-                                            token_definition_count: block.token_definitions.len(),
-                                            token_mint_count: block.token_mints.len(),
-                                            token_burn_count: block.token_burns.len(),
-                                            loom_deploy_count: block.loom_deploys.len(),
-                                            stake_operation_count: block.stake_operations.len(),
-                                            state_root: hex::encode(block.state_root),
-                                        };
-                                        let _ = tx.send(info);
+                                    if let Some(ref bc) = self.broadcasters {
+                                        let _ = bc.block_tx.send(block_info_from_weave(block));
                                     }
                                 }
 
@@ -1459,6 +1427,29 @@ impl Node {
         if let Err(e) = self.weave_store.save_weave_state(state) {
             tracing::warn!("Failed to persist weave state: {}", e);
         }
+    }
+}
+
+/// Convert a WeaveBlock into a BlockInfo for WebSocket subscribers.
+fn block_info_from_weave(block: &WeaveBlock) -> crate::rpc::types::BlockInfo {
+    crate::rpc::types::BlockInfo {
+        height: block.height,
+        hash: hex::encode(block.hash),
+        prev_hash: hex::encode(block.prev_hash),
+        timestamp: block.timestamp,
+        proposer: hex::encode(block.proposer),
+        commitment_count: block.commitments.len(),
+        registration_count: block.registrations.len(),
+        anchor_count: block.anchors.len(),
+        fraud_proof_count: block.fraud_proofs.len(),
+        name_registration_count: block.name_registrations.len(),
+        transfer_count: block.transfers.len(),
+        token_definition_count: block.token_definitions.len(),
+        token_mint_count: block.token_mints.len(),
+        token_burn_count: block.token_burns.len(),
+        loom_deploy_count: block.loom_deploys.len(),
+        stake_operation_count: block.stake_operations.len(),
+        state_root: hex::encode(block.state_root),
     }
 }
 

@@ -4,11 +4,12 @@
 //! The `Context` struct provides access to host functions (sender, block info,
 //! logging, token transfers).
 
+use alloc::vec::Vec;
 use borsh::{BorshDeserialize, BorshSerialize};
 
 use crate::error::ContractError;
 use crate::response::ContractResult;
-use crate::types::{Address, TokenId};
+use crate::types::{Address, LoomId, TokenId};
 
 /// The core contract interface. Implement this trait to define your loom.
 ///
@@ -99,6 +100,14 @@ impl Context {
             Err(err)
         }
     }
+
+    /// Call another contract (cross-contract call).
+    ///
+    /// Serializes the message with borsh, sends it to the target loom, and
+    /// deserializes the response. Returns `None` if the call fails.
+    pub fn call_contract_raw(&self, target: &LoomId, input: &[u8]) -> Option<Vec<u8>> {
+        crate::host::call_contract(target, input)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -188,6 +197,14 @@ impl Context {
         } else {
             Err(err)
         }
+    }
+
+    /// Call another contract (cross-contract call).
+    ///
+    /// Sends raw bytes to the target loom and returns the raw output.
+    /// Returns `None` if the call fails.
+    pub fn call_contract_raw(&self, target: &LoomId, input: &[u8]) -> Option<Vec<u8>> {
+        crate::host::call_contract(target, input)
     }
 }
 

@@ -1,6 +1,8 @@
 use wasmtime::{Config, Engine, Instance, Linker, Memory, Module, Store};
 
+use crate::call_stack::CallFrame;
 use crate::error::LoomError;
+use crate::gas::GAS_CROSS_CALL;
 use crate::host::LoomHostState;
 
 /// The Wasm runtime engine for loom contracts.
@@ -339,6 +341,230 @@ impl LoomRuntime {
             )
             .map_err(|e| LoomError::RuntimeError {
                 reason: format!("failed to register norn_timestamp: {e}"),
+            })?;
+
+        // ── Host function: norn_call_contract ─────────────────────────────
+        // Signature: (target_id_ptr, target_id_len, input_ptr, input_len, output_ptr, output_max_len) -> i32
+        // Returns: output length on success, -1 on error, -2 on buffer too small
+        linker
+            .func_wrap(
+                "norn",
+                "norn_call_contract",
+                |mut caller: wasmtime::Caller<'_, LoomHostState>,
+                 target_id_ptr: i32,
+                 target_id_len: i32,
+                 input_ptr: i32,
+                 input_len: i32,
+                 output_ptr: i32,
+                 output_max_len: i32|
+                 -> Result<i32, wasmtime::Error> {
+                    let memory = caller
+                        .get_export("memory")
+                        .and_then(|e| e.into_memory())
+                        .ok_or(wasmtime::Error::msg("missing memory export"))?;
+
+                    // Read target loom ID from wasm memory.
+                    let id_start = target_id_ptr as usize;
+                    let id_end = id_start + target_id_len as usize;
+                    let in_start = input_ptr as usize;
+                    let in_end = in_start + input_len as usize;
+                    {
+                        let data = memory.data(&caller);
+                        if id_end > data.len() || in_end > data.len() {
+                            return Err(wasmtime::Error::msg("out of bounds memory access"));
+                        }
+                    }
+
+                    let data = memory.data(&caller);
+                    if target_id_len != 32 {
+                        return Err(wasmtime::Error::msg(
+                            "norn_call_contract: target_id must be 32 bytes",
+                        ));
+                    }
+                    let mut target_id = [0u8; 32];
+                    target_id.copy_from_slice(&data[id_start..id_end]);
+                    let input = data[in_start..in_end].to_vec();
+
+                    // Charge cross-call gas.
+                    caller
+                        .data_mut()
+                        .gas_meter
+                        .charge(GAS_CROSS_CALL)
+                        .map_err(|e| wasmtime::Error::msg(format!("gas exhausted: {e}")))?;
+
+                    // Extract shared resources from the host state.
+                    let call_stack =
+                        caller
+                            .data()
+                            .call_stack
+                            .clone()
+                            .ok_or(wasmtime::Error::msg(
+                                "norn_call_contract: cross-call not available (no call stack)",
+                            ))?;
+                    let loom_states =
+                        caller
+                            .data()
+                            .loom_states
+                            .clone()
+                            .ok_or(wasmtime::Error::msg(
+                                "norn_call_contract: cross-call not available (no loom states)",
+                            ))?;
+                    let loom_bytecodes =
+                        caller
+                            .data()
+                            .loom_bytecodes
+                            .clone()
+                            .ok_or(wasmtime::Error::msg(
+                                "norn_call_contract: cross-call not available (no bytecodes)",
+                            ))?;
+                    let sender_for_subcall = caller
+                        .data()
+                        .current_loom_id
+                        .map(|_| caller.data().sender)
+                        .unwrap_or(caller.data().sender);
+                    let block_height = caller.data().block_height;
+                    let timestamp = caller.data().timestamp;
+                    let remaining_gas = caller.data().gas_meter.remaining();
+
+                    // Look up target bytecode.
+                    let bytecode = {
+                        let bcs = loom_bytecodes
+                            .lock()
+                            .map_err(|e| wasmtime::Error::msg(format!("lock error: {e}")))?;
+                        bcs.get(&target_id).cloned().ok_or(wasmtime::Error::msg(
+                            "norn_call_contract: target loom not found or has no bytecode",
+                        ))?
+                    };
+
+                    // Snapshot target state and push call frame.
+                    let state_snapshot = {
+                        let states = loom_states
+                            .lock()
+                            .map_err(|e| wasmtime::Error::msg(format!("lock error: {e}")))?;
+                        states.get(&target_id).cloned().unwrap_or_default()
+                    };
+
+                    {
+                        let mut cs = call_stack
+                            .lock()
+                            .map_err(|e| wasmtime::Error::msg(format!("lock error: {e}")))?;
+                        cs.push(CallFrame {
+                            loom_id: target_id,
+                            caller: sender_for_subcall,
+                            state_snapshot: state_snapshot.clone(),
+                            gas_before: remaining_gas,
+                        })
+                        .map_err(|e| wasmtime::Error::msg(format!("{e}")))?;
+                    }
+
+                    // Set up host state for the subcall.
+                    let mut sub_host = LoomHostState::new(
+                        sender_for_subcall,
+                        block_height,
+                        timestamp,
+                        remaining_gas,
+                    );
+                    sub_host.state = state_snapshot;
+                    sub_host.call_stack = Some(call_stack.clone());
+                    sub_host.loom_states = Some(loom_states.clone());
+                    sub_host.loom_bytecodes = Some(loom_bytecodes.clone());
+                    sub_host.current_loom_id = Some(target_id);
+
+                    // Create a fresh runtime and execute the target contract.
+                    let sub_runtime = LoomRuntime::new().map_err(|e| {
+                        // Rollback: pop the frame on failure.
+                        let _ = call_stack.lock().map(|mut cs| cs.pop());
+                        wasmtime::Error::msg(format!("cross-call runtime error: {e}"))
+                    })?;
+                    let sub_result = (|| -> Result<Vec<u8>, wasmtime::Error> {
+                        let mut sub_instance =
+                            sub_runtime.instantiate(&bytecode, sub_host).map_err(|e| {
+                                wasmtime::Error::msg(format!("cross-call instantiation error: {e}"))
+                            })?;
+                        let output = sub_instance.call_execute(&input).map_err(|e| {
+                            wasmtime::Error::msg(format!("cross-call execution error: {e}"))
+                        })?;
+                        let sub_gas_used = sub_instance.gas_used();
+                        let sub_host_state = sub_instance.into_host_state();
+
+                        // Commit: update target state.
+                        {
+                            let mut states = loom_states
+                                .lock()
+                                .map_err(|e| wasmtime::Error::msg(format!("lock error: {e}")))?;
+                            states.insert(target_id, sub_host_state.state);
+                        }
+
+                        // Merge sub-call outputs into caller's host state.
+                        // (transfers, logs, events propagate up)
+                        // We'll do this after popping the frame below, via caller.data_mut().
+
+                        // Charge the subcall's gas to the caller.
+                        caller
+                            .data_mut()
+                            .gas_meter
+                            .charge(sub_gas_used)
+                            .map_err(|e| wasmtime::Error::msg(format!("gas exhausted: {e}")))?;
+
+                        // Merge transfers, logs, events from subcall.
+                        for t in sub_host_state.pending_transfers {
+                            caller.data_mut().pending_transfers.push(t);
+                        }
+                        for l in sub_host_state.logs {
+                            caller.data_mut().logs.push(l);
+                        }
+                        for ev in sub_host_state.events {
+                            caller.data_mut().events.push(ev);
+                        }
+
+                        Ok(output)
+                    })();
+
+                    // Pop the frame regardless of success/failure.
+                    {
+                        let mut cs = call_stack
+                            .lock()
+                            .map_err(|e| wasmtime::Error::msg(format!("lock error: {e}")))?;
+                        let frame = cs.pop();
+
+                        // On failure, rollback the target's state to the snapshot.
+                        if sub_result.is_err() {
+                            if let Some(frame) = frame {
+                                let mut states = loom_states.lock().map_err(|e| {
+                                    wasmtime::Error::msg(format!("lock error: {e}"))
+                                })?;
+                                states.insert(target_id, frame.state_snapshot);
+                            }
+                        }
+                    }
+
+                    match sub_result {
+                        Ok(output) => {
+                            if output_ptr == 0 {
+                                // Query mode: just return length.
+                                Ok(output.len() as i32)
+                            } else if (output_max_len as usize) < output.len() {
+                                Ok(-2)
+                            } else {
+                                // Write output to caller's wasm memory.
+                                let out_start = output_ptr as usize;
+                                let out_end = out_start + output.len();
+                                let mem_data = memory.data_mut(&mut caller);
+                                if out_end > mem_data.len() {
+                                    return Err(wasmtime::Error::msg(
+                                        "out of bounds memory access",
+                                    ));
+                                }
+                                mem_data[out_start..out_end].copy_from_slice(&output);
+                                Ok(output.len() as i32)
+                            }
+                        }
+                        Err(_) => Ok(-1),
+                    }
+                },
+            )
+            .map_err(|e| LoomError::RuntimeError {
+                reason: format!("failed to register norn_call_contract: {e}"),
             })?;
 
         let instance =

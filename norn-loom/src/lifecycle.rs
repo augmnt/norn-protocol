@@ -1,9 +1,11 @@
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use norn_crypto::hash::blake3_hash;
 use norn_types::loom::{Loom, LoomBytecode, LoomConfig, LoomStateTransition, Participant};
 use norn_types::primitives::*;
 
+use crate::call_stack::CallStack;
 use crate::error::LoomError;
 use crate::gas::DEFAULT_GAS_LIMIT;
 use crate::host::{LoomHostState, PendingTransfer};
@@ -252,6 +254,136 @@ impl LoomManager {
         let new_state_hash = loom_state.compute_hash();
 
         // Update loom metadata.
+        let loom = self
+            .looms
+            .get_mut(loom_id)
+            .ok_or(LoomError::LoomNotFound { loom_id: *loom_id })?;
+        loom.state_hash = new_state_hash;
+        loom.version += 1;
+        loom.last_updated = timestamp;
+
+        Ok(ExecutionOutcome {
+            transition: LoomStateTransition {
+                loom_id: *loom_id,
+                prev_state_hash,
+                new_state_hash,
+                inputs: input.to_vec(),
+                outputs,
+            },
+            gas_used,
+            logs,
+            pending_transfers,
+            events,
+        })
+    }
+
+    /// Execute a transaction with cross-contract call support.
+    ///
+    /// Sets up shared state, bytecode, and call-stack references so that the
+    /// executing contract can call other contracts via the `norn_call_contract`
+    /// host function.
+    pub fn execute_with_cross_call(
+        &mut self,
+        loom_id: &LoomId,
+        input: &[u8],
+        sender: Address,
+        block_height: u64,
+        timestamp: u64,
+    ) -> Result<ExecutionOutcome, LoomError> {
+        // Validate loom exists and sender is a participant (same as execute).
+        let loom = self
+            .looms
+            .get(loom_id)
+            .ok_or(LoomError::LoomNotFound { loom_id: *loom_id })?;
+        let is_participant = loom
+            .participants
+            .iter()
+            .any(|p| p.address == sender && p.active);
+        if !is_participant {
+            return Err(LoomError::NotParticipant { address: sender });
+        }
+
+        let state = self
+            .states
+            .get(loom_id)
+            .ok_or(LoomError::LoomNotFound { loom_id: *loom_id })?;
+        let prev_state_hash = state.compute_hash();
+
+        // Build shared cross-call resources.
+        let call_stack = Arc::new(Mutex::new(CallStack::new()));
+
+        // Collect all states into the shared map.
+        let shared_states: HashMap<LoomId, HashMap<Vec<u8>, Vec<u8>>> = self
+            .states
+            .iter()
+            .map(|(id, s)| (*id, s.data.clone()))
+            .collect();
+        let loom_states = Arc::new(Mutex::new(shared_states));
+
+        // Collect all bytecodes into the shared map.
+        let shared_bytecodes: HashMap<LoomId, Vec<u8>> = self
+            .bytecodes
+            .iter()
+            .map(|(id, b)| (*id, b.bytecode.clone()))
+            .collect();
+        let loom_bytecodes = Arc::new(Mutex::new(shared_bytecodes));
+
+        // Set up host state with cross-call context.
+        let mut host_state = LoomHostState::new(sender, block_height, timestamp, DEFAULT_GAS_LIMIT);
+        host_state.state = state.data.clone();
+        host_state.call_stack = Some(call_stack.clone());
+        host_state.loom_states = Some(loom_states.clone());
+        host_state.loom_bytecodes = Some(loom_bytecodes.clone());
+        host_state.current_loom_id = Some(*loom_id);
+
+        // Get bytecode.
+        let bytecode_entry = self
+            .bytecodes
+            .get(loom_id)
+            .ok_or(LoomError::LoomNotFound { loom_id: *loom_id })?;
+
+        // Instantiate and execute.
+        let runtime = LoomRuntime::new()?;
+        let mut instance = runtime.instantiate(&bytecode_entry.bytecode, host_state)?;
+        let outputs = instance.call_execute(input)?;
+        let gas_used = instance.gas_used();
+        let host_state = instance.into_host_state();
+        let logs = host_state.logs.clone();
+        let pending_transfers = host_state.pending_transfers.clone();
+        let events = host_state
+            .events
+            .iter()
+            .map(|e| LoomEvent {
+                ty: e.ty.clone(),
+                attributes: e.attributes.clone(),
+            })
+            .collect();
+
+        // Commit the primary contract's state.
+        let loom_state = self
+            .states
+            .get_mut(loom_id)
+            .ok_or(LoomError::LoomNotFound { loom_id: *loom_id })?;
+        loom_state.data = host_state.state;
+        let new_state_hash = loom_state.compute_hash();
+
+        // Also commit any cross-called contracts' state changes.
+        let final_states = loom_states.lock().map_err(|e| LoomError::RuntimeError {
+            reason: format!("failed to read cross-call states: {e}"),
+        })?;
+        for (id, state_data) in final_states.iter() {
+            if id != loom_id {
+                if let Some(ls) = self.states.get_mut(id) {
+                    ls.data = state_data.clone();
+                    let new_hash = ls.compute_hash();
+                    if let Some(l) = self.looms.get_mut(id) {
+                        l.state_hash = new_hash;
+                    }
+                }
+            }
+        }
+
+        // Update primary loom metadata.
         let loom = self
             .looms
             .get_mut(loom_id)
@@ -651,5 +783,91 @@ mod tests {
         let loom = manager.get_loom(&loom_id).unwrap();
         assert!(!loom.participants[0].active);
         assert!(loom.participants[1].active);
+    }
+
+    #[test]
+    fn test_execute_with_cross_call() {
+        // Deploy two contracts: A (caller) and B (callee).
+        // A calls B via norn_call_contract, B returns 42.
+        let mut manager = LoomManager::new();
+
+        let loom_b_id = [2u8; 32];
+        // Contract B: a simple contract that returns 42.
+        let config_b = test_config(loom_b_id);
+        manager
+            .deploy(config_b, [2u8; 32], simple_wasm(), 1000)
+            .unwrap();
+
+        // Contract A: calls contract B via norn_call_contract and returns B's result.
+        let loom_a_id = [1u8; 32];
+        let caller_wat = format!(
+            r#"
+            (module
+                (import "norn" "norn_call_contract"
+                    (func $call_contract (param i32 i32 i32 i32 i32 i32) (result i32)))
+                (memory (export "memory") 1)
+                ;; Target loom ID B at offset 0 (32 bytes)
+                (data (i32.const 0) "{target_id_escaped}")
+                ;; Output buffer at offset 100 (64 bytes)
+                (func (export "execute") (param i32 i32) (result i32)
+                    ;; Call contract B: target_id_ptr=0, target_id_len=32,
+                    ;; input_ptr=0, input_len=0, output_ptr=100, output_max_len=64
+                    (call $call_contract
+                        (i32.const 0)  ;; target_id_ptr
+                        (i32.const 32) ;; target_id_len
+                        (i32.const 0)  ;; input_ptr (empty)
+                        (i32.const 0)  ;; input_len
+                        (i32.const 100) ;; output_ptr
+                        (i32.const 64)) ;; output_max_len
+                    ;; Returns output length or -1 on error
+                )
+            )
+        "#,
+            target_id_escaped = loom_b_id
+                .iter()
+                .map(|b| format!("\\{b:02x}"))
+                .collect::<String>()
+        );
+        let bytecode_a = wat::parse_str(&caller_wat).expect("failed to compile caller WAT");
+
+        let config_a = test_config(loom_a_id);
+        manager
+            .deploy(config_a, [1u8; 32], bytecode_a, 1000)
+            .unwrap();
+
+        // Add the caller as a participant in both contracts.
+        let sender = [3u8; 20];
+        manager.join(&loom_a_id, [3u8; 32], sender, 1001).unwrap();
+        manager.join(&loom_b_id, [3u8; 32], sender, 1001).unwrap();
+
+        // Execute with cross-call support.
+        let outcome = manager
+            .execute_with_cross_call(&loom_a_id, &[], sender, 100, 1002)
+            .unwrap();
+
+        // The result should be 4 (length of B's output, which is i32 42 as 4 bytes).
+        assert_eq!(outcome.transition.outputs, 4i32.to_le_bytes().to_vec());
+        assert!(outcome.gas_used > 0);
+    }
+
+    #[test]
+    fn test_execute_with_cross_call_basic() {
+        // Test that execute_with_cross_call works for a simple contract
+        // (same as execute but with cross-call context).
+        let mut manager = LoomManager::new();
+        let loom_id = [1u8; 32];
+        let config = test_config(loom_id);
+        manager
+            .deploy(config, [2u8; 32], simple_wasm(), 1000)
+            .unwrap();
+
+        let sender = [3u8; 20];
+        manager.join(&loom_id, [3u8; 32], sender, 1001).unwrap();
+
+        let outcome = manager
+            .execute_with_cross_call(&loom_id, &[], sender, 100, 1002)
+            .unwrap();
+        assert_eq!(outcome.transition.outputs, 42i32.to_le_bytes().to_vec());
+        assert!(outcome.gas_used > 0);
     }
 }

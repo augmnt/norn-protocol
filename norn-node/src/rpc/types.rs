@@ -364,6 +364,71 @@ pub struct StateProofInfo {
     pub proof: Vec<String>,
 }
 
+/// A real-time transfer event for WebSocket subscribers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransferEvent {
+    /// Sender address as hex string.
+    pub from: String,
+    /// Recipient address as hex string.
+    pub to: String,
+    /// Amount as string (u128).
+    pub amount: String,
+    /// Token ID as hex string (None = native NORN).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_id: Option<String>,
+    /// Optional memo.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memo: Option<String>,
+    /// Block height where this transfer was included.
+    pub block_height: u64,
+}
+
+/// A real-time token event for WebSocket subscribers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenEvent {
+    /// Event type: "created", "minted", or "burned".
+    pub event_type: String,
+    /// Token ID as hex string.
+    pub token_id: String,
+    /// Token symbol.
+    pub symbol: String,
+    /// Actor address as hex string (creator/minter/burner).
+    pub actor: String,
+    /// Amount involved (for mint/burn), as string.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amount: Option<String>,
+    /// Block height where this event occurred.
+    pub block_height: u64,
+}
+
+/// A real-time loom execution event for WebSocket subscribers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoomExecutionEvent {
+    /// Loom ID as hex string.
+    pub loom_id: String,
+    /// Caller address as hex string.
+    pub caller: String,
+    /// Gas consumed.
+    pub gas_used: u64,
+    /// Structured events emitted by the contract.
+    pub events: Vec<EventInfo>,
+    /// Block height at time of execution.
+    pub block_height: u64,
+}
+
+/// A real-time pending transaction event for WebSocket subscribers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingTransactionEvent {
+    /// Transaction type: "transfer", "stake", "token_create", "token_mint", "token_burn", etc.
+    pub tx_type: String,
+    /// Transaction hash/ID as hex string.
+    pub hash: String,
+    /// Originator address as hex string.
+    pub from: String,
+    /// Timestamp when the transaction was received.
+    pub timestamp: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
