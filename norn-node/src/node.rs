@@ -424,10 +424,15 @@ impl Node {
         let network_id = NetworkId::parse(&config.network_id).unwrap_or(NetworkId::Dev);
 
         // Process genesis allocations for fresh state.
+        // Guard: skip if any allocation address is already registered (state loaded from disk).
         {
             let mut sm = state_manager.write().await;
-            if sm.latest_block_height() == 0 {
-                if let Some(ref gc) = genesis_config_opt {
+            if let Some(ref gc) = genesis_config_opt {
+                let already_applied = gc
+                    .allocations
+                    .iter()
+                    .any(|alloc| sm.is_registered(&alloc.address));
+                if !already_applied {
                     for alloc in &gc.allocations {
                         sm.auto_register_if_needed(alloc.address);
                         if let Err(e) = sm.credit(alloc.address, alloc.token_id, alloc.amount) {
