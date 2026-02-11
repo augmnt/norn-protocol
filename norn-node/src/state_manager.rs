@@ -900,7 +900,30 @@ impl StateManager {
             self.register_thread(owner, owner_pubkey);
         }
 
-        // Record the name (no fee deduction — already burned on originating node).
+        // Debit the registration fee (must match originating node).
+        if fee_paid > 0 {
+            if let Some(sender_state) = self.thread_states.get(&owner) {
+                if sender_state.has_balance(&NATIVE_TOKEN_ID, fee_paid) {
+                    let sender_state = self.thread_states.get_mut(&owner).unwrap();
+                    sender_state.debit(&NATIVE_TOKEN_ID, fee_paid);
+                    self.total_supply_cache = self.total_supply_cache.saturating_sub(fee_paid);
+                    if let Some(meta) = self.thread_meta.get_mut(&owner) {
+                        meta.state_hash = norn_thread::state::compute_state_hash(
+                            self.thread_states.get(&owner).unwrap(),
+                        );
+                    }
+                    self.update_smt(&owner, &NATIVE_TOKEN_ID);
+                } else {
+                    tracing::warn!(
+                        "peer name registration: {} has insufficient balance for fee {}",
+                        hex::encode(owner),
+                        fee_paid,
+                    );
+                }
+            }
+        }
+
+        // Record the name.
         let name_record = NameRecord {
             owner,
             registered_at: timestamp,
@@ -913,6 +936,18 @@ impl StateManager {
             .or_default()
             .push(name.to_string());
 
+        // Log fee burn as synthetic transfer.
+        if fee_paid > 0 {
+            self.log_synthetic_transfer(
+                owner,
+                [0u8; 20],
+                NATIVE_TOKEN_ID,
+                fee_paid,
+                Some(&format!("Name registration fee: {}", name)),
+                timestamp,
+            );
+        }
+
         // Persist
         if let Some(ref store) = self.state_store {
             if let Err(e) = store.save_name(name, &name_record) {
@@ -922,6 +957,13 @@ impl StateManager {
                 if let Err(e) = store.save_address_names(&owner, names) {
                     tracing::warn!("Failed to persist address names: {}", e);
                 }
+            }
+            if let Err(e) = store.save_thread_state(&owner, self.thread_states.get(&owner).unwrap())
+            {
+                tracing::warn!(
+                    "Failed to persist thread state after peer name registration: {}",
+                    e
+                );
             }
         }
 
@@ -1057,7 +1099,7 @@ impl StateManager {
         Ok(token_id)
     }
 
-    /// Apply a token creation from a peer block (skips fee deduction).
+    /// Apply a token creation from a peer block (deducts creation fee to match originator).
     #[allow(clippy::too_many_arguments)]
     pub fn apply_peer_token_creation(
         &mut self,
@@ -1080,6 +1122,33 @@ impl StateManager {
 
         // Auto-register creator with real pubkey.
         self.auto_register_with_pubkey(creator, creator_pubkey);
+
+        // Debit the creation fee (must match originating node).
+        {
+            use norn_types::token::TOKEN_CREATION_FEE;
+            if let Some(sender_state) = self.thread_states.get(&creator) {
+                if sender_state.has_balance(&NATIVE_TOKEN_ID, TOKEN_CREATION_FEE) {
+                    let sender_state = self.thread_states.get_mut(&creator).unwrap();
+                    sender_state.debit(&NATIVE_TOKEN_ID, TOKEN_CREATION_FEE);
+                    self.total_supply_cache =
+                        self.total_supply_cache.saturating_sub(TOKEN_CREATION_FEE);
+                    self.update_smt(&creator, &NATIVE_TOKEN_ID);
+                } else {
+                    tracing::warn!(
+                        "peer token creation: {} has insufficient balance for fee",
+                        hex::encode(creator),
+                    );
+                }
+            }
+            self.log_synthetic_transfer(
+                creator,
+                [0u8; 20],
+                NATIVE_TOKEN_ID,
+                TOKEN_CREATION_FEE,
+                Some("Token creation fee"),
+                timestamp,
+            );
+        }
 
         // Mint initial supply to creator.
         if initial_supply > 0 {
@@ -1383,7 +1452,7 @@ impl StateManager {
         Ok(())
     }
 
-    /// Apply a peer loom deploy (skips fee deduction).
+    /// Apply a peer loom deploy (deducts deploy fee to match originator).
     pub fn apply_peer_loom_deploy(
         &mut self,
         loom_id: LoomId,
@@ -1397,6 +1466,34 @@ impl StateManager {
                 "skipping duplicate peer loom deploy"
             );
             return;
+        }
+
+        // Debit the deploy fee (must match originating node).
+        let operator_address = norn_crypto::address::pubkey_to_address(&operator);
+        {
+            use norn_types::loom::LOOM_DEPLOY_FEE;
+            if let Some(sender_state) = self.thread_states.get(&operator_address) {
+                if sender_state.has_balance(&NATIVE_TOKEN_ID, LOOM_DEPLOY_FEE) {
+                    let sender_state = self.thread_states.get_mut(&operator_address).unwrap();
+                    sender_state.debit(&NATIVE_TOKEN_ID, LOOM_DEPLOY_FEE);
+                    self.total_supply_cache =
+                        self.total_supply_cache.saturating_sub(LOOM_DEPLOY_FEE);
+                    self.update_smt(&operator_address, &NATIVE_TOKEN_ID);
+                } else {
+                    tracing::warn!(
+                        "peer loom deploy: {} has insufficient balance for fee",
+                        hex::encode(operator_address),
+                    );
+                }
+            }
+            self.log_synthetic_transfer(
+                operator_address,
+                [0u8; 20],
+                NATIVE_TOKEN_ID,
+                LOOM_DEPLOY_FEE,
+                Some("Loom deploy fee"),
+                timestamp,
+            );
         }
 
         let record = LoomRecord {
@@ -1414,6 +1511,15 @@ impl StateManager {
         if let Some(ref store) = self.state_store {
             if let Err(e) = store.save_loom(&loom_id, &record) {
                 tracing::warn!("failed to persist peer loom: {}", e);
+            }
+            if let Err(e) = store.save_thread_state(
+                &operator_address,
+                self.thread_states.get(&operator_address).unwrap(),
+            ) {
+                tracing::warn!(
+                    "failed to persist operator state after peer loom deploy: {}",
+                    e
+                );
             }
         }
     }
@@ -1953,8 +2059,12 @@ mod tests {
             )
             .unwrap();
 
-        // Peer path should NOT deduct fee.
-        assert_eq!(sm.get_balance(&creator, &NATIVE_TOKEN_ID), original_balance);
+        // Peer path now deducts fee (10 NORN) to match originator.
+        use norn_types::token::TOKEN_CREATION_FEE;
+        assert_eq!(
+            sm.get_balance(&creator, &NATIVE_TOKEN_ID),
+            original_balance - TOKEN_CREATION_FEE
+        );
 
         // But should credit initial supply.
         assert_eq!(sm.get_balance(&creator, &token_id), 500);
