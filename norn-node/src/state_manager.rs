@@ -687,7 +687,10 @@ impl StateManager {
 
     /// Look up a single transfer by its knot ID.
     pub fn get_transfer_by_knot_id(&self, knot_id: &Hash) -> Option<&TransferRecord> {
-        self.transfer_log.iter().rev().find(|r| r.knot_id == *knot_id)
+        self.transfer_log
+            .iter()
+            .rev()
+            .find(|r| r.knot_id == *knot_id)
     }
 
     /// Record a commitment update for a thread.

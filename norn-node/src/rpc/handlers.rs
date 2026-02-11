@@ -1249,13 +1249,12 @@ impl NornRpcServer for NornRpcImpl {
                 ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>)
             })?
             .try_into()
-            .map_err(|_| {
-                ErrorObjectOwned::owned(-32602, "knot_id must be 32 bytes", None::<()>)
-            })?;
+            .map_err(|_| ErrorObjectOwned::owned(-32602, "knot_id must be 32 bytes", None::<()>))?;
 
         let sm = self.state_manager.read().await;
-        let entry = sm.get_transfer_by_knot_id(&knot_bytes).map(|r| {
-            TransactionHistoryEntry {
+        let entry = sm
+            .get_transfer_by_knot_id(&knot_bytes)
+            .map(|r| TransactionHistoryEntry {
                 knot_id: hex::encode(r.knot_id),
                 from: format_address(&r.from),
                 to: format_address(&r.to),
@@ -1269,8 +1268,7 @@ impl NornRpcServer for NornRpcImpl {
                 timestamp: r.timestamp,
                 block_height: r.block_height,
                 direction: String::new(),
-            }
-        });
+            });
 
         Ok(entry)
     }
