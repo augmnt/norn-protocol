@@ -91,10 +91,15 @@ const DEVNET_FOUNDER: Address = [
 ///
 /// Returns `(genesis_config, founder_address)`.
 pub fn devnet_genesis() -> (GenesisConfig, Address) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
     let config = GenesisConfig {
         version: norn_types::genesis::GENESIS_CONFIG_VERSION,
         chain_id: "norn-dev".to_string(),
-        timestamp: 1700000000,
+        timestamp: now,
         validators: Vec::new(), // auto-filled by Node::new() when validator.enabled
         allocations: vec![GenesisAllocation {
             address: DEVNET_FOUNDER,
@@ -237,7 +242,12 @@ mod tests {
     fn test_devnet_genesis_deterministic() {
         let (config1, addr1) = devnet_genesis();
         let (config2, addr2) = devnet_genesis();
-        assert_eq!(config1, config2);
+        // Timestamps use current time so they may differ by a second;
+        // compare everything except timestamp.
+        assert_eq!(config1.chain_id, config2.chain_id);
+        assert_eq!(config1.allocations, config2.allocations);
+        assert_eq!(config1.parameters, config2.parameters);
+        assert_eq!(config1.name_registrations, config2.name_registrations);
         assert_eq!(addr1, addr2);
     }
 

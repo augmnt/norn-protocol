@@ -2,6 +2,7 @@
 
 import { use } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { PageContainer } from "@/components/ui/page-container";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +18,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { BlockCompositionChart } from "@/components/charts/block-composition-chart";
 import { useBlock, useBlockTransactions } from "@/hooks/use-block";
+import { useWeaveState } from "@/hooks/use-weave-state";
 import { formatNumber, formatTimestamp } from "@/lib/format";
 import type {
   BlockTransferInfo,
@@ -28,6 +30,18 @@ import type {
 } from "@/types";
 
 const transferColumns = [
+  {
+    header: "Tx Hash",
+    key: "knot_id",
+    render: (tx: BlockTransferInfo) => (
+      <HashDisplay
+        hash={tx.knot_id}
+        href={`/tx/${tx.knot_id}`}
+        chars={6}
+        copy={false}
+      />
+    ),
+  },
   {
     header: "From",
     key: "from",
@@ -96,7 +110,9 @@ const tokenMintColumns = [
     header: "Token",
     key: "token_id",
     render: (t: BlockTokenMintInfo) => (
-      <HashDisplay hash={t.token_id} chars={6} />
+      <Link href={`/token/${t.token_id}`} className="text-norn hover:underline">
+        <HashDisplay hash={t.token_id} chars={6} copy={false} />
+      </Link>
     ),
   },
   {
@@ -119,7 +135,9 @@ const tokenBurnColumns = [
     header: "Token",
     key: "token_id",
     render: (t: BlockTokenBurnInfo) => (
-      <HashDisplay hash={t.token_id} chars={6} />
+      <Link href={`/token/${t.token_id}`} className="text-norn hover:underline">
+        <HashDisplay hash={t.token_id} chars={6} copy={false} />
+      </Link>
     ),
   },
   {
@@ -187,9 +205,11 @@ export default function BlockDetailPage({
   params: Promise<{ height: string }>;
 }) {
   const { height: heightStr } = use(params);
+  const router = useRouter();
   const height = parseInt(heightStr, 10);
   const { data: block, isLoading, error, refetch } = useBlock(height);
   const { data: blockTxs } = useBlockTransactions(height);
+  const { data: weave } = useWeaveState();
 
   if (isLoading) {
     return (
@@ -239,8 +259,8 @@ export default function BlockDetailPage({
               <ChevronLeft className="h-4 w-4" />
             </Link>
           </Button>
-          <Button variant="outline" size="icon" asChild>
-            <Link href={`/block/${height + 1}`}>
+          <Button variant="outline" size="icon" asChild disabled={!weave || height >= weave.height}>
+            <Link href={weave && height < weave.height ? `/block/${height + 1}` : "#"}>
               <ChevronRight className="h-4 w-4" />
             </Link>
           </Button>
@@ -375,6 +395,7 @@ export default function BlockDetailPage({
                     columns={transferColumns}
                     data={blockTxs.transfers}
                     keyExtractor={(tx) => tx.knot_id}
+                    onRowClick={(tx) => router.push(`/tx/${tx.knot_id}`)}
                   />
                 </CardContent>
               </Card>

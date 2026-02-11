@@ -5,7 +5,7 @@ import { rpcCall } from "@/lib/rpc";
 import { STALE_TIMES } from "@/lib/constants";
 import type { BlockInfo } from "@/types";
 
-const RECENT_BLOCK_COUNT = 5;
+const RECENT_BLOCK_COUNT = 6;
 
 export function useRecentBlocks() {
   return useQuery({

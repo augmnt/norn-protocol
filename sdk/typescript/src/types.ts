@@ -304,7 +304,7 @@ export interface TransferEvent {
   amount: string;
   token_id?: HashHex;
   memo?: string;
-  block_height: number;
+  block_height?: number | null;
 }
 
 /** Real-time token event (WebSocket). */

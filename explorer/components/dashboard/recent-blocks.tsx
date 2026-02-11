@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Blocks } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TimeAgo } from "@/components/ui/time-ago";
-import { HashDisplay } from "@/components/ui/hash-display";
 import { useRealtimeStore } from "@/stores/realtime-store";
 import { useRecentBlocks } from "@/hooks/use-recent-blocks";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -12,6 +12,7 @@ import { formatNumber } from "@/lib/format";
 import type { BlockInfo } from "@/types";
 
 export function RecentBlocks() {
+  const router = useRouter();
   const wsBlocks = useRealtimeStore((s) => s.recentBlocks);
   const { data: fetchedBlocks } = useRecentBlocks();
 
@@ -31,7 +32,7 @@ export function RecentBlocks() {
           </Link>
         </div>
       </CardHeader>
-      <CardContent className="px-0">
+      <CardContent className="px-0 pb-2">
         {blocks.length === 0 ? (
           <EmptyState
             icon={Blocks}
@@ -39,37 +40,22 @@ export function RecentBlocks() {
             description="Waiting for new blocks..."
           />
         ) : (
-          <div className="space-y-0">
-            {blocks.slice(0, 5).map((block) => (
+          <div>
+            {blocks.slice(0, 6).map((block) => (
               <div
                 key={block.height}
-                className="flex items-center justify-between px-6 py-2.5 border-b last:border-0 animate-slide-in"
+                className="flex items-center justify-between px-6 py-3 cursor-pointer transition-colors hover:bg-muted/50"
+                onClick={() => router.push(`/block/${block.height}`)}
               >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted">
-                    <Blocks className="h-3.5 w-3.5 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <Link
-                      href={`/block/${block.height}`}
-                      className="text-sm font-medium text-norn hover:underline tabular-nums"
-                    >
-                      #{formatNumber(block.height)}
-                    </Link>
-                    <p className="text-xs text-muted-foreground">
-                      {block.transfer_count} txns
-                    </p>
-                  </div>
+                <div>
+                  <span className="text-sm font-medium tabular-nums">
+                    #{formatNumber(block.height)}
+                  </span>
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {block.transfer_count} txn{block.transfer_count !== 1 ? "s" : ""}
+                  </span>
                 </div>
-                <div className="text-right">
-                  <HashDisplay
-                    hash={block.hash}
-                    href={`/block/${block.height}`}
-                    chars={4}
-                    copy={false}
-                  />
-                  <TimeAgo timestamp={block.timestamp} className="text-xs" />
-                </div>
+                <TimeAgo timestamp={block.timestamp} className="text-xs" />
               </div>
             ))}
           </div>
@@ -86,16 +72,16 @@ function deduplicateBlocks(
   const seen = new Set<number>();
   const result: BlockInfo[] = [];
 
-  // WS blocks first (newest)
-  for (const block of wsBlocks) {
+  // RPC-fetched blocks first (authoritative source of truth)
+  for (const block of fetchedBlocks) {
     if (!seen.has(block.height)) {
       seen.add(block.height);
       result.push(block);
     }
   }
 
-  // Then RPC-fetched blocks
-  for (const block of fetchedBlocks) {
+  // WS blocks fill in new blocks not yet available via RPC
+  for (const block of wsBlocks) {
     if (!seen.has(block.height)) {
       seen.add(block.height);
       result.push(block);

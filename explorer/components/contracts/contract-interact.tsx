@@ -16,7 +16,6 @@ interface ContractInteractProps {
 
 export function ContractInteract({ loomId }: ContractInteractProps) {
   const [queryInput, setQueryInput] = useState("");
-  const [querySender, setQuerySender] = useState("");
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [queryLoading, setQueryLoading] = useState(false);
   const [queryError, setQueryError] = useState<string | null>(null);
@@ -32,14 +31,18 @@ export function ContractInteract({ loomId }: ContractInteractProps) {
     setQueryError(null);
     setQueryResult(null);
     try {
-      const inputHex = queryInput.startsWith("0x")
-        ? strip0x(queryInput)
-        : queryInput;
-      const senderHex = querySender ? strip0x(querySender) : "0".repeat(40);
+      let inputHex: string;
+      const raw = queryInput.trim();
+      if (raw.startsWith("{") || raw.startsWith("[")) {
+        // Auto-convert JSON to hex
+        const bytes = new TextEncoder().encode(raw);
+        inputHex = Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+      } else {
+        inputHex = raw.startsWith("0x") ? strip0x(raw) : raw;
+      }
       const result = await rpcCall<QueryResult>("norn_queryLoom", [
         strip0x(loomId),
         inputHex,
-        senderHex,
       ]);
       setQueryResult(result);
     } catch (e) {
@@ -54,9 +57,15 @@ export function ContractInteract({ loomId }: ContractInteractProps) {
     setExecError(null);
     setExecResult(null);
     try {
-      const inputHex = execInput.startsWith("0x")
-        ? strip0x(execInput)
-        : execInput;
+      let inputHex: string;
+      const raw = execInput.trim();
+      if (raw.startsWith("{") || raw.startsWith("[")) {
+        // Auto-convert JSON to hex
+        const bytes = new TextEncoder().encode(raw);
+        inputHex = Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+      } else {
+        inputHex = raw.startsWith("0x") ? strip0x(raw) : raw;
+      }
       const senderHex = execSender ? strip0x(execSender) : "0".repeat(40);
       const result = await rpcCall<ExecutionResult>("norn_executeLoom", [
         strip0x(loomId),
@@ -88,25 +97,13 @@ export function ContractInteract({ loomId }: ContractInteractProps) {
           <TabsContent value="query" className="space-y-3 mt-3">
             <div>
               <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">
-                Input (hex)
+                Input
               </label>
               <textarea
                 value={queryInput}
                 onChange={(e) => setQueryInput(e.target.value)}
-                placeholder='JSON message as hex, e.g. {"get_count":{}}'
+                placeholder='Enter JSON (e.g. {"get_count":{}}) or hex-encoded data'
                 className="w-full rounded-md border bg-transparent px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring min-h-[80px] resize-y"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">
-                Sender Address (optional)
-              </label>
-              <input
-                type="text"
-                value={querySender}
-                onChange={(e) => setQuerySender(e.target.value)}
-                placeholder="0x..."
-                className="w-full rounded-md border bg-transparent px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
             <Button
@@ -132,12 +129,12 @@ export function ContractInteract({ loomId }: ContractInteractProps) {
           <TabsContent value="execute" className="space-y-3 mt-3">
             <div>
               <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">
-                Input (hex)
+                Input
               </label>
               <textarea
                 value={execInput}
                 onChange={(e) => setExecInput(e.target.value)}
-                placeholder='JSON message as hex, e.g. {"increment":{}}'
+                placeholder='Enter JSON (e.g. {"increment":{}}) or hex-encoded data'
                 className="w-full rounded-md border bg-transparent px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring min-h-[80px] resize-y"
               />
             </div>

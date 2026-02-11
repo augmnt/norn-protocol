@@ -379,8 +379,8 @@ pub struct TransferEvent {
     /// Optional memo.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memo: Option<String>,
-    /// Block height where this transfer was included.
-    pub block_height: u64,
+    /// Block height (None = pending/mempool, Some = confirmed in block).
+    pub block_height: Option<u64>,
 }
 
 /// A real-time token event for WebSocket subscribers.

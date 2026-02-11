@@ -42,6 +42,18 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     ),
     a: ({ href, children, ...props }) => {
       const isExternal = href?.startsWith("http");
+      const isAnchor = href?.startsWith("#");
+      if (isAnchor) {
+        return (
+          <a
+            href={href}
+            className="no-underline text-inherit hover:text-foreground"
+            {...props}
+          >
+            {children}
+          </a>
+        );
+      }
       if (isExternal) {
         return (
           <a
@@ -98,7 +110,7 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     ),
     pre: ({ children, ...props }) => (
       <pre
-        className="my-4 overflow-x-auto rounded-lg border bg-secondary/50 p-4 text-sm"
+        className="my-4 overflow-x-auto bg-[hsl(240,10%,6%)] text-sm rounded-md [&>code]:block [&>code]:p-4"
         {...props}
       >
         {children}

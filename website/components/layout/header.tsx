@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/docs", label: "Docs" },
   { href: "https://explorer.norn.network", label: "Explorer", external: true },
+  { href: "https://wallet.norn.network", label: "Wallet", external: true },
   { href: "https://github.com/augmnt/norn-protocol", label: "GitHub", external: true },
 ];
 

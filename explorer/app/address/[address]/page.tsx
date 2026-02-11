@@ -2,6 +2,7 @@
 
 import { use, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { PageContainer } from "@/components/ui/page-container";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -39,6 +40,18 @@ import {
 import type { TransactionHistoryEntry, NameInfo, BalanceEntry } from "@/types";
 
 const txColumns = [
+  {
+    header: "Tx Hash",
+    key: "knot_id",
+    render: (tx: TransactionHistoryEntry) => (
+      <HashDisplay
+        hash={tx.knot_id}
+        href={`/tx/${tx.knot_id}`}
+        chars={6}
+        copy={false}
+      />
+    ),
+  },
   {
     header: "Direction",
     key: "direction",
@@ -106,6 +119,7 @@ export default function AddressPage({
   params: Promise<{ address: string }>;
 }) {
   const { address } = use(params);
+  const router = useRouter();
   const [txPage, setTxPage] = useState(1);
   const [showQR, setShowQR] = useState(false);
 
@@ -265,6 +279,7 @@ export default function AddressPage({
                   data={txHistory ?? []}
                   keyExtractor={(tx, i) => `${tx.knot_id}-${i}`}
                   emptyMessage="No transactions found"
+                  onRowClick={(tx) => router.push(`/tx/${tx.knot_id}`)}
                 />
                 <Pagination
                   page={txPage}

@@ -18,19 +18,54 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://norn.network"),
   title: {
-    default: "Norn Protocol",
+    default: "Norn Protocol — The chain is a courtroom, not a bank",
     template: "%s | Norn Protocol",
   },
   description:
-    "A radically minimal blockchain where users transact directly. The chain is a courtroom, not a bank.",
+    "Norn is a blockchain where users transact directly with cryptographic signatures. Instant finality, zero fees, private by default. The network only intervenes when there's a dispute.",
   icons: { icon: "/icon.svg" },
+  keywords: [
+    "norn",
+    "norn protocol",
+    "blockchain",
+    "layer 1",
+    "cryptocurrency",
+    "zero fee blockchain",
+    "instant finality",
+    "private blockchain",
+    "bilateral transactions",
+    "smart contracts",
+    "webassembly",
+    "rust blockchain",
+  ],
+  authors: [{ name: "Norn Protocol" }],
   openGraph: {
+    title: "Norn Protocol — The chain is a courtroom, not a bank",
+    description:
+      "A blockchain where users transact directly. Instant finality, zero fees, private by default.",
+    siteName: "Norn Protocol",
+    url: "https://norn.network",
+    type: "website",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
     title: "Norn Protocol",
     description:
-      "Your thread. Your fate. The chain just watches.",
-    siteName: "Norn Protocol",
-    type: "website",
+      "A blockchain where users transact directly. Instant finality, zero fees, private by default.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+    },
+  },
+  alternates: {
+    canonical: "https://norn.network",
   },
 };
 

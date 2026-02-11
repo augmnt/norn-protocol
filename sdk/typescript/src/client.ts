@@ -112,13 +112,8 @@ export class NornClient {
   // ── Read-only methods ─────────────────────────────────────────────────
 
   /** Get the balance of an address for a token. */
-  async getBalance(
-    address: AddressHex,
-    tokenId?: HashHex,
-  ): Promise<{ balance: string; human_readable: string }> {
-    const params: unknown[] = [address];
-    if (tokenId) params.push(tokenId);
-    return this.call("norn_getBalance", params);
+  async getBalance(address: AddressHex, tokenId: HashHex): Promise<string> {
+    return this.call("norn_getBalance", [address, tokenId]);
   }
 
   /** Get block by height. */
@@ -176,11 +171,10 @@ export class NornClient {
   /** Get transaction history for an address. */
   async getTransactionHistory(
     address: AddressHex,
-    limit?: number,
+    limit = 20,
+    offset = 0,
   ): Promise<TransactionHistoryEntry[]> {
-    const params: unknown[] = [address];
-    if (limit !== undefined) params.push(limit);
-    return this.call("norn_getTransactionHistory", params);
+    return this.call("norn_getTransactionHistory", [address, limit, offset]);
   }
 
   /** Resolve a registered name to its owner. */
@@ -214,8 +208,8 @@ export class NornClient {
   }
 
   /** List all tokens. */
-  async listTokens(): Promise<TokenInfo[]> {
-    return this.call("norn_listTokens");
+  async listTokens(limit = 20, offset = 0): Promise<TokenInfo[]> {
+    return this.call("norn_listTokens", [limit, offset]);
   }
 
   /** Get loom (contract) information by ID. */
@@ -224,22 +218,18 @@ export class NornClient {
   }
 
   /** List all deployed looms. */
-  async listLooms(): Promise<LoomInfo[]> {
-    return this.call("norn_listLooms");
+  async listLooms(limit = 20, offset = 0): Promise<LoomInfo[]> {
+    return this.call("norn_listLooms", [limit, offset]);
   }
 
   /** Query a loom contract (read-only). */
-  async queryLoom(
-    loomId: HashHex,
-    inputHex: string,
-    senderHex: AddressHex,
-  ): Promise<QueryResult> {
-    return this.call("norn_queryLoom", [loomId, inputHex, senderHex]);
+  async queryLoom(loomId: HashHex, inputHex: string): Promise<QueryResult> {
+    return this.call("norn_queryLoom", [loomId, inputHex]);
   }
 
   /** Get staking information. */
-  async getStakingInfo(): Promise<StakingInfo> {
-    return this.call("norn_getStakingInfo");
+  async getStakingInfo(pubkeyHex?: string): Promise<StakingInfo> {
+    return this.call("norn_getStakingInfo", [pubkeyHex ?? null]);
   }
 
   /** Get the current state root. */
@@ -257,6 +247,20 @@ export class NornClient {
     return this.call("norn_getStateProof", params);
   }
 
+  /** Get recent transfers. */
+  async getRecentTransfers(
+    limit = 20,
+  ): Promise<TransactionHistoryEntry[]> {
+    return this.call("norn_getRecentTransfers", [limit]);
+  }
+
+  /** Get a single transaction by its knot ID (hex). */
+  async getTransaction(
+    knotId: string,
+  ): Promise<TransactionHistoryEntry | null> {
+    return this.call("norn_getTransaction", [knotId]);
+  }
+
   // ── Mutation methods ──────────────────────────────────────────────────
 
   /** Submit a knot (transfer). */
@@ -265,8 +269,12 @@ export class NornClient {
   }
 
   /** Register a name. */
-  async registerName(registrationHex: string): Promise<SubmitResult> {
-    return this.call("norn_registerName", [registrationHex]);
+  async registerName(
+    name: string,
+    ownerHex: string,
+    knotHex: string,
+  ): Promise<SubmitResult> {
+    return this.call("norn_registerName", [name, ownerHex, knotHex]);
   }
 
   /** Create a token. */
@@ -297,7 +305,7 @@ export class NornClient {
   ): Promise<SubmitResult> {
     const params: unknown[] = [loomId, bytecodeHex];
     if (initMsgHex) params.push(initMsgHex);
-    return this.call("norn_uploadBytecode", params);
+    return this.call("norn_uploadLoomBytecode", params);
   }
 
   /** Execute a loom contract. */
@@ -307,6 +315,30 @@ export class NornClient {
     senderHex: AddressHex,
   ): Promise<ExecutionResult> {
     return this.call("norn_executeLoom", [loomId, inputHex, senderHex]);
+  }
+
+  /** Join a loom as a participant. */
+  async joinLoom(
+    loomId: string,
+    participant: string,
+    pubkey: string,
+  ): Promise<SubmitResult> {
+    return this.call("norn_joinLoom", [loomId, participant, pubkey]);
+  }
+
+  /** Leave a loom. */
+  async leaveLoom(loomId: string, participant: string): Promise<SubmitResult> {
+    return this.call("norn_leaveLoom", [loomId, participant]);
+  }
+
+  /** Submit a commitment. */
+  async submitCommitment(commitmentHex: string): Promise<SubmitResult> {
+    return this.call("norn_submitCommitment", [commitmentHex]);
+  }
+
+  /** Submit a registration. */
+  async submitRegistration(registrationHex: string): Promise<SubmitResult> {
+    return this.call("norn_submitRegistration", [registrationHex]);
   }
 
   /** Stake NORN. */

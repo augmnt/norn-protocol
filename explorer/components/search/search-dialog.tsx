@@ -23,7 +23,7 @@ import {
   truncateAddress,
 } from "@/lib/format";
 import { rpcCall } from "@/lib/rpc";
-import type { NameResolution, TokenInfo, LoomInfo } from "@/types";
+import type { NameResolution, TokenInfo, LoomInfo, TransactionHistoryEntry } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -108,29 +108,44 @@ async function performSearch(query: string): Promise<SearchResult[]> {
     });
   }
 
-  if (isValidHash(trimmed)) {
-    results.push({
-      id: `hash-block-${trimmed}`,
-      category: "hash",
-      label: "Look up as block hash",
-      sublabel: truncateHash(trimmed),
-      href: `/block/${trimmed}`,
-    });
-    results.push({
-      id: `hash-tx-${trimmed}`,
-      category: "hash",
-      label: "Look up as transaction",
-      sublabel: truncateHash(trimmed),
-      href: `/tx/${trimmed}`,
-    });
-  }
+  // Detect transaction hash — 64 hex chars with or without 0x prefix
+  const isHashWithPrefix = isValidHash(trimmed);
+  const isRawHash = /^[a-fA-F0-9]{64}$/.test(trimmed);
+  const txLookupId = isHashWithPrefix
+    ? trimmed.slice(2)
+    : isRawHash
+      ? trimmed
+      : null;
 
-  // RPC queries in parallel
-  const [nameResult, tokens, looms] = await Promise.allSettled([
+  // RPC queries in parallel (include tx lookup if hash detected)
+  const rpcCalls: [
+    Promise<NameResolution | null>,
+    Promise<TokenInfo[]>,
+    Promise<LoomInfo[]>,
+    Promise<TransactionHistoryEntry | null>,
+  ] = [
     rpcCall<NameResolution | null>("norn_resolveName", [trimmed]),
     rpcCall<TokenInfo[]>("norn_listTokens", [20, 0]),
     rpcCall<LoomInfo[]>("norn_listLooms", [20, 0]),
-  ]);
+    txLookupId
+      ? rpcCall<TransactionHistoryEntry | null>("norn_getTransaction", [txLookupId])
+      : Promise.resolve(null),
+  ];
+
+  const [nameResult, tokens, looms, txResult] = await Promise.allSettled(rpcCalls);
+
+  // Transaction lookup result
+  if (txLookupId) {
+    const txFound = txResult.status === "fulfilled" && txResult.value != null;
+    const displayHash = isHashWithPrefix ? trimmed : `0x${trimmed}`;
+    results.push({
+      id: `hash-tx-${displayHash}`,
+      category: "hash",
+      label: txFound ? "Transaction found" : "Look up transaction",
+      sublabel: truncateHash(displayHash),
+      href: `/tx/${displayHash}`,
+    });
+  }
 
   // Name resolution
   if (nameResult.status === "fulfilled" && nameResult.value) {

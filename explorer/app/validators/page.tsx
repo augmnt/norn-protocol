@@ -8,7 +8,7 @@ import { HashDisplay } from "@/components/ui/hash-display";
 import { AddressDisplay } from "@/components/ui/address-display";
 import { AmountDisplay } from "@/components/ui/amount-display";
 import { Badge } from "@/components/ui/badge";
-import { StatsSkeleton, TableSkeleton } from "@/components/ui/loading-skeleton";
+import { StatsSkeleton } from "@/components/ui/loading-skeleton";
 import { ErrorState } from "@/components/ui/error-state";
 import { useStakingInfo } from "@/hooks/use-staking-info";
 import { useValidatorSet } from "@/hooks/use-validator-set";
@@ -107,28 +107,19 @@ export default function ValidatorsPage() {
               />
             </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm font-medium">
-                  Validator Set
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="px-0">
-                <DataTable
-                  columns={columns}
-                  data={
-                    validatorSet
-                      ? [...validatorSet.validators].sort(
-                          (a, b) =>
-                            Number(BigInt(b.stake) - BigInt(a.stake))
-                        )
-                      : []
-                  }
-                  keyExtractor={(v) => v.pubkey}
-                  emptyMessage="No validators"
-                />
-              </CardContent>
-            </Card>
+            <DataTable
+              columns={columns}
+              data={
+                validatorSet
+                  ? [...validatorSet.validators].sort(
+                      (a, b) =>
+                        Number(BigInt(b.stake) - BigInt(a.stake))
+                    )
+                  : []
+              }
+              keyExtractor={(v) => v.pubkey}
+              emptyMessage="No validators"
+            />
 
             {staking && (
               <Card>

@@ -10,6 +10,7 @@ import {
   Code2,
   Globe,
   Chrome,
+  Fingerprint,
   GitPullRequest,
   type LucideIcon,
 } from "lucide-react";
@@ -78,6 +79,12 @@ const sections: {
     description: "Browse blocks, transactions, accounts, and tokens.",
     href: "/docs/explorer",
     icon: Globe,
+  },
+  {
+    title: "Web Wallet",
+    description: "Passkey-secured browser wallet -- no extension needed.",
+    href: "/docs/wallet-web",
+    icon: Fingerprint,
   },
   {
     title: "Wallet Extension",

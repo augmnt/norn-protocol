@@ -45,7 +45,7 @@ export function SubscriptionsProvider({
       (block) => {
         console.log("[WS] New block:", block.height);
         useRealtimeStore.getState().addBlock(block);
-        queryClient.setQueryData(QUERY_KEYS.block(block.height), block);
+        // Invalidate weave state so dashboard stats refresh.
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.weaveState });
 
         const txCount = block.transfer_count;

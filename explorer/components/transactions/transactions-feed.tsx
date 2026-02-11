@@ -30,14 +30,17 @@ const columns = [
     header: "Block",
     key: "block",
     className: "text-right",
-    render: (tx: TransferEvent) => (
-      <Link
-        href={`/block/${tx.block_height}`}
-        className="font-mono text-sm text-norn hover:underline tabular-nums"
-      >
-        #{tx.block_height}
-      </Link>
-    ),
+    render: (tx: TransferEvent) =>
+      tx.block_height != null ? (
+        <Link
+          href={`/block/${tx.block_height}`}
+          className="font-mono text-sm text-norn hover:underline tabular-nums"
+        >
+          #{tx.block_height}
+        </Link>
+      ) : (
+        <span className="text-sm text-muted-foreground">--</span>
+      ),
   },
 ];
 

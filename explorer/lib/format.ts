@@ -15,7 +15,7 @@ export function formatAmount(
   decimals = 12,
   maxFractionDigits = 4
 ): string {
-  const raw = typeof amount === "bigint" ? amount : BigInt(amount || "0");
+  const raw = typeof amount === "bigint" ? amount : BigInt((typeof amount === "string" ? amount.trim() : amount) || "0");
   const divisor = BigInt(10 ** decimals);
   const whole = raw / divisor;
   const frac = raw % divisor;

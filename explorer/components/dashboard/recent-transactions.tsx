@@ -3,17 +3,17 @@
 import Link from "next/link";
 import { ArrowRightLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AddressDisplay } from "@/components/ui/address-display";
-import { AmountDisplay } from "@/components/ui/amount-display";
 import { TimeAgo } from "@/components/ui/time-ago";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useRealtimeStore } from "@/stores/realtime-store";
 import { useRecentHistory } from "@/hooks/use-recent-history";
+import { truncateAddress, truncateHash, formatNorn } from "@/lib/format";
 import type { TransferEvent, TransactionHistoryEntry } from "@/types";
 
 /** Unified row for display — merges WS events and RPC history. */
 interface TxRow {
   key: string;
+  knot_id?: string;
   from: string;
   to: string;
   amount: string;
@@ -43,7 +43,7 @@ export function RecentTransactions() {
           </Link>
         </div>
       </CardHeader>
-      <CardContent className="px-0">
+      <CardContent className="px-0 pb-2">
         {transactions.length === 0 ? (
           <EmptyState
             icon={ArrowRightLeft}
@@ -51,32 +51,49 @@ export function RecentTransactions() {
             description="Waiting for transactions..."
           />
         ) : (
-          <div className="space-y-0">
+          <div>
             {transactions.slice(0, 5).map((tx) => (
               <div
                 key={tx.key}
-                className="flex items-center justify-between px-6 py-2.5 border-b last:border-0 animate-slide-in"
+                className="px-6 py-2.5"
               >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted">
-                    <ArrowRightLeft className="h-3.5 w-3.5 text-muted-foreground" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1 text-xs">
-                      <AddressDisplay address={tx.from} copy={false} />
-                      <span className="text-muted-foreground">&rarr;</span>
-                      <AddressDisplay address={tx.to} copy={false} />
-                    </div>
-                    {tx.timestamp ? (
-                      <TimeAgo timestamp={tx.timestamp} className="text-xs" />
-                    ) : tx.block_height != null ? (
-                      <p className="text-xs text-muted-foreground">
-                        Block #{tx.block_height}
-                      </p>
-                    ) : null}
-                  </div>
+                <div className="flex items-center justify-between">
+                  {tx.knot_id ? (
+                    <Link
+                      href={`/tx/${tx.knot_id}`}
+                      className="text-sm font-mono text-norn hover:underline"
+                    >
+                      {truncateHash(tx.knot_id, 5)}
+                    </Link>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">
+                      Pending
+                    </span>
+                  )}
+                  {tx.timestamp ? (
+                    <TimeAgo timestamp={tx.timestamp} className="text-xs" />
+                  ) : null}
                 </div>
-                <AmountDisplay amount={tx.amount} />
+                <div className="flex items-center justify-between mt-0.5">
+                  <span className="text-xs font-mono">
+                    <Link
+                      href={`/address/${tx.from}`}
+                      className="text-muted-foreground hover:text-norn"
+                    >
+                      {truncateAddress(tx.from)}
+                    </Link>
+                    <span className="mx-1 text-muted-foreground">&rarr;</span>
+                    <Link
+                      href={`/address/${tx.to}`}
+                      className="text-muted-foreground hover:text-norn"
+                    >
+                      {truncateAddress(tx.to)}
+                    </Link>
+                  </span>
+                  <span className="text-xs font-mono tabular-nums text-muted-foreground">
+                    {formatNorn(tx.amount)} NORN
+                  </span>
+                </div>
               </div>
             ))}
           </div>
@@ -90,40 +107,43 @@ function mergeTransactions(
   wsTransfers: TransferEvent[],
   history: TransactionHistoryEntry[],
 ): TxRow[] {
-  const seen = new Set<string>();
   const result: TxRow[] = [];
 
-  // WS transfers first (newest)
-  for (const tx of wsTransfers) {
-    const key = `${tx.from}-${tx.to}-${tx.amount}-${tx.block_height}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      result.push({
-        key,
-        from: tx.from,
-        to: tx.to,
-        amount: tx.amount,
-        block_height: tx.block_height,
-      });
-    }
-  }
-
-  // Then RPC-fetched history
+  // RPC history — deduplicate by knot_id (API can return both sent+received records)
+  const seen = new Set<string>();
   for (const tx of history) {
-    const key = tx.knot_id || `${tx.from}-${tx.to}-${tx.amount}-${tx.block_height}`;
-    if (!seen.has(key)) {
-      seen.add(key);
+    const key = tx.knot_id || `${tx.from}-${tx.to}-${tx.amount}-${tx.timestamp}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({
+      key,
+      knot_id: tx.knot_id,
+      from: tx.from,
+      to: tx.to,
+      amount: tx.amount,
+      block_height: tx.block_height,
+      timestamp: tx.timestamp,
+    });
+  }
+
+  // WS transfers — only add if not already in RPC results.
+  // Match on from+to+amount as best-effort dedup against RPC entries.
+  for (const tx of wsTransfers) {
+    const matchKey = `${tx.from}-${tx.to}-${tx.amount}`;
+    const alreadyInRpc = result.some(
+      (r) => r.from === tx.from && r.to === tx.to && r.amount === tx.amount
+    );
+    if (!alreadyInRpc) {
       result.push({
-        key,
+        key: `ws-${matchKey}-${tx.block_height}`,
         from: tx.from,
         to: tx.to,
         amount: tx.amount,
-        block_height: tx.block_height,
-        timestamp: tx.timestamp,
+        block_height: tx.block_height ?? undefined,
       });
     }
   }
 
-  // Sort by block_height descending (newest first), fall back to insertion order
-  return result.sort((a, b) => (b.block_height ?? 0) - (a.block_height ?? 0));
+  // Sort by timestamp descending (newest first), fall back to block height
+  return result.sort((a, b) => (b.timestamp ?? b.block_height ?? 0) - (a.timestamp ?? a.block_height ?? 0));
 }

@@ -33,6 +33,7 @@ const sidebarSections = [
     title: "Tools",
     items: [
       { href: "/docs/explorer", label: "Block Explorer" },
+      { href: "/docs/wallet-web", label: "Web Wallet" },
       { href: "/docs/wallet-extension", label: "Wallet Extension" },
     ],
   },

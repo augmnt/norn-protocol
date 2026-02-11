@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 const RPC_URL =
   process.env.RPC_URL ||
   process.env.NEXT_PUBLIC_RPC_URL ||
-  "https://seed.norn.network";
+  "http://localhost:9741";
 
 export async function POST(request: NextRequest) {
   const body = await request.text();

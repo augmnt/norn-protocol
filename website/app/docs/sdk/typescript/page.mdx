@@ -46,14 +46,15 @@ The `NornClient` class provides RPC methods for reading chain state and submitti
 ```typescript
 import { NornClient } from "@norn-protocol/sdk";
 
-const client = new NornClient("https://seed.norn.network");
+const client = new NornClient({ url: "https://seed.norn.network" });
 ```
 
 ### Read-Only Methods
 
 ```typescript
-// Get balance
-const balance = await client.getBalance("0x...");
+// Get native NORN balance (tokenId is 32 zero bytes for native)
+const nativeTokenId = "0x" + "00".repeat(32);
+const balance = await client.getBalance("0x...", nativeTokenId);
 
 // Get block by height
 const block = await client.getBlock(42);
@@ -64,8 +65,8 @@ const latest = await client.getLatestBlock();
 // Get weave state
 const state = await client.getWeaveState();
 
-// Get account info (thread, names, balances)
-const info = await client.getThreadInfo("0x...");
+// Get thread state (balances, names, etc.)
+const threadState = await client.getThreadState("0x...");
 
 // Resolve a NornName
 const resolved = await client.resolveName("alice");
@@ -80,7 +81,10 @@ const tokens = await client.listTokens(10, 0);
 const loom = await client.getLoomInfo("0x...");
 
 // Get node health
-const health = await client.getHealth();
+const health = await client.health();
+
+// Get transaction history
+const history = await client.getTransactionHistory("0x...", 20, 0);
 ```
 
 ### Mutation Methods
@@ -89,10 +93,10 @@ Mutation methods require a signed transaction (hex-encoded borsh):
 
 ```typescript
 // Submit a transfer
-const result = await client.submitTransfer(signedTransferHex);
+const result = await client.submitKnot(signedTransferHex);
 
-// Register a name
-const result = await client.registerName(signedNameHex);
+// Register a name (requires name, owner hex, and signed knot hex)
+const result = await client.registerName("alice", ownerHex, signedNameHex);
 
 // Create a token
 const result = await client.createToken(signedTokenDefHex);
@@ -116,21 +120,22 @@ import {
 } from "@norn-protocol/sdk";
 
 const wallet = Wallet.fromPrivateKey("...");
-const client = new NornClient("https://seed.norn.network");
+const client = new NornClient({ url: "https://seed.norn.network" });
 
-// Build a transfer
-const transferHex = await buildTransfer(wallet, {
+// Build a transfer (NORN uses 12 decimals by default)
+const transferHex = buildTransfer(wallet, {
   to: "0xrecipient...",
-  amount: parseAmount("10.5", 18),
+  amount: parseAmount("10.5"),
 });
-await client.submitTransfer(transferHex);
+await client.submitKnot(transferHex);
 
 // Register a NornName
-const nameHex = await buildNameRegistration(wallet, { name: "alice" });
-await client.registerName(nameHex);
+const nameHex = buildNameRegistration(wallet, "alice");
+const ownerHex = "0x" + Buffer.from(wallet.address).toString("hex");
+await client.registerName("alice", ownerHex, nameHex);
 
 // Create a token
-const tokenHex = await buildTokenDefinition(wallet, {
+const tokenHex = buildTokenDefinition(wallet, {
   name: "My Token",
   symbol: "MTK",
   decimals: 8,
@@ -140,7 +145,7 @@ const tokenHex = await buildTokenDefinition(wallet, {
 await client.createToken(tokenHex);
 
 // Mint tokens
-const mintHex = await buildTokenMint(wallet, {
+const mintHex = buildTokenMint(wallet, {
   tokenId: "0x...",
   to: "0xrecipient...",
   amount: 500n,
@@ -148,7 +153,7 @@ const mintHex = await buildTokenMint(wallet, {
 await client.mintToken(mintHex);
 
 // Burn tokens
-const burnHex = await buildTokenBurn(wallet, {
+const burnHex = buildTokenBurn(wallet, {
   tokenId: "0x...",
   amount: 100n,
 });

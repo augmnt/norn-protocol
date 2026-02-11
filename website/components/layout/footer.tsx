@@ -19,6 +19,14 @@ export function Footer() {
             Explorer
           </a>
           <a
+            href="https://wallet.norn.network"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Wallet
+          </a>
+          <a
             href="https://github.com/augmnt/norn-protocol"
             target="_blank"
             rel="noopener noreferrer"

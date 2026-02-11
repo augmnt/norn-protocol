@@ -157,6 +157,11 @@ export function buildNameRegistration(
  * Build and sign a token definition transaction.
  *
  * Returns hex-encoded borsh bytes ready to submit via `createToken`.
+ *
+ * Borsh layout matches Rust TokenDefinition struct:
+ *   name: String, symbol: String, decimals: u8, max_supply: u128,
+ *   initial_supply: u128, creator: [u8;20], creator_pubkey: [u8;32],
+ *   timestamp: u64, signature: [u8;64]
  */
 export function buildTokenDefinition(
   wallet: Wallet,
@@ -165,41 +170,34 @@ export function buildTokenDefinition(
     symbol: string;
     decimals: number;
     maxSupply: bigint;
+    initialSupply?: bigint;
   },
 ): string {
   const creator = wallet.address;
   const timestamp = now();
+  const initialSupply = params.initialSupply ?? 0n;
 
   const sigData = tokenDefinitionSigningData({
     name: params.name,
     symbol: params.symbol,
     decimals: params.decimals,
     maxSupply: params.maxSupply,
+    initialSupply,
     creator,
     timestamp,
   });
   const signature = wallet.sign(sigData);
 
-  // Compute token ID = BLAKE3(creator ++ name ++ symbol ++ decimals ++ max_supply ++ timestamp)
-  const idData = new BorshWriter();
-  idData.writeFixedBytes(creator);
-  idData.writeString(params.name);
-  idData.writeString(params.symbol);
-  idData.writeU8(params.decimals);
-  idData.writeU128(params.maxSupply);
-  idData.writeU64(timestamp);
-  const tokenId = blake3Hash(idData.toBytes());
-
+  // Serialize TokenDefinition struct (no tokenId field — it's computed by the node)
   const w = new BorshWriter();
-  w.writeFixedBytes(tokenId); // 32 bytes
   w.writeString(params.name);
   w.writeString(params.symbol);
   w.writeU8(params.decimals);
   w.writeU128(params.maxSupply);
+  w.writeU128(initialSupply);
   w.writeFixedBytes(creator); // 20 bytes
   w.writeFixedBytes(wallet.publicKey); // 32 bytes
   w.writeU64(timestamp);
-  w.writeU128(TOKEN_CREATION_FEE);
   w.writeFixedBytes(signature); // 64 bytes
 
   return toHex(w.toBytes());
@@ -209,6 +207,11 @@ export function buildTokenDefinition(
  * Build and sign a token mint transaction.
  *
  * Returns hex-encoded borsh bytes ready to submit via `mintToken`.
+ *
+ * Borsh layout matches Rust TokenMint struct:
+ *   token_id: [u8;32], to: [u8;20], amount: u128,
+ *   authority: [u8;20], authority_pubkey: [u8;32],
+ *   timestamp: u64, signature: [u8;64]
  */
 export function buildTokenMint(
   wallet: Wallet,
@@ -220,12 +223,14 @@ export function buildTokenMint(
 ): string {
   const tokenId = fromHex(params.tokenId);
   const to = fromHex(params.to);
+  const authority = wallet.address;
   const timestamp = now();
 
   const sigData = tokenMintSigningData({
     tokenId,
     to,
     amount: params.amount,
+    authority,
     timestamp,
   });
   const signature = wallet.sign(sigData);
@@ -234,6 +239,7 @@ export function buildTokenMint(
   w.writeFixedBytes(tokenId); // 32 bytes
   w.writeFixedBytes(to); // 20 bytes
   w.writeU128(params.amount);
+  w.writeFixedBytes(authority); // 20 bytes
   w.writeFixedBytes(wallet.publicKey); // 32 bytes
   w.writeU64(timestamp);
   w.writeFixedBytes(signature); // 64 bytes
@@ -245,6 +251,10 @@ export function buildTokenMint(
  * Build and sign a token burn transaction.
  *
  * Returns hex-encoded borsh bytes ready to submit via `burnToken`.
+ *
+ * Borsh layout matches Rust TokenBurn struct:
+ *   token_id: [u8;32], burner: [u8;20], burner_pubkey: [u8;32],
+ *   amount: u128, timestamp: u64, signature: [u8;64]
  */
 export function buildTokenBurn(
   wallet: Wallet,
@@ -259,17 +269,17 @@ export function buildTokenBurn(
 
   const sigData = tokenBurnSigningData({
     tokenId,
-    amount: params.amount,
     burner,
+    amount: params.amount,
     timestamp,
   });
   const signature = wallet.sign(sigData);
 
   const w = new BorshWriter();
   w.writeFixedBytes(tokenId); // 32 bytes
-  w.writeU128(params.amount);
   w.writeFixedBytes(burner); // 20 bytes
   w.writeFixedBytes(wallet.publicKey); // 32 bytes
+  w.writeU128(params.amount);
   w.writeU64(timestamp);
   w.writeFixedBytes(signature); // 64 bytes
 

@@ -18,6 +18,7 @@ export const QUERY_KEYS = {
   tokensList: (page: number) => ["tokensList", page] as const,
   loomInfo: (loomId: string) => ["loomInfo", loomId] as const,
   loomsList: (page: number) => ["loomsList", page] as const,
+  transaction: (knotId: string) => ["transaction", knotId] as const,
   feeEstimate: ["feeEstimate"] as const,
   nodeInfo: ["nodeInfo"] as const,
 } as const;

@@ -171,14 +171,17 @@ export function tokenDefinitionSigningData(params: {
   symbol: string;
   decimals: number;
   maxSupply: bigint;
+  initialSupply: bigint;
   creator: Uint8Array;
   timestamp: bigint;
 }): Uint8Array {
   const w = new BorshWriter();
-  w.writeString(params.name);
-  w.writeString(params.symbol);
+  // Rust uses raw bytes (no borsh length prefix) for signing data
+  w.writeFixedBytes(new TextEncoder().encode(params.name));
+  w.writeFixedBytes(new TextEncoder().encode(params.symbol));
   w.writeU8(params.decimals);
   w.writeU128(params.maxSupply);
+  w.writeU128(params.initialSupply);
   w.writeFixedBytes(params.creator); // 20 bytes
   w.writeU64(params.timestamp);
   return w.toBytes();
@@ -189,12 +192,14 @@ export function tokenMintSigningData(params: {
   tokenId: Uint8Array;
   to: Uint8Array;
   amount: bigint;
+  authority: Uint8Array;
   timestamp: bigint;
 }): Uint8Array {
   const w = new BorshWriter();
   w.writeFixedBytes(params.tokenId); // 32 bytes
   w.writeFixedBytes(params.to); // 20 bytes
   w.writeU128(params.amount);
+  w.writeFixedBytes(params.authority); // 20 bytes
   w.writeU64(params.timestamp);
   return w.toBytes();
 }
@@ -202,14 +207,14 @@ export function tokenMintSigningData(params: {
 /** Signing data for a token burn. */
 export function tokenBurnSigningData(params: {
   tokenId: Uint8Array;
-  amount: bigint;
   burner: Uint8Array;
+  amount: bigint;
   timestamp: bigint;
 }): Uint8Array {
   const w = new BorshWriter();
   w.writeFixedBytes(params.tokenId); // 32 bytes
-  w.writeU128(params.amount);
   w.writeFixedBytes(params.burner); // 20 bytes
+  w.writeU128(params.amount);
   w.writeU64(params.timestamp);
   return w.toBytes();
 }

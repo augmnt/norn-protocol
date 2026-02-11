@@ -63,7 +63,7 @@ async function fetchHistoricalBlocks(
   const endHeight = Math.max(0, startHeight - CHART_BLOCK_COUNT);
 
   const promises: Promise<BlockInfo | null>[] = [];
-  for (let h = startHeight; h > endHeight; h--) {
+  for (let h = startHeight; h >= endHeight; h--) {
     promises.push(client.getBlock(h).catch(() => null));
   }
 
@@ -78,7 +78,7 @@ function useHistoricalBlocks(latestHeight: number | undefined) {
     queryKey: ["chartBlocks", bucket],
     queryFn: () => fetchHistoricalBlocks(latestHeight!),
     staleTime: STALE_TIMES.immutable,
-    enabled: latestHeight !== undefined && latestHeight > 0,
+    enabled: latestHeight !== undefined && latestHeight >= 0,
   });
 }
 

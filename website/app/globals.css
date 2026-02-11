@@ -62,6 +62,24 @@
   }
 }
 
+/* Muted syntax highlighting for code blocks */
+[data-rehype-pretty-code-figure] pre {
+  background: hsl(240 10% 6%) !important;
+  border: none !important;
+  padding: 0 !important;
+  border-radius: 0.375rem !important;
+}
+
+[data-rehype-pretty-code-figure] code {
+  filter: saturate(0.25) brightness(1.15);
+  display: block;
+  padding: 1rem;
+}
+
+[data-rehype-pretty-code-figure] {
+  border: none !important;
+}
+
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;

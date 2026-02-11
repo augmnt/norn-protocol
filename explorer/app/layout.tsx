@@ -21,9 +21,50 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Norn Explorer",
-  description: "Block explorer for the Norn Protocol",
+  metadataBase: new URL("https://explorer.norn.network"),
+  title: {
+    default: "Norn Explorer — Block Explorer for Norn Protocol",
+    template: "%s | Norn Explorer",
+  },
+  description:
+    "Explore blocks, transactions, addresses, tokens, and smart contracts on the Norn network. Real-time data with WebSocket updates.",
   icons: { icon: "/icon.svg" },
+  keywords: [
+    "norn",
+    "norn explorer",
+    "block explorer",
+    "norn protocol",
+    "blockchain explorer",
+    "norn transactions",
+    "norn blocks",
+    "norn tokens",
+  ],
+  openGraph: {
+    title: "Norn Explorer",
+    description:
+      "Block explorer for the Norn Protocol. Browse blocks, transactions, addresses, tokens, and smart contracts in real time.",
+    siteName: "Norn Explorer",
+    url: "https://explorer.norn.network",
+    type: "website",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary",
+    title: "Norn Explorer",
+    description:
+      "Block explorer for the Norn Protocol. Real-time blocks, transactions, and network stats.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+    },
+  },
+  alternates: {
+    canonical: "https://explorer.norn.network",
+  },
 };
 
 export default function RootLayout({

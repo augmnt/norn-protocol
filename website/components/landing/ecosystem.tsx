@@ -1,30 +1,34 @@
-import { Globe, Wallet, Code2 } from "lucide-react";
+import { Globe, Terminal, Code2, Fingerprint } from "lucide-react";
 
-const ecosystemItems = [
+const items = [
   {
     icon: Globe,
-    title: "Block Explorer",
-    description:
-      "Browse blocks, transactions, accounts, tokens, and smart contracts in real time.",
+    title: "Explorer",
+    description: "Browse blocks, transactions, and accounts in real time.",
     href: "https://explorer.norn.network",
     linkLabel: "explorer.norn.network",
   },
   {
-    icon: Wallet,
-    title: "Browser Wallet",
-    description:
-      "Chrome extension for sending NORN, managing accounts, and registering NornNames.",
-    href: "/docs/wallet-extension",
-    linkLabel: "Installation guide",
+    icon: Fingerprint,
+    title: "Web Wallet",
+    description: "Passkey-secured browser wallet — no extension needed.",
+    href: "https://wallet.norn.network",
+    linkLabel: "wallet.norn.network",
+  },
+  {
+    icon: Terminal,
+    title: "Wallet CLI",
+    description: "Create wallets, send NORN, register names from the terminal.",
+    href: "/docs/wallet",
+    linkLabel: "Documentation",
     internal: true,
   },
   {
     icon: Code2,
     title: "TypeScript SDK",
-    description:
-      "Wallet primitives, transaction builders, RPC client, and WebSocket subscriptions.",
+    description: "Wallet primitives, RPC client, and WebSocket subscriptions.",
     href: "/docs/sdk/typescript",
-    linkLabel: "SDK documentation",
+    linkLabel: "Documentation",
     internal: true,
   },
 ];
@@ -33,29 +37,26 @@ export function Ecosystem() {
   return (
     <section className="border-t">
       <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-        <div className="mb-12">
-          <h2 className="text-heading">Ecosystem</h2>
-          <p className="mt-2 text-muted-foreground">
-            Tools for interacting with the Norn network.
-          </p>
-        </div>
-        <div className="grid gap-6 sm:grid-cols-3">
-          {ecosystemItems.map((item) => (
+        <h2 className="text-heading mb-10">Ecosystem</h2>
+        <div className="grid gap-8 sm:grid-cols-2">
+          {items.map((item) => (
             <a
               key={item.title}
               href={item.href}
               target={item.internal ? undefined : "_blank"}
               rel={item.internal ? undefined : "noopener noreferrer"}
-              className="group rounded-lg border bg-card p-6 transition-colors hover:border-norn/30"
+              className="group flex items-start gap-4"
             >
-              <item.icon className="h-5 w-5 text-norn mb-4" />
-              <h3 className="font-semibold mb-2">{item.title}</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-                {item.description}
-              </p>
-              <span className="text-sm font-mono text-norn group-hover:underline">
-                {item.linkLabel}
-              </span>
+              <item.icon className="h-5 w-5 text-norn mt-0.5 shrink-0" />
+              <div>
+                <h3 className="font-semibold mb-1">{item.title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed mb-2">
+                  {item.description}
+                </p>
+                <span className="text-sm font-mono text-norn group-hover:underline">
+                  {item.linkLabel}
+                </span>
+              </div>
             </a>
           ))}
         </div>

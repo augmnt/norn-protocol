@@ -6,7 +6,7 @@
   <a href="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml"><img src="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-stable-orange.svg" alt="Rust"></a>
-  <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.18.0"><img src="https://img.shields.io/badge/version-0.18.0-green.svg" alt="Version"></a>
+  <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.18.3"><img src="https://img.shields.io/badge/version-0.18.3-green.svg" alt="Version"></a>
 </p>
 
 ---
@@ -103,7 +103,9 @@ flowchart TB
     end
 
     Explorer["Explorer\nexplorer.norn.network"] -.->|HTTPS| RPC
-    Wallet["Wallet Extension"] -.->|HTTPS| RPC
+    WebWallet["Web Wallet\nwallet.norn.network"] -.->|HTTPS| RPC
+    WalletExt["Wallet Extension"] -.->|HTTPS| RPC
+    Website["Website\nnorn.network"]
 
     subgraph Local["Local Nodes"]
         A["Your Node\n(norn run --dev)"]
@@ -114,7 +116,7 @@ flowchart TB
     B <-->|"gossip + sync"| P2P
 ```
 
-- **Seed node**: The source of truth. Produces blocks, serves the explorer and wallet extension.
+- **Seed node**: The source of truth. Produces blocks, serves the explorer, web wallet, and wallet extension.
 - **Local nodes**: Connect to the seed as peers. Hold your thread locally, sync blocks from the network, and gossip transactions to the seed for inclusion in blocks.
 
 ### Quick Start (Join the Devnet)
@@ -165,9 +167,11 @@ Norn supports three network modes, selectable via `--network` flag or `network_i
 
 | Service | URL |
 |---------|-----|
+| Website | [norn.network](https://norn.network) |
 | RPC | `https://seed.norn.network` |
 | WebSocket | `wss://seed.norn.network` |
 | Explorer | [explorer.norn.network](https://explorer.norn.network) |
+| Web Wallet | [wallet.norn.network](https://wallet.norn.network) |
 | P2P Bootstrap | `/ip4/164.90.182.133/tcp/9740` |
 
 ## Repository Structure
@@ -186,7 +190,9 @@ Norn supports three network modes, selectable via `--network` flag or `network_i
 | `norn-node` | Full node binary (CLI, node configuration, genesis handling, JSON-RPC server with API key auth, wallet CLI, NornNames, NT-1 tokens, Loom smart contracts with execution, Prometheus metrics endpoint, fraud proof submission, spindle watchtower integration) |
 | `sdk/typescript` | TypeScript SDK (`@norn-protocol/sdk`) — wallet primitives, transaction builders, RPC client, WebSocket subscriptions |
 | `explorer/` | [Block explorer](#explorer) — Next.js 15 web app for browsing blocks, transactions, accounts, tokens, and contracts |
-| `wallet-extension/` | [Browser wallet](#wallet-extension) — Chrome extension for sending/receiving NORN, managing accounts, and registering names |
+| `wallet/` | [Web wallet](#web-wallet) — Next.js 15 passkey-secured browser wallet for managing NORN, tokens, names, and contracts |
+| `wallet-extension/` | [Wallet extension](#wallet-extension) — Chrome extension for sending/receiving NORN, managing accounts, and registering names |
+| `website/` | [Website](#website) — norn.network marketing site and documentation hub |
 
 ## Getting Started
 
@@ -530,6 +536,44 @@ Real-time updates are powered by WebSocket subscriptions — blocks and transact
 
 See [`explorer/README.md`](explorer/README.md) for full setup instructions, environment variables, and troubleshooting.
 
+## Web Wallet
+
+The **Norn Web Wallet** is a self-custodial browser wallet secured by WebAuthn passkeys. No extensions to install -- just visit the URL and authenticate with Face ID, Touch ID, or Windows Hello.
+
+**Live instance:** [wallet.norn.network](https://wallet.norn.network)
+
+**Features:**
+
+- Passkey authentication (Face ID / Touch ID / Windows Hello)
+- Self-custodial -- private keys derived on-the-fly, never stored
+- Cross-device sync via iCloud Keychain or Google Password Manager
+- Send & receive NORN to addresses or NornNames
+- Create, mint, and burn NT-1 tokens
+- Register NornNames
+- Deploy, execute, and query Loom smart contracts
+- Transaction history with detail views
+- Devnet faucet
+- Optional 24-word recovery phrase backup
+- Auto-lock with configurable timeout
+
+To run locally:
+
+```bash
+cd sdk/typescript && npm install && npm run build  # Build SDK first
+cd ../../wallet
+npm install
+npm run dev
+```
+
+Open [http://localhost:3002](http://localhost:3002). By default it connects to `seed.norn.network`. To point at a local node, create `.env.local`:
+
+```env
+NEXT_PUBLIC_RPC_URL=http://localhost:9741
+NEXT_PUBLIC_WS_URL=ws://localhost:9741
+```
+
+See the [Web Wallet documentation](https://norn.network/docs/wallet-web) for security model details, browser support, and setup instructions.
+
 ## Wallet Extension
 
 The **Norn Wallet** is a Chrome browser extension for managing NORN on the Norn Protocol. Send and receive tokens, browse activity, register NornNames, and manage multiple accounts — all from the browser toolbar.
@@ -563,6 +607,18 @@ norn wallet export <wallet-name> --show-private-key
 
 See [`wallet-extension/README.md`](wallet-extension/README.md) for full setup instructions, page reference, and security details.
 
+## Website
+
+The **Norn website** at [norn.network](https://norn.network) serves as the project's landing page and documentation hub. Built with Next.js 15 and MDX.
+
+To run locally:
+
+```bash
+cd website
+npm install
+npm run dev
+```
+
 ## TypeScript SDK
 
 The `@norn-protocol/sdk` package provides wallet primitives, transaction builders, an RPC client, and WebSocket subscription helpers for building TypeScript/JavaScript applications on Norn.
@@ -573,7 +629,7 @@ npm install
 npm run build
 ```
 
-Both the Explorer and Wallet Extension depend on this SDK via local file link. Build it first before running either project.
+The Explorer, Web Wallet, and Wallet Extension all depend on this SDK via local file link. Build it first before running any of them.
 
 ```typescript
 import { Wallet, NornClient } from "@norn-protocol/sdk";
@@ -585,6 +641,7 @@ const balance = await client.getBalance(wallet.address);
 
 ## Documentation
 
+- [Documentation Hub](https://norn.network/docs) -- Guides, tutorials, and API reference
 - [White Paper](docs/Norn_Protocol_White_Paper.md) -- Design philosophy, architecture overview, and protocol comparison
 - [Protocol Specification v2.0](docs/Norn_Protocol_Specification_v2.0.md) -- Complete technical specification
 

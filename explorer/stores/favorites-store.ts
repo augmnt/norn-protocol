@@ -27,6 +27,7 @@ function loadFavorites(): FavoriteAddress[] {
 }
 
 function saveFavorites(favorites: FavoriteAddress[]) {
+  if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(favorites));
 }
 

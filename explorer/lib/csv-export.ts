@@ -1,6 +1,13 @@
 import type { TransactionHistoryEntry } from "@/types";
 import { formatAmount } from "./format";
 
+function csvEscape(field: string): string {
+  if (field.includes(",") || field.includes('"') || field.includes("\n")) {
+    return `"${field.replace(/"/g, '""')}"`;
+  }
+  return field;
+}
+
 export function exportTransactionsCSV(
   transactions: TransactionHistoryEntry[],
   address: string
@@ -14,7 +21,7 @@ export function exportTransactionsCSV(
     new Date(tx.timestamp * 1000).toISOString(),
   ]);
 
-  const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
+  const csv = [headers, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");

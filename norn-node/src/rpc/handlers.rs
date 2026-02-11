@@ -24,7 +24,7 @@ use super::types::{
 use crate::metrics::NodeMetrics;
 use crate::rpc::server::RpcBroadcasters;
 use crate::state_manager::StateManager;
-use norn_types::constants::NORN_DECIMALS;
+use norn_types::constants::{MAX_SUPPLY, NORN_DECIMALS};
 use norn_types::primitives::NATIVE_TOKEN_ID;
 
 use crate::wallet::format::{
@@ -145,6 +145,20 @@ pub trait NornRpc {
         limit: u64,
         offset: u64,
     ) -> Result<Vec<TransactionHistoryEntry>, ErrorObjectOwned>;
+
+    /// Get recent transactions across all addresses.
+    #[method(name = "norn_getRecentTransfers")]
+    async fn get_recent_transfers(
+        &self,
+        limit: u64,
+    ) -> Result<Vec<TransactionHistoryEntry>, ErrorObjectOwned>;
+
+    /// Get a single transaction by its knot ID (hex).
+    #[method(name = "norn_getTransaction")]
+    async fn get_transaction(
+        &self,
+        knot_id: String,
+    ) -> Result<Option<TransactionHistoryEntry>, ErrorObjectOwned>;
 
     /// Register a name for an address (requires signed knot for authentication).
     #[method(name = "norn_registerName")]
@@ -367,9 +381,9 @@ fn parse_loom_hex(hex_str: &str) -> Result<[u8; 32], ErrorObjectOwned> {
 #[async_trait]
 impl NornRpcServer for NornRpcImpl {
     async fn get_block(&self, height: u64) -> Result<Option<BlockInfo>, ErrorObjectOwned> {
-        // Try the StateManager archive first.
+        // Try the StateManager archive (in-memory + SQLite fallback).
         let sm = self.state_manager.read().await;
-        if let Some(block) = sm.get_block(height) {
+        if let Some(block) = sm.get_block_by_height(height) {
             return Ok(Some(BlockInfo {
                 height: block.height,
                 hash: hex::encode(block.hash),
@@ -390,34 +404,8 @@ impl NornRpcServer for NornRpcImpl {
                 state_root: hex::encode(block.state_root),
             }));
         }
-        drop(sm);
 
-        // Fallback: check if it's the current height from weave state.
-        let engine = self.weave_engine.read().await;
-        let state = engine.weave_state();
-        if height == state.height {
-            Ok(Some(BlockInfo {
-                height: state.height,
-                hash: hex::encode(state.latest_hash),
-                prev_hash: String::new(),
-                timestamp: 0,
-                proposer: String::new(),
-                commitment_count: 0,
-                registration_count: 0,
-                anchor_count: 0,
-                fraud_proof_count: 0,
-                name_registration_count: 0,
-                transfer_count: 0,
-                token_definition_count: 0,
-                token_mint_count: 0,
-                token_burn_count: 0,
-                loom_deploy_count: 0,
-                stake_operation_count: 0,
-                state_root: String::new(),
-            }))
-        } else {
-            Ok(None)
-        }
+        Ok(None)
     }
 
     async fn get_latest_block(&self) -> Result<Option<BlockInfo>, ErrorObjectOwned> {
@@ -445,12 +433,11 @@ impl NornRpcServer for NornRpcImpl {
             }))
         } else {
             let height = engine.weave_state().height;
-            let latest_hash = engine.weave_state().latest_hash;
             drop(engine);
 
-            // Try the StateManager archive before returning a placeholder.
+            // Try the StateManager archive (in-memory + SQLite fallback).
             let sm = self.state_manager.read().await;
-            if let Some(block) = sm.get_block(height) {
+            if let Some(block) = sm.get_block_by_height(height) {
                 return Ok(Some(BlockInfo {
                     height: block.height,
                     hash: hex::encode(block.hash),
@@ -472,25 +459,7 @@ impl NornRpcServer for NornRpcImpl {
                 }));
             }
 
-            Ok(Some(BlockInfo {
-                height,
-                hash: hex::encode(latest_hash),
-                prev_hash: String::new(),
-                timestamp: 0,
-                proposer: String::new(),
-                commitment_count: 0,
-                registration_count: 0,
-                anchor_count: 0,
-                fraud_proof_count: 0,
-                name_registration_count: 0,
-                transfer_count: 0,
-                token_definition_count: 0,
-                token_mint_count: 0,
-                token_burn_count: 0,
-                loom_deploy_count: 0,
-                stake_operation_count: 0,
-                state_root: String::new(),
-            }))
+            Ok(None)
         }
     }
 
@@ -720,25 +689,6 @@ impl NornRpcServer for NornRpcImpl {
                 tracker.insert(address, now);
             }
 
-            // Cap: reject if address already has >= 1000 NORN.
-            let max_faucet_balance: u128 = 1000 * ONE_NORN;
-            {
-                let sm = self.state_manager.read().await;
-                let current = sm.get_balance(&address, &norn_types::primitives::NATIVE_TOKEN_ID);
-                if current >= max_faucet_balance {
-                    return Ok(SubmitResult {
-                        success: false,
-                        reason: Some(format!(
-                            "address already has {} (max faucet balance: 1000 NORN)",
-                            format_amount_with_symbol(
-                                current,
-                                &norn_types::primitives::NATIVE_TOKEN_ID
-                            )
-                        )),
-                    });
-                }
-            }
-
             let faucet_amount: u128 = 100 * ONE_NORN; // 100 NORN per faucet request
             let faucet_address: [u8; 20] = [0u8; 20]; // Zero address = faucet source
 
@@ -766,9 +716,26 @@ impl NornRpcServer for NornRpcImpl {
                 }
             }
 
-            // Register and credit in StateManager (local apply).
+            // Balance check + credit under a single write lock to prevent TOCTOU race.
             {
                 let mut sm = self.state_manager.write().await;
+
+                // Cap: reject if address already has >= 1000 NORN.
+                let max_faucet_balance: u128 = 1000 * ONE_NORN;
+                let current = sm.get_balance(&address, &norn_types::primitives::NATIVE_TOKEN_ID);
+                if current >= max_faucet_balance {
+                    return Ok(SubmitResult {
+                        success: false,
+                        reason: Some(format!(
+                            "address already has {} (max faucet balance: 1000 NORN)",
+                            format_amount_with_symbol(
+                                current,
+                                &norn_types::primitives::NATIVE_TOKEN_ID
+                            )
+                        )),
+                    });
+                }
+
                 sm.auto_register_if_needed(faucet_address);
                 sm.auto_register_if_needed(address);
                 if let Err(e) = sm.apply_peer_transfer(
@@ -818,7 +785,7 @@ impl NornRpcServer for NornRpcImpl {
                 amount: faucet_amount.to_string(),
                 token_id: None,
                 memo: Some("faucet".to_string()),
-                block_height: 0,
+                block_height: None, // Pending — not yet in a block.
             });
 
             // Gossip faucet credit to peers so the block producer can include it.
@@ -968,7 +935,7 @@ impl NornRpcServer for NornRpcImpl {
                     memo: memo
                         .as_ref()
                         .and_then(|m| String::from_utf8(m.clone()).ok()),
-                    block_height: 0, // Not yet in a block.
+                    block_height: None, // Pending — not yet in a block.
                 });
 
                 if let Some(ref handle) = self.relay_handle {
@@ -1240,6 +1207,72 @@ impl NornRpcServer for NornRpcImpl {
             .collect();
 
         Ok(entries)
+    }
+
+    async fn get_recent_transfers(
+        &self,
+        limit: u64,
+    ) -> Result<Vec<TransactionHistoryEntry>, ErrorObjectOwned> {
+        let limit = if limit == 0 { 20 } else { limit.min(100) } as usize;
+
+        let sm = self.state_manager.read().await;
+        let records = sm.get_recent_transfers(limit);
+
+        let entries = records
+            .into_iter()
+            .map(|r| TransactionHistoryEntry {
+                knot_id: hex::encode(r.knot_id),
+                from: format_address(&r.from),
+                to: format_address(&r.to),
+                token_id: hex::encode(r.token_id),
+                amount: r.amount.to_string(),
+                human_readable: format_amount_for_token(r.amount, &r.token_id, &sm),
+                memo: r
+                    .memo
+                    .as_ref()
+                    .and_then(|m| String::from_utf8(m.clone()).ok()),
+                timestamp: r.timestamp,
+                block_height: r.block_height,
+                direction: String::new(),
+            })
+            .collect();
+
+        Ok(entries)
+    }
+
+    async fn get_transaction(
+        &self,
+        knot_id: String,
+    ) -> Result<Option<TransactionHistoryEntry>, ErrorObjectOwned> {
+        let knot_bytes: [u8; 32] = hex::decode(&knot_id)
+            .map_err(|e| {
+                ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>)
+            })?
+            .try_into()
+            .map_err(|_| {
+                ErrorObjectOwned::owned(-32602, "knot_id must be 32 bytes", None::<()>)
+            })?;
+
+        let sm = self.state_manager.read().await;
+        let entry = sm.get_transfer_by_knot_id(&knot_bytes).map(|r| {
+            TransactionHistoryEntry {
+                knot_id: hex::encode(r.knot_id),
+                from: format_address(&r.from),
+                to: format_address(&r.to),
+                token_id: hex::encode(r.token_id),
+                amount: r.amount.to_string(),
+                human_readable: format_amount_for_token(r.amount, &r.token_id, &sm),
+                memo: r
+                    .memo
+                    .as_ref()
+                    .and_then(|m| String::from_utf8(m.clone()).ok()),
+                timestamp: r.timestamp,
+                block_height: r.block_height,
+                direction: String::new(),
+            }
+        });
+
+        Ok(entry)
     }
 
     async fn register_name(
@@ -1575,6 +1608,22 @@ impl NornRpcServer for NornRpcImpl {
         token_id_hex: String,
     ) -> Result<Option<TokenInfo>, ErrorObjectOwned> {
         let token_id = parse_token_hex(&token_id_hex)?;
+
+        // Native NORN token is not in the token registry — synthesize its info.
+        if token_id == NATIVE_TOKEN_ID {
+            let sm = self.state_manager.read().await;
+            return Ok(Some(TokenInfo {
+                token_id: token_id_hex,
+                name: "Norn".to_string(),
+                symbol: "NORN".to_string(),
+                decimals: NORN_DECIMALS as u8,
+                max_supply: MAX_SUPPLY.to_string(),
+                current_supply: sm.total_supply().to_string(),
+                creator: format_address(&[0u8; 20]),
+                created_at: 0,
+            }));
+        }
+
         let sm = self.state_manager.read().await;
         Ok(sm.get_token(&token_id).map(|record| TokenInfo {
             token_id: token_id_hex,
@@ -1618,13 +1667,23 @@ impl NornRpcServer for NornRpcImpl {
         let offset = offset as usize;
 
         let sm = self.state_manager.read().await;
-        let tokens = sm.list_tokens();
 
-        let result = tokens
-            .into_iter()
-            .skip(offset)
-            .take(limit)
-            .map(|(token_id, record)| TokenInfo {
+        // Synthesize native NORN token as the first entry.
+        let native = TokenInfo {
+            token_id: hex::encode(NATIVE_TOKEN_ID),
+            name: "Norn".to_string(),
+            symbol: "NORN".to_string(),
+            decimals: NORN_DECIMALS as u8,
+            max_supply: MAX_SUPPLY.to_string(),
+            current_supply: sm.total_supply().to_string(),
+            creator: format_address(&[0u8; 20]),
+            created_at: 0,
+        };
+
+        let user_tokens = sm.list_tokens();
+
+        let result = std::iter::once(native)
+            .chain(user_tokens.into_iter().map(|(token_id, record)| TokenInfo {
                 token_id: hex::encode(token_id),
                 name: record.name.clone(),
                 symbol: record.symbol.clone(),
@@ -1633,7 +1692,9 @@ impl NornRpcServer for NornRpcImpl {
                 current_supply: record.current_supply.to_string(),
                 creator: format_address(&record.creator),
                 created_at: record.created_at,
-            })
+            }))
+            .skip(offset)
+            .take(limit)
             .collect();
 
         Ok(result)

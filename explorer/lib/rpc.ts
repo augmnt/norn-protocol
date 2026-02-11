@@ -5,6 +5,7 @@ import { NornClient } from "@norn-protocol/sdk";
 const RPC_PROXY = "/api/rpc";
 
 let clientInstance: NornClient | null = null;
+let rpcIdCounter = 0;
 
 export function getClient(): NornClient {
   if (!clientInstance) {
@@ -22,7 +23,7 @@ export async function rpcCall<T>(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       jsonrpc: "2.0",
-      id: Date.now(),
+      id: ++rpcIdCounter,
       method,
       params,
     }),

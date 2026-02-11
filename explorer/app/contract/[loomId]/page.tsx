@@ -1,6 +1,6 @@
 "use client";
 
-import { use } from "react";
+import { use, useMemo } from "react";
 import { PageContainer } from "@/components/ui/page-container";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -65,8 +65,10 @@ export default function ContractDetailPage({
   const { loomId } = use(params);
   const { data: loom, isLoading, error, refetch } = useLoomInfo(loomId);
   useLoomEventsSubscription(loomId);
-  const loomEvents = useRealtimeStore((s) =>
-    s.loomEvents.filter((e) => e.loom_id === loomId)
+  const allLoomEvents = useRealtimeStore((s) => s.loomEvents);
+  const loomEvents = useMemo(
+    () => allLoomEvents.filter((e) => e.loom_id === loomId),
+    [allLoomEvents, loomId]
   );
 
   if (isLoading) {

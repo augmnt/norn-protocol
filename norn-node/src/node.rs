@@ -501,6 +501,16 @@ impl Node {
             }
         }
 
+        // Archive genesis block so it is available via RPC at height 0.
+        if let Some(ref gc) = genesis_config_opt {
+            let mut sm = state_manager.write().await;
+            if sm.get_block(0).is_none() {
+                let (genesis_block, _) = crate::genesis::create_genesis_block(gc)?;
+                sm.archive_block(genesis_block);
+                tracing::debug!("archived genesis block at height 0");
+            }
+        }
+
         // Start the RPC server if enabled.
         let (rpc_handle, broadcasters) = if config.rpc.enabled {
             let (handle, bc) = crate::rpc::server::start_rpc_server(

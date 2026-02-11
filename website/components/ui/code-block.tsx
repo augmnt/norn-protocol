@@ -21,23 +21,26 @@ export function CodeBlock({ className, title, children, ...props }: CodeBlockPro
 
   return (
     <div
-      className={cn("group relative my-4 rounded-lg border bg-secondary/50", className)}
+      className={cn(
+        "group relative my-4 bg-[hsl(240,10%,6%)]",
+        className
+      )}
       {...props}
     >
       {title && (
-        <div className="flex items-center justify-between border-b px-4 py-2">
+        <div className="flex items-center justify-between px-0 py-2">
           <span className="text-xs font-mono text-muted-foreground">{title}</span>
         </div>
       )}
       <div className="relative">
         <button
           onClick={handleCopy}
-          className="absolute right-3 top-3 z-10 hidden rounded-md border bg-background/80 p-1.5 text-muted-foreground backdrop-blur transition-colors hover:text-foreground group-hover:block"
+          className="absolute right-3 top-3 z-10 rounded-md p-1.5 text-muted-foreground transition-colors hover:text-foreground opacity-0 group-hover:opacity-100"
           aria-label="Copy code"
         >
           {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
         </button>
-        <pre ref={preRef} className="overflow-x-auto p-4 text-sm leading-relaxed">
+        <pre ref={preRef} className="overflow-x-auto text-sm leading-relaxed text-muted-foreground [&>code]:block [&>code]:p-4">
           {children}
         </pre>
       </div>

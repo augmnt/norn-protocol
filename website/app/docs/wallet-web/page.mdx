@@ -1,0 +1,123 @@
+export const metadata = {
+  title: "Web Wallet",
+};
+
+# Web Wallet
+
+The **Norn Web Wallet** is a self-custodial browser wallet for the Norn Protocol. Secured by WebAuthn passkeys with no extensions to install -- just visit [wallet.norn.network](https://wallet.norn.network) to get started.
+
+**Live instance:** [wallet.norn.network](https://wallet.norn.network)
+
+## Features
+
+- **Passkey authentication** -- Sign in with Face ID, Touch ID, or Windows Hello. No passwords to remember.
+- **Self-custodial** -- Private keys never leave your device. Keys are derived on-the-fly during biometric authentication and immediately zeroed from memory.
+- **Cross-device sync** -- Passkeys sync via iCloud Keychain or Google Password Manager. Access the same wallet on any synced device.
+- **Send & receive NORN** -- Transfer tokens to addresses or NornNames with biometric confirmation.
+- **NornNames** -- Register and manage human-readable names for your address.
+- **NT-1 tokens** -- Create, mint, and burn custom fungible tokens.
+- **Loom contracts** -- Deploy, execute, and query WebAssembly smart contracts.
+- **Transaction history** -- Browse past transactions with detailed views.
+- **Devnet faucet** -- Request free testnet tokens.
+- **Real-time updates** -- WebSocket-powered live balance and transaction notifications.
+- **Multi-account** -- Derive multiple addresses from a single passkey.
+- **Auto-lock** -- Configurable idle timeout for security.
+
+## How It Works
+
+Norn uses Ed25519 signatures, but passkeys sign with P-256. The wallet bridges this gap using the **WebAuthn PRF extension** -- a feature that returns deterministic key material during biometric authentication.
+
+```
+CREATE:  Passkey enrollment → PRF(salt) → 32 bytes → Ed25519 keypair → Norn address
+SIGN:    Biometric auth → PRF(salt) → same 32 bytes → reconstruct key → sign tx → zero key
+RECOVER: Passkey syncs via iCloud/Google → same PRF output → same wallet on any device
+```
+
+Your private key is **never stored**. It is derived from the passkey's PRF output each time you authenticate, used to sign, then immediately wiped from memory.
+
+### Browser Support
+
+The PRF extension is supported in:
+
+| Browser | Version | Status |
+|---------|---------|--------|
+| Chrome / Edge | 116+ | Full support |
+| Safari | 18+ | Full support |
+| Firefox | Latest | Partial (falls back to password-encrypted keystore) |
+
+For browsers without PRF support, the wallet falls back to a password-encrypted keystore using PBKDF2 + AES-256-GCM.
+
+### Optional Backup
+
+During wallet creation, you can view and back up a **24-word recovery phrase** (BIP-39 mnemonic) derived from your seed. This allows you to recover your wallet even if you lose access to your passkey.
+
+## Getting Started
+
+### 1. Create a Wallet
+
+1. Visit [wallet.norn.network](https://wallet.norn.network)
+2. Click **Create New Wallet**
+3. Authenticate with your device's biometric (Face ID, Touch ID, fingerprint, or PIN)
+4. Your Norn address is generated instantly
+5. Optionally back up your 24-word recovery phrase
+
+### 2. Get Testnet Tokens
+
+Navigate to the **Faucet** page and click **Request Tokens** to receive free devnet NORN for testing.
+
+### 3. Send Tokens
+
+1. Go to the **Send** page
+2. Enter a recipient address or NornName (e.g. `alice`)
+3. Enter the amount
+4. Review and confirm -- biometric authentication signs the transaction
+5. The transaction is broadcast to the network
+
+### 4. Receive Tokens
+
+Go to the **Receive** page to view your address and QR code. Share either with the sender.
+
+## Importing an Existing Wallet
+
+If you have a wallet from the CLI or extension, you can import it:
+
+- **Private key**: Paste your 64-character hex private key
+- **Recovery phrase**: Enter your 24-word mnemonic
+
+The wallet will derive the same address and create a passkey for future authentication.
+
+## Running Locally
+
+```bash
+# Build the TypeScript SDK first
+cd sdk/typescript && npm install && npm run build
+
+# Then run the wallet
+cd ../../wallet
+npm install
+npm run dev
+```
+
+Open [http://localhost:3002](http://localhost:3002). By default it connects to `seed.norn.network`.
+
+## Environment Variables
+
+To point at a local node, create `.env.local` in the wallet directory:
+
+```bash
+NEXT_PUBLIC_RPC_URL=http://localhost:9741
+NEXT_PUBLIC_WS_URL=ws://localhost:9741
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NEXT_PUBLIC_RPC_URL` | `https://seed.norn.network` | JSON-RPC endpoint |
+| `NEXT_PUBLIC_WS_URL` | `wss://seed.norn.network` | WebSocket endpoint for subscriptions |
+
+## Security Model
+
+- **No server-side keys** -- Fully client-side. The server delivers static HTML/JS only.
+- **PRF-derived keys** -- Private keys exist only during signing, then are zeroed.
+- **IndexedDB storage** -- Only stores credential IDs, public keys, and addresses. Never private keys.
+- **Auto-lock** -- Wallet locks after configurable idle timeout (default 5 minutes).
+- **CSP headers** -- Content Security Policy restricts script sources and connections.

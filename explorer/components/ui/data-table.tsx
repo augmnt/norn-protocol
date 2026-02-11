@@ -14,6 +14,8 @@ interface DataTableProps<T> {
   keyExtractor: (item: T, index: number) => string;
   emptyMessage?: string;
   className?: string;
+  /** Called when a row is clicked. */
+  onRowClick?: (item: T) => void;
 }
 
 export function DataTable<T>({
@@ -22,6 +24,7 @@ export function DataTable<T>({
   keyExtractor,
   emptyMessage = "No data available",
   className,
+  onRowClick,
 }: DataTableProps<T>) {
   return (
     <div className={cn("w-full overflow-auto -mx-4 px-4 sm:mx-0 sm:px-0", className)}>
@@ -56,7 +59,11 @@ export function DataTable<T>({
             data.map((item, i) => (
               <tr
                 key={keyExtractor(item, i)}
-                className="border-b border-border transition-colors hover:bg-muted/50"
+                className={cn(
+                  "border-b border-border transition-colors hover:bg-muted/50",
+                  onRowClick && "cursor-pointer"
+                )}
+                onClick={onRowClick ? () => onRowClick(item) : undefined}
               >
                 {columns.map((col) => (
                   <td

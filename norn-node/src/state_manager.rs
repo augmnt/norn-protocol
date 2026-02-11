@@ -680,6 +680,16 @@ impl StateManager {
             .collect()
     }
 
+    /// Get the most recent transfers across all addresses.
+    pub fn get_recent_transfers(&self, limit: usize) -> Vec<&TransferRecord> {
+        self.transfer_log.iter().rev().take(limit).collect()
+    }
+
+    /// Look up a single transfer by its knot ID.
+    pub fn get_transfer_by_knot_id(&self, knot_id: &Hash) -> Option<&TransferRecord> {
+        self.transfer_log.iter().rev().find(|r| r.knot_id == *knot_id)
+    }
+
     /// Record a commitment update for a thread.
     pub fn record_commitment(
         &mut self,
@@ -739,12 +749,17 @@ impl StateManager {
             self.transfer_log.drain(..excess);
         }
 
-        // Prune oldest knot IDs when the set grows too large.
+        // Prune knot IDs when the set grows too large.
+        // Rebuild from transfer_log + block_archive to retain maximum dedup coverage.
         if self.known_knot_ids.len() > MAX_KNOWN_KNOT_IDS {
-            // HashSet has no ordering, so we clear half and rebuild from recent transfers.
             self.known_knot_ids.clear();
             for record in &self.transfer_log {
                 self.known_knot_ids.insert(record.knot_id);
+            }
+            for block in &self.block_archive {
+                for bt in &block.transfers {
+                    self.known_knot_ids.insert(bt.knot_id);
+                }
             }
         }
     }
@@ -819,18 +834,15 @@ impl StateManager {
         // Update SMT.
         self.update_smt(&owner, &NATIVE_TOKEN_ID);
 
-        // Log the fee burn as a transfer to the zero address.
-        let fee_record = TransferRecord {
-            knot_id: [0u8; 32],
-            from: owner,
-            to: [0u8; 20], // burn address
-            token_id: NATIVE_TOKEN_ID,
-            amount: NAME_REGISTRATION_FEE,
-            memo: Some(format!("name registration: {}", name).into_bytes()),
+        // Log the fee burn as a synthetic transfer to the zero address.
+        self.log_synthetic_transfer(
+            owner,
+            [0u8; 20],
+            NATIVE_TOKEN_ID,
+            NAME_REGISTRATION_FEE,
+            Some(&format!("name registration: {}", name)),
             timestamp,
-            block_height: None,
-        };
-        self.transfer_log.push(fee_record.clone());
+        );
 
         // Record the name.
         let name_record = NameRecord {
@@ -869,9 +881,6 @@ impl StateManager {
                 if let Err(e) = store.save_address_names(&owner, names) {
                     tracing::warn!("Failed to persist address names: {}", e);
                 }
-            }
-            if let Err(e) = store.append_transfer(&fee_record) {
-                tracing::warn!("Failed to persist name registration fee transfer: {}", e);
             }
         }
 

@@ -130,10 +130,10 @@ mod auth_middleware {
         "norn_getFeeEstimate",
         "norn_getCommitmentProof",
         "norn_getTransactionHistory",
+        "norn_getRecentTransfers",
         "norn_resolveName",
         "norn_listNames",
         "norn_getMetrics",
-        "norn_getNodeInfo",
         "norn_getTokenInfo",
         "norn_getTokenBySymbol",
         "norn_listTokens",
@@ -144,6 +144,18 @@ mod auth_middleware {
         "norn_getStateRoot",
         "norn_getStateProof",
         "norn_getBlockTransactions",
+        "norn_getTransaction",
+        // WebSocket subscriptions are read-only.
+        "norn_subscribeNewBlocks",
+        "norn_unsubscribeNewBlocks",
+        "norn_subscribeTransfers",
+        "norn_unsubscribeTransfers",
+        "norn_subscribeTokenEvents",
+        "norn_unsubscribeTokenEvents",
+        "norn_subscribeLoomEvents",
+        "norn_unsubscribeLoomEvents",
+        "norn_subscribePendingTransactions",
+        "norn_unsubscribePendingTransactions",
     ];
 
     /// Tower layer that wraps services with API key authentication.

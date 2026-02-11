@@ -1,6 +1,6 @@
 "use client";
 
-import { use } from "react";
+import { use, useMemo } from "react";
 import { PageContainer } from "@/components/ui/page-container";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -73,8 +73,10 @@ export default function TokenDetailPage({
   const { tokenId } = use(params);
   const { data: token, isLoading, error, refetch } = useTokenInfo(tokenId);
   useTokenEventsSubscription(tokenId);
-  const tokenEvents = useRealtimeStore((s) =>
-    s.tokenEvents.filter((e) => e.token_id === tokenId)
+  const allTokenEvents = useRealtimeStore((s) => s.tokenEvents);
+  const tokenEvents = useMemo(
+    () => allTokenEvents.filter((e) => e.token_id === tokenId),
+    [allTokenEvents, tokenId]
   );
 
   if (isLoading) {
@@ -108,6 +110,8 @@ export default function TokenDetailPage({
     // Non-numeric supply values — leave at 0
   }
 
+  const isNative = /^0{64}$/.test(token.token_id);
+
   return (
     <PageContainer title={`${token.name} (${token.symbol})`}>
       <div className="space-y-6">
@@ -123,9 +127,14 @@ export default function TokenDetailPage({
               <CardTitle className="text-sm font-medium">
                 Token Information
               </CardTitle>
-              <Badge variant="outline" className="font-mono">
-                {token.symbol}
-              </Badge>
+              <div className="flex items-center gap-2">
+                {isNative && (
+                  <Badge variant="default">Native</Badge>
+                )}
+                <Badge variant="outline" className="font-mono">
+                  {token.symbol}
+                </Badge>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -152,10 +161,14 @@ export default function TokenDetailPage({
               </div>
               <div>
                 <dt className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
-                  Creator
+                  {isNative ? "Origin" : "Creator"}
                 </dt>
-                <dd>
-                  <AddressDisplay address={token.creator} />
+                <dd className="text-sm">
+                  {isNative ? (
+                    <span className="text-muted-foreground">Protocol (Genesis)</span>
+                  ) : (
+                    <AddressDisplay address={token.creator} />
+                  )}
                 </dd>
               </div>
               <div>
@@ -163,10 +176,16 @@ export default function TokenDetailPage({
                   Created
                 </dt>
                 <dd className="text-sm">
-                  {formatTimestamp(token.created_at)}
-                  <span className="ml-2">
-                    <TimeAgo timestamp={token.created_at} />
-                  </span>
+                  {isNative ? (
+                    <span className="text-muted-foreground">Genesis</span>
+                  ) : (
+                    <>
+                      {formatTimestamp(token.created_at)}
+                      <span className="ml-2">
+                        <TimeAgo timestamp={token.created_at} />
+                      </span>
+                    </>
+                  )}
                 </dd>
               </div>
             </dl>
