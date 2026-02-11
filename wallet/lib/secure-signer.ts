@@ -40,13 +40,14 @@ export async function signTransfer(
     amount: string;
     tokenId?: string;
     memo?: string;
+    decimals?: number;
   },
   accountIndex = 0,
   password?: string
 ): Promise<string> {
   const wallet = await getWallet(meta, accountIndex, password);
   try {
-    const amountBigint = parseAmount(params.amount);
+    const amountBigint = parseAmount(params.amount, params.decimals);
     return buildTransfer(wallet, {
       to: params.to,
       amount: amountBigint,

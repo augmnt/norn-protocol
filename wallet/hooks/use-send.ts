@@ -16,7 +16,7 @@ export function useSend() {
   const [error, setError] = useState<string | null>(null);
 
   const send = useCallback(
-    async (params: { to: string; amount: string; tokenId?: string; memo?: string }) => {
+    async (params: { to: string; amount: string; tokenId?: string; memo?: string; decimals?: number }) => {
       setSubmitting(true);
       setError(null);
       try {

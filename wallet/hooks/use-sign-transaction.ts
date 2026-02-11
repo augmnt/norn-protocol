@@ -11,7 +11,7 @@ export function useSignTransaction() {
   const [error, setError] = useState<string | null>(null);
 
   const signTransfer = useCallback(
-    async (params: { to: string; amount: string; tokenId?: string; memo?: string }) => {
+    async (params: { to: string; amount: string; tokenId?: string; memo?: string; decimals?: number }) => {
       if (!meta) throw new Error("No wallet");
       setSigning(true);
       setError(null);

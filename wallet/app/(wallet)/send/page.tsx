@@ -262,6 +262,7 @@ function SendPageInner() {
         amount,
         tokenId: selectedToken.isNative ? undefined : selectedToken.tokenId,
         memo: memo || undefined,
+        decimals: selectedToken.decimals,
       });
       setConfirmOpen(false);
       toast.success("Transaction submitted");
