@@ -7,10 +7,10 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-norn-types = { path = "../norn-types", version = "0.18.1" }
-norn-crypto = { path = "../norn-crypto", version = "0.18.1" }
-norn-thread = { path = "../norn-thread", version = "0.18.1" }
-norn-storage = { path = "../norn-storage", version = "0.18.1" }
+norn-types = { path = "../norn-types", version = "0.18.2" }
+norn-crypto = { path = "../norn-crypto", version = "0.18.2" }
+norn-thread = { path = "../norn-thread", version = "0.18.2" }
+norn-storage = { path = "../norn-storage", version = "0.18.2" }
 borsh = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }

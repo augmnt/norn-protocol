@@ -46,7 +46,12 @@ impl RpcClient {
     /// Wrap an RPC call with a better connection error message.
     fn map_rpc_error(e: &jsonrpsee::core::ClientError) -> WalletError {
         let msg = e.to_string();
-        if msg.contains("connection") || msg.contains("Connection") || msg.contains("refused") {
+        if msg.contains("connection")
+            || msg.contains("Connection")
+            || msg.contains("refused")
+            || msg.contains("SendRequest")
+            || msg.contains("send request")
+        {
             WalletError::RpcError(
                 "Could not connect to node.\nHint: Start a node with `norn run --dev`".to_string(),
             )

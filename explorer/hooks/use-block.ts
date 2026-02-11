@@ -13,6 +13,15 @@ export function useBlock(height: number | undefined) {
   });
 }
 
+export function useBlockTransactions(height: number | undefined) {
+  return useQuery({
+    queryKey: QUERY_KEYS.blockTransactions(height!),
+    queryFn: () => getClient().getBlockTransactions(height!),
+    staleTime: STALE_TIMES.immutable,
+    enabled: height !== undefined,
+  });
+}
+
 export function useLatestBlock() {
   return useQuery({
     queryKey: ["latestBlock"],

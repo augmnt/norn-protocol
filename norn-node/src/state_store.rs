@@ -272,6 +272,22 @@ impl StateStore {
         self.store.put(&key, &value)
     }
 
+    /// Load a single block by height.
+    pub fn load_block(&self, height: u64) -> Result<Option<WeaveBlock>, StorageError> {
+        let key = self.block_key(height);
+        match self.store.get(&key)? {
+            Some(value) => {
+                let block = WeaveBlock::try_from_slice(&value).map_err(|e| {
+                    StorageError::DeserializationError {
+                        reason: e.to_string(),
+                    }
+                })?;
+                Ok(Some(block))
+            }
+            None => Ok(None),
+        }
+    }
+
     pub fn load_all_blocks(&self) -> Result<Vec<WeaveBlock>, StorageError> {
         let pairs = self.store.prefix_scan(BLOCK_PREFIX)?;
         let mut results = Vec::with_capacity(pairs.len());

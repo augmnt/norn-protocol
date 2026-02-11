@@ -1,5 +1,6 @@
 import type {
   BlockInfo,
+  BlockTransactionsInfo,
   WeaveStateInfo,
   ThreadInfo,
   ThreadStateInfo,
@@ -123,6 +124,13 @@ export class NornClient {
   /** Get block by height. */
   async getBlock(height: number): Promise<BlockInfo> {
     return this.call("norn_getBlock", [height]);
+  }
+
+  /** Get detailed transactions for a block by height. */
+  async getBlockTransactions(
+    height: number,
+  ): Promise<BlockTransactionsInfo | null> {
+    return this.call("norn_getBlockTransactions", [height]);
   }
 
   /** Get the latest block. */

@@ -1,6 +1,9 @@
 "use client";
 
-const KNOWN_LABELS: Record<string, string> = {};
+const KNOWN_LABELS: Record<string, string> = {
+  "0x0000000000000000000000000000000000000000": "System / Burn",
+  "0x557dede07828fc8ea66477a6056dbd446a640003": "Devnet Founder",
+};
 
 const STORAGE_KEY = "norn-address-labels";
 

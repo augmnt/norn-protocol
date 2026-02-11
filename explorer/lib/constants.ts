@@ -4,6 +4,7 @@ export const QUERY_KEYS = {
   validatorSet: ["validatorSet"] as const,
   stakingInfo: ["stakingInfo"] as const,
   block: (height: number) => ["block", height] as const,
+  blockTransactions: (height: number) => ["blockTransactions", height] as const,
   blocks: (page: number) => ["blocks", page] as const,
   balance: (address: string, tokenId?: string) =>
     ["balance", address, tokenId] as const,

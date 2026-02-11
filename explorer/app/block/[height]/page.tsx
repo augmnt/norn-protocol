@@ -8,13 +8,178 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HashDisplay } from "@/components/ui/hash-display";
+import { AddressDisplay } from "@/components/ui/address-display";
+import { AmountDisplay } from "@/components/ui/amount-display";
 import { TimeAgo } from "@/components/ui/time-ago";
+import { DataTable } from "@/components/ui/data-table";
 import { CardSkeleton } from "@/components/ui/loading-skeleton";
 import { ErrorState } from "@/components/ui/error-state";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { BlockCompositionChart } from "@/components/charts/block-composition-chart";
-import { useBlock } from "@/hooks/use-block";
+import { useBlock, useBlockTransactions } from "@/hooks/use-block";
 import { formatNumber, formatTimestamp } from "@/lib/format";
+import type {
+  BlockTransferInfo,
+  BlockTokenDefinitionInfo,
+  BlockTokenMintInfo,
+  BlockTokenBurnInfo,
+  BlockNameRegistrationInfo,
+  BlockLoomDeployInfo,
+} from "@/types";
+
+const transferColumns = [
+  {
+    header: "From",
+    key: "from",
+    render: (tx: BlockTransferInfo) => <AddressDisplay address={tx.from} />,
+  },
+  {
+    header: "To",
+    key: "to",
+    render: (tx: BlockTransferInfo) => <AddressDisplay address={tx.to} />,
+  },
+  {
+    header: "Amount",
+    key: "amount",
+    className: "text-right",
+    render: (tx: BlockTransferInfo) => <AmountDisplay amount={tx.amount} />,
+  },
+  {
+    header: "Memo",
+    key: "memo",
+    render: (tx: BlockTransferInfo) => (
+      <span className="text-sm text-muted-foreground">{tx.memo || "—"}</span>
+    ),
+  },
+  {
+    header: "Time",
+    key: "time",
+    className: "text-right",
+    render: (tx: BlockTransferInfo) => <TimeAgo timestamp={tx.timestamp} />,
+  },
+];
+
+const tokenDefColumns = [
+  {
+    header: "Name",
+    key: "name",
+    render: (t: BlockTokenDefinitionInfo) => (
+      <span className="font-medium text-sm">{t.name}</span>
+    ),
+  },
+  {
+    header: "Symbol",
+    key: "symbol",
+    render: (t: BlockTokenDefinitionInfo) => (
+      <Badge variant="outline">{t.symbol}</Badge>
+    ),
+  },
+  {
+    header: "Decimals",
+    key: "decimals",
+    className: "text-right",
+    render: (t: BlockTokenDefinitionInfo) => (
+      <span className="font-mono text-sm">{t.decimals}</span>
+    ),
+  },
+  {
+    header: "Creator",
+    key: "creator",
+    render: (t: BlockTokenDefinitionInfo) => (
+      <AddressDisplay address={t.creator} />
+    ),
+  },
+];
+
+const tokenMintColumns = [
+  {
+    header: "Token",
+    key: "token_id",
+    render: (t: BlockTokenMintInfo) => (
+      <HashDisplay hash={t.token_id} chars={6} />
+    ),
+  },
+  {
+    header: "To",
+    key: "to",
+    render: (t: BlockTokenMintInfo) => <AddressDisplay address={t.to} />,
+  },
+  {
+    header: "Amount",
+    key: "amount",
+    className: "text-right",
+    render: (t: BlockTokenMintInfo) => (
+      <span className="font-mono text-sm">{t.amount}</span>
+    ),
+  },
+];
+
+const tokenBurnColumns = [
+  {
+    header: "Token",
+    key: "token_id",
+    render: (t: BlockTokenBurnInfo) => (
+      <HashDisplay hash={t.token_id} chars={6} />
+    ),
+  },
+  {
+    header: "Burner",
+    key: "burner",
+    render: (t: BlockTokenBurnInfo) => (
+      <AddressDisplay address={t.burner} />
+    ),
+  },
+  {
+    header: "Amount",
+    key: "amount",
+    className: "text-right",
+    render: (t: BlockTokenBurnInfo) => (
+      <span className="font-mono text-sm">{t.amount}</span>
+    ),
+  },
+];
+
+const nameRegColumns = [
+  {
+    header: "Name",
+    key: "name",
+    render: (n: BlockNameRegistrationInfo) => (
+      <span className="font-medium text-sm">{n.name}</span>
+    ),
+  },
+  {
+    header: "Owner",
+    key: "owner",
+    render: (n: BlockNameRegistrationInfo) => (
+      <AddressDisplay address={n.owner} />
+    ),
+  },
+  {
+    header: "Fee",
+    key: "fee_paid",
+    className: "text-right",
+    render: (n: BlockNameRegistrationInfo) => (
+      <AmountDisplay amount={n.fee_paid} />
+    ),
+  },
+];
+
+const loomDeployColumns = [
+  {
+    header: "Name",
+    key: "name",
+    render: (l: BlockLoomDeployInfo) => (
+      <span className="font-medium text-sm">{l.name}</span>
+    ),
+  },
+  {
+    header: "Operator",
+    key: "operator",
+    render: (l: BlockLoomDeployInfo) => (
+      <span className="font-mono text-sm">{l.operator}</span>
+    ),
+  },
+];
 
 export default function BlockDetailPage({
   params,
@@ -24,6 +189,7 @@ export default function BlockDetailPage({
   const { height: heightStr } = use(params);
   const height = parseInt(heightStr, 10);
   const { data: block, isLoading, error, refetch } = useBlock(height);
+  const { data: blockTxs } = useBlockTransactions(height);
 
   if (isLoading) {
     return (
@@ -53,6 +219,15 @@ export default function BlockDetailPage({
     { label: "Looms", count: block.loom_deploy_count },
     { label: "Stake Ops", count: block.stake_operation_count },
   ];
+
+  const hasTransactions = blockTxs && (
+    blockTxs.transfers.length > 0 ||
+    blockTxs.token_definitions.length > 0 ||
+    blockTxs.token_mints.length > 0 ||
+    blockTxs.token_burns.length > 0 ||
+    blockTxs.name_registrations.length > 0 ||
+    blockTxs.loom_deploys.length > 0
+  );
 
   return (
     <PageContainer
@@ -185,6 +360,112 @@ export default function BlockDetailPage({
             </CardContent>
           </Card>
         </div>
+
+        {hasTransactions && (
+          <div className="space-y-6">
+            {blockTxs.transfers.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium">
+                    Transfers ({blockTxs.transfers.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-0">
+                  <DataTable
+                    columns={transferColumns}
+                    data={blockTxs.transfers}
+                    keyExtractor={(tx) => tx.knot_id}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
+            {blockTxs.token_definitions.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium">
+                    Token Definitions ({blockTxs.token_definitions.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-0">
+                  <DataTable
+                    columns={tokenDefColumns}
+                    data={blockTxs.token_definitions}
+                    keyExtractor={(t) => `${t.symbol}-${t.timestamp}`}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
+            {blockTxs.token_mints.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium">
+                    Token Mints ({blockTxs.token_mints.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-0">
+                  <DataTable
+                    columns={tokenMintColumns}
+                    data={blockTxs.token_mints}
+                    keyExtractor={(t) => `${t.token_id}-${t.to}-${t.timestamp}`}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
+            {blockTxs.token_burns.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium">
+                    Token Burns ({blockTxs.token_burns.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-0">
+                  <DataTable
+                    columns={tokenBurnColumns}
+                    data={blockTxs.token_burns}
+                    keyExtractor={(t) => `${t.token_id}-${t.burner}-${t.timestamp}`}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
+            {blockTxs.name_registrations.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium">
+                    Name Registrations ({blockTxs.name_registrations.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-0">
+                  <DataTable
+                    columns={nameRegColumns}
+                    data={blockTxs.name_registrations}
+                    keyExtractor={(n) => n.name}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
+            {blockTxs.loom_deploys.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium">
+                    Loom Deploys ({blockTxs.loom_deploys.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-0">
+                  <DataTable
+                    columns={loomDeployColumns}
+                    data={blockTxs.loom_deploys}
+                    keyExtractor={(l) => `${l.name}-${l.timestamp}`}
+                  />
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
       </div>
     </PageContainer>
   );

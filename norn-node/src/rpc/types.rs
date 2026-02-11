@@ -429,6 +429,89 @@ pub struct PendingTransactionEvent {
     pub timestamp: u64,
 }
 
+/// Detailed block transactions returned by norn_getBlockTransactions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockTransactionsInfo {
+    /// Block height.
+    pub height: u64,
+    /// Block hash as hex string.
+    pub hash: String,
+    /// Block timestamp.
+    pub timestamp: u64,
+    /// Transfers included in this block.
+    pub transfers: Vec<BlockTransferInfo>,
+    /// Token definitions (creations) in this block.
+    pub token_definitions: Vec<BlockTokenDefinitionInfo>,
+    /// Token mints in this block.
+    pub token_mints: Vec<BlockTokenMintInfo>,
+    /// Token burns in this block.
+    pub token_burns: Vec<BlockTokenBurnInfo>,
+    /// Name registrations in this block.
+    pub name_registrations: Vec<BlockNameRegistrationInfo>,
+    /// Loom deployments in this block.
+    pub loom_deploys: Vec<BlockLoomDeployInfo>,
+}
+
+/// A transfer within a block.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockTransferInfo {
+    pub from: String,
+    pub to: String,
+    pub token_id: String,
+    pub amount: String,
+    pub human_readable: String,
+    pub memo: Option<String>,
+    pub knot_id: String,
+    pub timestamp: u64,
+}
+
+/// A token definition within a block.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockTokenDefinitionInfo {
+    pub name: String,
+    pub symbol: String,
+    pub decimals: u8,
+    pub max_supply: String,
+    pub initial_supply: String,
+    pub creator: String,
+    pub timestamp: u64,
+}
+
+/// A token mint within a block.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockTokenMintInfo {
+    pub token_id: String,
+    pub to: String,
+    pub amount: String,
+    pub timestamp: u64,
+}
+
+/// A token burn within a block.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockTokenBurnInfo {
+    pub token_id: String,
+    pub burner: String,
+    pub amount: String,
+    pub timestamp: u64,
+}
+
+/// A name registration within a block.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockNameRegistrationInfo {
+    pub name: String,
+    pub owner: String,
+    pub fee_paid: String,
+    pub timestamp: u64,
+}
+
+/// A loom deployment within a block.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockLoomDeployInfo {
+    pub name: String,
+    pub operator: String,
+    pub timestamp: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

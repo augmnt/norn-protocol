@@ -433,6 +433,8 @@ impl Node {
                     .iter()
                     .any(|alloc| sm.is_registered(&alloc.address));
                 if !already_applied {
+                    // Register zero address so synthetic transfers from it succeed.
+                    sm.auto_register_if_needed([0u8; 20]);
                     for alloc in &gc.allocations {
                         sm.auto_register_if_needed(alloc.address);
                         if let Err(e) = sm.credit(alloc.address, alloc.token_id, alloc.amount) {
@@ -440,6 +442,16 @@ impl Node {
                                 "Failed to process genesis allocation for {}: {}",
                                 hex::encode(alloc.address),
                                 e
+                            );
+                        } else {
+                            // Log genesis allocation as a synthetic transfer.
+                            sm.log_synthetic_transfer(
+                                [0u8; 20],
+                                alloc.address,
+                                alloc.token_id,
+                                alloc.amount,
+                                Some("Genesis allocation"),
+                                gc.timestamp,
                             );
                         }
                     }
@@ -1141,6 +1153,7 @@ impl Node {
                                 drop(sm);
                             } else {
                                 let faucet_address: [u8; 20] = [0u8; 20];
+                                sm.auto_register_if_needed(faucet_address);
                                 sm.auto_register_if_needed(fc.recipient);
                                 if let Err(e) = sm.apply_peer_transfer(
                                     faucet_address,

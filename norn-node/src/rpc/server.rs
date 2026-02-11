@@ -143,6 +143,7 @@ mod auth_middleware {
         "norn_getStakingInfo",
         "norn_getStateRoot",
         "norn_getStateProof",
+        "norn_getBlockTransactions",
     ];
 
     /// Tower layer that wraps services with API key authentication.

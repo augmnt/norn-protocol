@@ -606,6 +606,54 @@ impl StateManager {
         }
     }
 
+    /// Log a synthetic transfer record for operations that don't go through
+    /// `apply_transfer()` (e.g., genesis allocations, fees, mints, burns).
+    /// Generates a deterministic `knot_id` from the inputs.
+    #[allow(clippy::too_many_arguments)]
+    pub fn log_synthetic_transfer(
+        &mut self,
+        from: Address,
+        to: Address,
+        token_id: TokenId,
+        amount: Amount,
+        memo: Option<&str>,
+        timestamp: u64,
+    ) {
+        // Deterministic knot_id: blake3(from ++ to ++ token_id ++ amount ++ memo ++ timestamp).
+        let mut data = Vec::with_capacity(20 + 20 + 32 + 16 + 64 + 8);
+        data.extend_from_slice(&from);
+        data.extend_from_slice(&to);
+        data.extend_from_slice(&token_id);
+        data.extend_from_slice(&amount.to_le_bytes());
+        if let Some(m) = memo {
+            data.extend_from_slice(m.as_bytes());
+        }
+        data.extend_from_slice(&timestamp.to_le_bytes());
+        let knot_id = norn_crypto::hash::blake3_hash(&data);
+
+        let memo_bytes = memo.map(|m| m.as_bytes().to_vec());
+
+        let record = TransferRecord {
+            knot_id,
+            from,
+            to,
+            token_id,
+            amount,
+            memo: memo_bytes,
+            timestamp,
+            block_height: None,
+        };
+        self.transfer_log.push(record.clone());
+        self.known_knot_ids.insert(knot_id);
+
+        // Persist.
+        if let Some(ref store) = self.state_store {
+            if let Err(e) = store.append_transfer(&record) {
+                tracing::warn!("Failed to persist synthetic transfer record: {}", e);
+            }
+        }
+    }
+
     /// Get a reference to a thread's state.
     pub fn get_thread_state(&self, address: &Address) -> Option<&ThreadState> {
         self.thread_states.get(address)
@@ -701,9 +749,25 @@ impl StateManager {
         }
     }
 
-    /// Get a block by height.
+    /// Get a block by height (from in-memory archive).
     pub fn get_block(&self, height: u64) -> Option<&WeaveBlock> {
         self.block_archive.iter().find(|b| b.height == height)
+    }
+
+    /// Get a block by height, checking in-memory archive first, then falling
+    /// back to the persistent state store. Returns an owned `WeaveBlock`.
+    pub fn get_block_by_height(&self, height: u64) -> Option<WeaveBlock> {
+        // Check in-memory archive first.
+        if let Some(block) = self.block_archive.iter().find(|b| b.height == height) {
+            return Some(block.clone());
+        }
+        // Fall back to persistent store.
+        if let Some(ref store) = self.state_store {
+            if let Ok(Some(block)) = store.load_block(height) {
+                return Some(block);
+            }
+        }
+        None
     }
 
     /// Get the latest block height.
@@ -929,6 +993,16 @@ impl StateManager {
         sender_state.debit(&NATIVE_TOKEN_ID, TOKEN_CREATION_FEE);
         self.total_supply_cache = self.total_supply_cache.saturating_sub(TOKEN_CREATION_FEE);
 
+        // Log token creation fee burn.
+        self.log_synthetic_transfer(
+            creator,
+            [0u8; 20],
+            NATIVE_TOKEN_ID,
+            TOKEN_CREATION_FEE,
+            Some("Token creation fee"),
+            timestamp,
+        );
+
         // Mint initial supply to creator.
         if initial_supply > 0 {
             let sender_state = self.thread_states.get_mut(&creator).unwrap();
@@ -1101,6 +1175,13 @@ impl StateManager {
         let record = self.token_registry.get_mut(&token_id).unwrap();
         record.current_supply = record.current_supply.saturating_add(amount);
 
+        // Log mint as a synthetic transfer from zero address.
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        self.log_synthetic_transfer([0u8; 20], to, token_id, amount, Some("Token mint"), now);
+
         // Persist.
         if let Some(ref store) = self.state_store {
             if let Err(e) = store.save_thread_state(&to, self.thread_states.get(&to).unwrap()) {
@@ -1164,6 +1245,13 @@ impl StateManager {
         // Update supply.
         let record = self.token_registry.get_mut(&token_id).unwrap();
         record.current_supply = record.current_supply.saturating_sub(amount);
+
+        // Log burn as a synthetic transfer to zero address.
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        self.log_synthetic_transfer(burner, [0u8; 20], token_id, amount, Some("Token burn"), now);
 
         // Persist.
         if let Some(ref store) = self.state_store {
@@ -1263,6 +1351,16 @@ impl StateManager {
     ) -> Result<(), NornError> {
         // Deduct deploy fee from operator (warn but don't fail if insufficient).
         self.debit_fee(operator_address, LOOM_DEPLOY_FEE);
+
+        // Log loom deploy fee burn.
+        self.log_synthetic_transfer(
+            operator_address,
+            [0u8; 20],
+            NATIVE_TOKEN_ID,
+            LOOM_DEPLOY_FEE,
+            Some("Loom deploy fee"),
+            timestamp,
+        );
 
         let record = LoomRecord {
             name: name.to_string(),

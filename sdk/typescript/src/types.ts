@@ -230,6 +230,73 @@ export interface NodeInfo {
   peer_count: number;
 }
 
+/** Detailed block transactions returned by norn_getBlockTransactions. */
+export interface BlockTransactionsInfo {
+  height: number;
+  hash: HashHex;
+  timestamp: number;
+  transfers: BlockTransferInfo[];
+  token_definitions: BlockTokenDefinitionInfo[];
+  token_mints: BlockTokenMintInfo[];
+  token_burns: BlockTokenBurnInfo[];
+  name_registrations: BlockNameRegistrationInfo[];
+  loom_deploys: BlockLoomDeployInfo[];
+}
+
+/** A transfer within a block. */
+export interface BlockTransferInfo {
+  from: AddressHex;
+  to: AddressHex;
+  token_id: HashHex;
+  amount: string;
+  human_readable: string;
+  memo?: string;
+  knot_id: HashHex;
+  timestamp: number;
+}
+
+/** A token definition within a block. */
+export interface BlockTokenDefinitionInfo {
+  name: string;
+  symbol: string;
+  decimals: number;
+  max_supply: string;
+  initial_supply: string;
+  creator: AddressHex;
+  timestamp: number;
+}
+
+/** A token mint within a block. */
+export interface BlockTokenMintInfo {
+  token_id: HashHex;
+  to: AddressHex;
+  amount: string;
+  timestamp: number;
+}
+
+/** A token burn within a block. */
+export interface BlockTokenBurnInfo {
+  token_id: HashHex;
+  burner: AddressHex;
+  amount: string;
+  timestamp: number;
+}
+
+/** A name registration within a block. */
+export interface BlockNameRegistrationInfo {
+  name: string;
+  owner: AddressHex;
+  fee_paid: string;
+  timestamp: number;
+}
+
+/** A loom deployment within a block. */
+export interface BlockLoomDeployInfo {
+  name: string;
+  operator: string;
+  timestamp: number;
+}
+
 /** Real-time transfer event (WebSocket). */
 export interface TransferEvent {
   from: AddressHex;

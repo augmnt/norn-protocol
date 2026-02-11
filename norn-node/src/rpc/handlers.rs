@@ -13,11 +13,13 @@ use norn_weave::engine::WeaveEngine;
 use norn_loom::lifecycle::LoomManager;
 
 use super::types::{
-    AttributeInfo, BlockInfo, CommitmentProofInfo, EventInfo, ExecutionResult, FeeEstimateInfo,
-    HealthInfo, LoomExecutionEvent, LoomInfo, NameInfo, NameResolution, PendingTransactionEvent,
-    QueryResult, StakingInfo, StateProofInfo, SubmitResult, ThreadInfo, ThreadStateInfo,
-    TokenEvent, TokenInfo, TransactionHistoryEntry, TransferEvent, ValidatorInfo, ValidatorSetInfo,
-    ValidatorStakeInfo, WeaveStateInfo,
+    AttributeInfo, BlockInfo, BlockLoomDeployInfo, BlockNameRegistrationInfo, BlockTokenBurnInfo,
+    BlockTokenDefinitionInfo, BlockTokenMintInfo, BlockTransactionsInfo, BlockTransferInfo,
+    CommitmentProofInfo, EventInfo, ExecutionResult, FeeEstimateInfo, HealthInfo,
+    LoomExecutionEvent, LoomInfo, NameInfo, NameResolution, PendingTransactionEvent, QueryResult,
+    StakingInfo, StateProofInfo, SubmitResult, ThreadInfo, ThreadStateInfo, TokenEvent, TokenInfo,
+    TransactionHistoryEntry, TransferEvent, ValidatorInfo, ValidatorSetInfo, ValidatorStakeInfo,
+    WeaveStateInfo,
 };
 use crate::metrics::NodeMetrics;
 use crate::rpc::server::RpcBroadcasters;
@@ -291,6 +293,13 @@ pub trait NornRpc {
         address_hex: String,
         token_id_hex: Option<String>,
     ) -> Result<StateProofInfo, ErrorObjectOwned>;
+
+    /// Get detailed transactions for a block by height.
+    #[method(name = "norn_getBlockTransactions")]
+    async fn get_block_transactions(
+        &self,
+        height: u64,
+    ) -> Result<Option<BlockTransactionsInfo>, ErrorObjectOwned>;
 }
 
 /// Implementation of the NornRpc trait.
@@ -760,6 +769,7 @@ impl NornRpcServer for NornRpcImpl {
             // Register and credit in StateManager (local apply).
             {
                 let mut sm = self.state_manager.write().await;
+                sm.auto_register_if_needed(faucet_address);
                 sm.auto_register_if_needed(address);
                 if let Err(e) = sm.apply_peer_transfer(
                     faucet_address,
@@ -2155,6 +2165,107 @@ impl NornRpcServer for NornRpcImpl {
             state_root: hex::encode(root),
             proof: proof.siblings.iter().map(hex::encode).collect(),
         })
+    }
+
+    async fn get_block_transactions(
+        &self,
+        height: u64,
+    ) -> Result<Option<BlockTransactionsInfo>, ErrorObjectOwned> {
+        let sm = self.state_manager.read().await;
+        let block = match sm.get_block_by_height(height) {
+            Some(b) => b,
+            None => return Ok(None),
+        };
+
+        let transfers = block
+            .transfers
+            .iter()
+            .map(|bt| {
+                let memo = bt
+                    .memo
+                    .as_ref()
+                    .and_then(|m| String::from_utf8(m.clone()).ok());
+                BlockTransferInfo {
+                    from: format_address(&bt.from),
+                    to: format_address(&bt.to),
+                    token_id: hex::encode(bt.token_id),
+                    amount: bt.amount.to_string(),
+                    human_readable: format_amount_for_token(bt.amount, &bt.token_id, &sm),
+                    memo,
+                    knot_id: hex::encode(bt.knot_id),
+                    timestamp: bt.timestamp,
+                }
+            })
+            .collect();
+
+        let token_definitions = block
+            .token_definitions
+            .iter()
+            .map(|td| BlockTokenDefinitionInfo {
+                name: td.name.clone(),
+                symbol: td.symbol.clone(),
+                decimals: td.decimals,
+                max_supply: td.max_supply.to_string(),
+                initial_supply: td.initial_supply.to_string(),
+                creator: format_address(&td.creator),
+                timestamp: td.timestamp,
+            })
+            .collect();
+
+        let token_mints = block
+            .token_mints
+            .iter()
+            .map(|tm| BlockTokenMintInfo {
+                token_id: hex::encode(tm.token_id),
+                to: format_address(&tm.to),
+                amount: tm.amount.to_string(),
+                timestamp: tm.timestamp,
+            })
+            .collect();
+
+        let token_burns = block
+            .token_burns
+            .iter()
+            .map(|tb| BlockTokenBurnInfo {
+                token_id: hex::encode(tb.token_id),
+                burner: format_address(&tb.burner),
+                amount: tb.amount.to_string(),
+                timestamp: tb.timestamp,
+            })
+            .collect();
+
+        let name_registrations = block
+            .name_registrations
+            .iter()
+            .map(|nr| BlockNameRegistrationInfo {
+                name: nr.name.clone(),
+                owner: format_address(&nr.owner),
+                fee_paid: nr.fee_paid.to_string(),
+                timestamp: nr.timestamp,
+            })
+            .collect();
+
+        let loom_deploys = block
+            .loom_deploys
+            .iter()
+            .map(|ld| BlockLoomDeployInfo {
+                name: ld.config.name.clone(),
+                operator: hex::encode(ld.operator),
+                timestamp: ld.timestamp,
+            })
+            .collect();
+
+        Ok(Some(BlockTransactionsInfo {
+            height: block.height,
+            hash: hex::encode(block.hash),
+            timestamp: block.timestamp,
+            transfers,
+            token_definitions,
+            token_mints,
+            token_burns,
+            name_registrations,
+            loom_deploys,
+        }))
     }
 }
 
