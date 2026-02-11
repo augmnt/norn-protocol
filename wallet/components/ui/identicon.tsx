@@ -62,19 +62,25 @@ export function Identicon({ address, size = 32, className }: IdenticonProps) {
       height={size}
       viewBox={`0 0 ${size} ${size}`}
       className={className}
-      style={{ borderRadius: size * 0.2 }}
     >
-      <rect width={size} height={size} fill={svg.bgColor} opacity={0.15} />
-      {svg.rects.map((r, i) => (
-        <rect
-          key={i}
-          x={r.x * cellSize}
-          y={r.y * cellSize}
-          width={cellSize}
-          height={cellSize}
-          fill={svg.color}
-        />
-      ))}
+      <defs>
+        <clipPath id={`circle-${address.slice(-8)}`}>
+          <circle cx={size / 2} cy={size / 2} r={size / 2} />
+        </clipPath>
+      </defs>
+      <g clipPath={`url(#circle-${address.slice(-8)})`}>
+        <rect width={size} height={size} fill={svg.bgColor} opacity={0.15} />
+        {svg.rects.map((r, i) => (
+          <rect
+            key={i}
+            x={r.x * cellSize}
+            y={r.y * cellSize}
+            width={cellSize}
+            height={cellSize}
+            fill={svg.color}
+          />
+        ))}
+      </g>
     </svg>
   );
 }
