@@ -47,10 +47,13 @@ export default function OnboardingPage() {
   const [importMnemonic, setImportMnemonic] = useState("");
   const [importPassword, setImportPassword] = useState("");
 
+  const [prfFailed, setPrfFailed] = useState(false);
+  const effectivePrf = prfSupported && !prfFailed;
+
   const handleCreate = async () => {
     try {
       let result;
-      if (prfSupported) {
+      if (effectivePrf) {
         result = await auth.create(walletName);
       } else {
         if (!password || password.length < 8) {
@@ -62,7 +65,15 @@ export default function OnboardingPage() {
       setCreatedAddress(result.address);
       setMnemonic(result.mnemonic ?? null);
       setStep(result.mnemonic ? "backup" : "success");
-    } catch {
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      if (msg === "PRF_UNSUPPORTED") {
+        // Browser reported PRF support but it didn't work (e.g. Brave).
+        // Fall back to password-based creation.
+        setPrfFailed(true);
+        toast.info("Passkey PRF not supported in this browser. Please set a password instead.");
+        return;
+      }
       toast.error(auth.error || "Failed to create wallet");
     }
   };
@@ -93,7 +104,7 @@ export default function OnboardingPage() {
     router.replace("/dashboard");
   };
 
-  const totalSteps = prfSupported ? 2 : 2;
+  const totalSteps = effectivePrf ? 2 : 2;
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4 bg-background">
@@ -196,7 +207,7 @@ export default function OnboardingPage() {
               <div className="space-y-1">
                 <CardTitle className="text-lg">Create Your Wallet</CardTitle>
                 <CardDescription>
-                  {prfSupported
+                  {effectivePrf
                     ? "Your wallet will be secured with biometric authentication via passkeys."
                     : "Choose a strong password to encrypt your wallet locally."}
                 </CardDescription>
@@ -212,7 +223,7 @@ export default function OnboardingPage() {
                   placeholder="My Wallet"
                 />
               </div>
-              {!prfSupported && (
+              {!effectivePrf && (
                 <div className="space-y-2">
                   <Label htmlFor="password">Password</Label>
                   <div className="relative">
@@ -242,7 +253,7 @@ export default function OnboardingPage() {
                 </p>
               </div>
 
-              {!prfSupported && (
+              {!effectivePrf && (
                 <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
                   <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
                   <div className="text-xs text-amber-500/90 leading-relaxed space-y-1">
@@ -263,9 +274,9 @@ export default function OnboardingPage() {
                 {auth.loading ? (
                   <span className="flex items-center gap-2">
                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    {prfSupported ? "Authenticating..." : "Creating..."}
+                    {effectivePrf ? "Authenticating..." : "Creating..."}
                   </span>
-                ) : prfSupported ? (
+                ) : effectivePrf ? (
                   <>
                     <Fingerprint className="mr-2 h-4 w-4" />
                     Create with Passkey

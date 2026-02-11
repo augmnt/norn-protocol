@@ -13,13 +13,30 @@ export async function isPrfSupported(): Promise<boolean> {
   if (!window.PublicKeyCredential) return false;
 
   try {
-    // Check if PRF extension is available
-    const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    const available =
+      await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
     if (!available) return false;
 
-    // Try to detect PRF support via a test creation
-    // In practice, we just check the API exists
-    return typeof window.PublicKeyCredential !== "undefined";
+    // Use getClientCapabilities() if available (Chrome 131+, modern browsers).
+    // This is the only reliable way to check PRF support without creating a credential.
+    if ("getClientCapabilities" in PublicKeyCredential) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const caps = await (PublicKeyCredential as any).getClientCapabilities();
+        if (caps && typeof caps === "object" && "extension:prf" in caps) {
+          return caps["extension:prf"] === true;
+        }
+      } catch {
+        // getClientCapabilities threw — fall through to heuristic
+      }
+    }
+
+    // Heuristic: platform authenticator exists but we can't verify PRF.
+    // Return true optimistically — Chrome 116+ has PRF, but Brave doesn't.
+    // The creation flow handles the case where PRF returns no output
+    // by throwing PRF_UNSUPPORTED, which the onboarding UI catches
+    // and falls back to password-based creation.
+    return true;
   } catch {
     return false;
   }

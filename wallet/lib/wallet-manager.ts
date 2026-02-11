@@ -59,7 +59,7 @@ export async function createWallet(
     );
 
     if (!prfOutput) {
-      throw new Error("PRF extension returned no output during enrollment");
+      throw new Error("PRF_UNSUPPORTED");
     }
 
     const keypair = deriveKeypairFromPrf(prfOutput);
