@@ -121,9 +121,15 @@ export function useChartData() {
   const avgBlockTime = useMemo(() => {
     const times = chartData
       .map((d) => d.blockTime)
-      .filter((t): t is number => t !== null);
+      .filter((t): t is number => t !== null && t > 0);
     if (times.length === 0) return null;
-    return Math.round(times.reduce((a, b) => a + b, 0) / times.length);
+    // Use median to avoid skew from idle gaps between blocks
+    const sorted = [...times].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2 === 0
+      ? (sorted[mid - 1] + sorted[mid]) / 2
+      : sorted[mid];
+    return Math.round(median);
   }, [chartData]);
 
   const totalTxs = useMemo(

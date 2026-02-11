@@ -6,6 +6,7 @@ import { AddressDisplay } from "@/components/ui/address-display";
 import { AmountDisplay } from "@/components/ui/amount-display";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useRealtimeStore } from "@/stores/realtime-store";
+import { NATIVE_TOKEN_ID } from "@/lib/constants";
 import type { TransferEvent } from "@/types";
 import Link from "next/link";
 
@@ -24,7 +25,12 @@ const columns = [
     header: "Amount",
     key: "amount",
     className: "text-right",
-    render: (tx: TransferEvent) => <AmountDisplay amount={tx.amount} />,
+    render: (tx: TransferEvent) => (
+      <AmountDisplay
+        amount={tx.amount}
+        symbol={!tx.token_id || tx.token_id === NATIVE_TOKEN_ID ? "NORN" : tx.token_id.slice(0, 8) + "\u2026"}
+      />
+    ),
   },
   {
     header: "Block",

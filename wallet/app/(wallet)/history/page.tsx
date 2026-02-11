@@ -23,7 +23,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { PAGE_SIZE } from "@/lib/constants";
+import { PAGE_SIZE, NATIVE_TOKEN_ID } from "@/lib/constants";
 import { formatTimestamp } from "@/lib/format";
 import {
   explorerAddressUrl,
@@ -143,7 +143,11 @@ function TransactionDetailDialog({
           </DetailRow>
 
           <DetailRow label="Amount">
-            <AmountDisplay amount={tx.amount} />
+            <AmountDisplay
+              amount={tx.amount}
+              humanReadable={tx.human_readable}
+              symbol={tx.token_id === NATIVE_TOKEN_ID ? "NORN" : tx.token_id.slice(0, 8) + "\u2026"}
+            />
           </DetailRow>
 
           <DetailRow label="Token ID">
@@ -288,7 +292,11 @@ export default function HistoryPage() {
         className: "text-right",
         render: (tx: TransactionHistoryEntry) => (
           <div className="flex flex-col items-end">
-            <AmountDisplay amount={tx.amount} />
+            <AmountDisplay
+              amount={tx.amount}
+              humanReadable={tx.human_readable}
+              symbol={tx.token_id === NATIVE_TOKEN_ID ? "NORN" : tx.token_id.slice(0, 8) + "\u2026"}
+            />
             {tx.memo && (
               <span className="text-xs text-muted-foreground mt-0.5 max-w-[200px] truncate">
                 {tx.memo}

@@ -32,6 +32,8 @@ export const STALE_TIMES = {
 
 export const PAGE_SIZE = 20;
 
+export const NATIVE_TOKEN_ID = "0".repeat(64);
+
 export const WS_CAPS = {
   blocks: 50,
   transfers: 200,

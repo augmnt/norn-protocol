@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 
 interface AmountDisplayProps {
   amount: string;
+  /** Pre-formatted human-readable amount (skips formatting when provided). */
+  humanReadable?: string;
   symbol?: string;
   decimals?: number;
   className?: string;
@@ -16,13 +18,17 @@ interface AmountDisplayProps {
 
 export function AmountDisplay({
   amount,
+  humanReadable,
   symbol = "NORN",
   decimals = 12,
   className,
 }: AmountDisplayProps) {
-  const formatted =
-    symbol === "NORN" ? formatNorn(amount) : formatAmount(amount, decimals);
-  const fullAmount = formatAmount(amount, decimals, decimals);
+  const formatted = humanReadable
+    ? humanReadable
+    : symbol === "NORN"
+      ? formatNorn(amount)
+      : formatAmount(amount, decimals);
+  const fullAmount = humanReadable ?? formatAmount(amount, decimals, decimals);
 
   return (
     <TooltipProvider delayDuration={300}>

@@ -313,9 +313,12 @@ export default function DashboardPage() {
                           {truncateAddress(tx.to)}
                         </a>
                       </span>
-                      <span className="text-xs font-mono tabular-nums text-muted-foreground">
-                        {formatNorn(tx.amount)} NORN
-                      </span>
+                      <AmountDisplay
+                        amount={tx.amount}
+                        humanReadable={tx.human_readable}
+                        symbol={tx.token_id === NATIVE_TOKEN_ID ? "NORN" : tx.token_id.slice(0, 8) + "\u2026"}
+                        className="text-xs text-muted-foreground"
+                      />
                     </div>
                   </div>
                 ))}

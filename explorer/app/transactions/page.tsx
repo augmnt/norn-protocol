@@ -18,7 +18,7 @@ import { PendingTransactions } from "@/components/transactions/pending-transacti
 import { useRealtimeStore } from "@/stores/realtime-store";
 import { usePendingTxSubscription } from "@/hooks/use-subscriptions";
 import { useRecentHistory } from "@/hooks/use-recent-history";
-import { PAGE_SIZE } from "@/lib/constants";
+import { PAGE_SIZE, NATIVE_TOKEN_ID } from "@/lib/constants";
 import type { TransactionHistoryEntry } from "@/types";
 
 const columns = [
@@ -53,7 +53,11 @@ const columns = [
     key: "amount",
     className: "text-right",
     render: (tx: TransactionHistoryEntry) => (
-      <AmountDisplay amount={tx.amount} />
+      <AmountDisplay
+        amount={tx.amount}
+        humanReadable={tx.human_readable}
+        symbol={tx.token_id === NATIVE_TOKEN_ID ? "NORN" : tx.token_id.slice(0, 8) + "\u2026"}
+      />
     ),
   },
   {
