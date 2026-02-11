@@ -162,53 +162,70 @@ export default async function Image() {
             display: "flex",
             flexDirection: "column",
             justifyContent: "center",
-            padding: "72px 80px",
+            padding: "60px 80px",
             height: "100%",
             position: "relative",
-            zIndex: 2,
+            zIndex: "2",
           }}
         >
+          {/* NORN wordmark */}
+          <div
+            style={{
+              fontFamily: "Inter",
+              fontSize: 96,
+              fontWeight: 700,
+              color: "#fafafa",
+              letterSpacing: "-0.04em",
+              lineHeight: 1,
+              marginBottom: 16,
+            }}
+          >
+            norn
+          </div>
+
           {/* Mono label */}
           <div
             style={{
               fontFamily: "JetBrains Mono",
-              fontSize: 15,
+              fontSize: 14,
               fontWeight: 500,
-              color: "rgba(120,135,155,0.8)",
-              letterSpacing: "0.02em",
-              marginBottom: 28,
+              color: "rgba(120,135,155,0.6)",
+              letterSpacing: "0.08em",
+              marginBottom: 32,
             }}
           >
-            norn protocol
+            PROTOCOL
           </div>
 
-          {/* Headline */}
+          {/* Tagline */}
           <div
             style={{
               display: "flex",
               flexDirection: "column",
               fontFamily: "Inter",
-              fontSize: 56,
+              fontSize: 32,
               fontWeight: 700,
-              lineHeight: 1.1,
-              letterSpacing: "-0.025em",
-              maxWidth: 600,
+              lineHeight: 1.2,
+              letterSpacing: "-0.02em",
+              maxWidth: 520,
             }}
           >
-            <span style={{ color: "#fafafa" }}>The chain is a courtroom,</span>
-            <span style={{ color: "rgba(160,165,175,0.5)" }}>not a bank.</span>
+            <span style={{ color: "rgba(200,205,215,0.7)" }}>
+              The chain is a courtroom,
+            </span>
+            <span style={{ color: "rgba(160,165,175,0.35)" }}>not a bank.</span>
           </div>
 
           {/* Subtitle */}
           <div
             style={{
               fontFamily: "Inter",
-              fontSize: 18,
+              fontSize: 16,
               fontWeight: 400,
-              color: "rgba(160,165,175,0.55)",
+              color: "rgba(160,165,175,0.4)",
               lineHeight: 1.6,
-              maxWidth: 460,
-              marginTop: 24,
+              maxWidth: 440,
+              marginTop: 20,
             }}
           >
             A blockchain where users transact directly with cryptographic
@@ -220,11 +237,11 @@ export default async function Image() {
         <div
           style={{
             position: "absolute",
-            bottom: 52,
+            bottom: 48,
             left: 80,
             fontFamily: "JetBrains Mono",
             fontSize: 13,
-            color: "rgba(120,135,155,0.4)",
+            color: "rgba(120,135,155,0.35)",
           }}
         >
           norn.network
