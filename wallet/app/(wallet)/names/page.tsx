@@ -105,6 +105,7 @@ export default function NamesPage() {
         </Button>
       }
     >
+      <div className="space-y-4">
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
@@ -246,6 +247,7 @@ export default function NamesPage() {
           )}
         </CardContent>
       </Card>
+      </div>
 
       <Dialog open={registerOpen} onOpenChange={(open) => {
         setRegisterOpen(open);
