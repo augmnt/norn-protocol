@@ -31,30 +31,41 @@ export function useSubscriptions(filterAddress?: string) {
       // Clean up existing subs
       subsRef.current.forEach((sub) => sub.unsubscribe());
       subsRef.current = [];
+      useRealtimeStore.getState().resetConnected();
 
       const wsUrl = useNetworkStore.getState().wsUrl
         ?? useNetworkStore.getState().customWsUrl
         ?? "wss://seed.norn.network";
 
-      const wsOpts = {
-        url: wsUrl,
-        onOpen: () => {
-          if (!mounted) return;
-          useRealtimeStore.getState().setConnected(true);
-          attemptRef.current = 0;
-        },
-        onClose: () => {
-          if (!mounted) return;
-          useRealtimeStore.getState().setConnected(false);
-          scheduleReconnect();
-        },
-        onError: () => {
-          if (!mounted) return;
-          useRealtimeStore.getState().setConnected(false);
-        },
+      const makeWsOpts = () => {
+        let isOpen = false;
+        return {
+          url: wsUrl,
+          onOpen: () => {
+            if (!mounted || isOpen) return;
+            isOpen = true;
+            useRealtimeStore.getState().incrementConnected();
+            attemptRef.current = 0;
+          },
+          onClose: () => {
+            if (!mounted) return;
+            if (isOpen) {
+              isOpen = false;
+              useRealtimeStore.getState().decrementConnected();
+            }
+            scheduleReconnect();
+          },
+          onError: () => {
+            if (!mounted) return;
+            if (isOpen) {
+              isOpen = false;
+              useRealtimeStore.getState().decrementConnected();
+            }
+          },
+        };
       };
 
-      const blockSub = subscribeNewBlocks({ ...wsOpts }, (block) => {
+      const blockSub = subscribeNewBlocks(makeWsOpts(), (block) => {
         useRealtimeStore.getState().addBlock(block);
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.weaveState });
         if (filterAddress) {
@@ -64,7 +75,7 @@ export function useSubscriptions(filterAddress?: string) {
       });
 
       const transferSub = subscribeTransfers(
-        { ...wsOpts },
+        makeWsOpts(),
         (transfer) => {
           useRealtimeStore.getState().addTransfer(transfer);
 
@@ -87,7 +98,7 @@ export function useSubscriptions(filterAddress?: string) {
         filterAddress
       );
 
-      const tokenSub = subscribeTokenEvents({ ...wsOpts }, (event) => {
+      const tokenSub = subscribeTokenEvents(makeWsOpts(), (event) => {
         useRealtimeStore.getState().addTokenEvent(event);
         if (filterAddress) {
           queryClient.invalidateQueries({ queryKey: QUERY_KEYS.balance(filterAddress) });
@@ -122,6 +133,7 @@ export function useSubscriptions(filterAddress?: string) {
       if (reconnectRef.current) clearTimeout(reconnectRef.current);
       subsRef.current.forEach((sub) => sub.unsubscribe());
       subsRef.current = [];
+      useRealtimeStore.getState().resetConnected();
     };
   }, [queryClient, filterAddress, activeNetworkId]);
 }

@@ -24,24 +24,35 @@ export function SubscriptionsProvider({
   useKeyboardShortcuts();
 
   useEffect(() => {
-    const wsOpts = {
-      url: config.wsUrl,
-      onOpen: () => {
-        console.log("[WS] Connected to", config.wsUrl);
-        useRealtimeStore.getState().setConnected(true);
-      },
-      onClose: () => {
-        console.log("[WS] Disconnected");
-        useRealtimeStore.getState().setConnected(false);
-      },
-      onError: (e: Event) => {
-        console.error("[WS] Error:", e);
-        useRealtimeStore.getState().setConnected(false);
-      },
+    const makeWsOpts = () => {
+      let isOpen = false;
+      return {
+        url: config.wsUrl,
+        onOpen: () => {
+          if (isOpen) return;
+          isOpen = true;
+          console.log("[WS] Connected to", config.wsUrl);
+          useRealtimeStore.getState().incrementConnected();
+        },
+        onClose: () => {
+          console.log("[WS] Disconnected");
+          if (isOpen) {
+            isOpen = false;
+            useRealtimeStore.getState().decrementConnected();
+          }
+        },
+        onError: (e: Event) => {
+          console.error("[WS] Error:", e);
+          if (isOpen) {
+            isOpen = false;
+            useRealtimeStore.getState().decrementConnected();
+          }
+        },
+      };
     };
 
     const blockSub = subscribeNewBlocks(
-      { ...wsOpts },
+      makeWsOpts(),
       (block) => {
         console.log("[WS] New block:", block.height);
         useRealtimeStore.getState().addBlock(block);
@@ -57,7 +68,7 @@ export function SubscriptionsProvider({
     );
 
     const transferSub = subscribeTransfers(
-      { ...wsOpts },
+      makeWsOpts(),
       (transfer) => {
         console.log("[WS] New transfer:", transfer.from, "->", transfer.to, transfer.amount);
         useRealtimeStore.getState().addTransfer(transfer);
@@ -74,6 +85,7 @@ export function SubscriptionsProvider({
     return () => {
       subsRef.current.forEach((sub) => sub.unsubscribe());
       subsRef.current = [];
+      useRealtimeStore.getState().resetConnected();
     };
   }, [queryClient]);
 
