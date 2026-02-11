@@ -11,7 +11,6 @@ import {
 import { toast } from "sonner";
 import { useRealtimeStore } from "@/stores/realtime-store";
 import { useNetworkStore } from "@/stores/network-store";
-import { QUERY_KEYS } from "@/lib/constants";
 import { formatNorn, truncateAddress } from "@/lib/format";
 
 const MAX_RECONNECT_DELAY = 30_000;
@@ -26,51 +25,55 @@ export function useSubscriptions(filterAddress?: string) {
 
   useEffect(() => {
     let mounted = true;
+    let openCount = 0;
+
+    function updateConnected(delta: 1 | -1) {
+      openCount = Math.max(0, openCount + delta);
+      const nowConnected = openCount > 0;
+      if (useRealtimeStore.getState().connected !== nowConnected) {
+        useRealtimeStore.getState().setConnected(nowConnected);
+      }
+    }
+
+    function invalidateBalances(address: string) {
+      // Use 2-element prefix ["balance", address] to match all token variants
+      queryClient.invalidateQueries({ queryKey: ["balance", address] });
+      queryClient.invalidateQueries({ queryKey: ["threadState", address] });
+    }
 
     function connect() {
       // Clean up existing subs
       subsRef.current.forEach((sub) => sub.unsubscribe());
       subsRef.current = [];
-      useRealtimeStore.getState().resetConnected();
+      openCount = 0;
+      useRealtimeStore.getState().setConnected(false);
 
       const wsUrl = useNetworkStore.getState().wsUrl
         ?? useNetworkStore.getState().customWsUrl
         ?? "wss://seed.norn.network";
 
-      const makeWsOpts = () => {
-        let isOpen = false;
-        return {
-          url: wsUrl,
-          onOpen: () => {
-            if (!mounted || isOpen) return;
-            isOpen = true;
-            useRealtimeStore.getState().incrementConnected();
-            attemptRef.current = 0;
-          },
-          onClose: () => {
-            if (!mounted) return;
-            if (isOpen) {
-              isOpen = false;
-              useRealtimeStore.getState().decrementConnected();
-            }
-            scheduleReconnect();
-          },
-          onError: () => {
-            if (!mounted) return;
-            if (isOpen) {
-              isOpen = false;
-              useRealtimeStore.getState().decrementConnected();
-            }
-          },
-        };
-      };
+      const makeWsOpts = () => ({
+        url: wsUrl,
+        onOpen: () => {
+          if (!mounted) return;
+          updateConnected(1);
+          attemptRef.current = 0;
+        },
+        onClose: () => {
+          if (!mounted) return;
+          updateConnected(-1);
+          if (openCount === 0) scheduleReconnect();
+        },
+        onError: () => {
+          // onClose will follow — no state change needed here
+        },
+      });
 
       const blockSub = subscribeNewBlocks(makeWsOpts(), (block) => {
         useRealtimeStore.getState().addBlock(block);
-        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.weaveState });
+        queryClient.invalidateQueries({ queryKey: ["weaveState"] });
         if (filterAddress) {
-          queryClient.invalidateQueries({ queryKey: QUERY_KEYS.balance(filterAddress) });
-          queryClient.invalidateQueries({ queryKey: QUERY_KEYS.threadState(filterAddress) });
+          invalidateBalances(filterAddress);
         }
       });
 
@@ -89,8 +92,7 @@ export function useSubscriptions(filterAddress?: string) {
               });
             }
             if (isIncoming || isOutgoing) {
-              queryClient.invalidateQueries({ queryKey: QUERY_KEYS.balance(filterAddress) });
-              queryClient.invalidateQueries({ queryKey: QUERY_KEYS.threadState(filterAddress) });
+              invalidateBalances(filterAddress);
               queryClient.invalidateQueries({ queryKey: ["txHistory", filterAddress] });
             }
           }
@@ -101,13 +103,12 @@ export function useSubscriptions(filterAddress?: string) {
       const tokenSub = subscribeTokenEvents(makeWsOpts(), (event) => {
         useRealtimeStore.getState().addTokenEvent(event);
         if (filterAddress) {
-          queryClient.invalidateQueries({ queryKey: QUERY_KEYS.balance(filterAddress) });
-          queryClient.invalidateQueries({ queryKey: QUERY_KEYS.threadState(filterAddress) });
+          invalidateBalances(filterAddress);
           queryClient.invalidateQueries({ queryKey: ["createdTokens", filterAddress] });
         }
         queryClient.invalidateQueries({ queryKey: ["tokensList"] });
         if (event.token_id) {
-          queryClient.invalidateQueries({ queryKey: QUERY_KEYS.tokenInfo(event.token_id) });
+          queryClient.invalidateQueries({ queryKey: ["tokenInfo", event.token_id] });
         }
       });
 
@@ -116,6 +117,8 @@ export function useSubscriptions(filterAddress?: string) {
 
     function scheduleReconnect() {
       if (!mounted) return;
+      // Clear any pending reconnect to avoid stacking
+      if (reconnectRef.current) clearTimeout(reconnectRef.current);
       const delay = Math.min(
         BASE_RECONNECT_DELAY * Math.pow(2, attemptRef.current),
         MAX_RECONNECT_DELAY
@@ -133,7 +136,7 @@ export function useSubscriptions(filterAddress?: string) {
       if (reconnectRef.current) clearTimeout(reconnectRef.current);
       subsRef.current.forEach((sub) => sub.unsubscribe());
       subsRef.current = [];
-      useRealtimeStore.getState().resetConnected();
+      useRealtimeStore.getState().setConnected(false);
     };
   }, [queryClient, filterAddress, activeNetworkId]);
 }

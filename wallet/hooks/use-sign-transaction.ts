@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useWallet } from "./use-wallet";
+import { useWalletStore } from "@/stores/wallet-store";
 import * as signer from "@/lib/secure-signer";
 
 export function useSignTransaction() {
@@ -15,7 +16,8 @@ export function useSignTransaction() {
       setSigning(true);
       setError(null);
       try {
-        return await signer.signTransfer(meta, params, activeAccountIndex);
+        const pw = useWalletStore.getState().sessionPassword ?? undefined;
+        return await signer.signTransfer(meta, params, activeAccountIndex, pw);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Signing failed";
         setError(msg);
@@ -33,7 +35,8 @@ export function useSignTransaction() {
       setSigning(true);
       setError(null);
       try {
-        return await signer.signNameRegistration(meta, name, activeAccountIndex);
+        const pw = useWalletStore.getState().sessionPassword ?? undefined;
+        return await signer.signNameRegistration(meta, name, activeAccountIndex, pw);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Signing failed";
         setError(msg);
@@ -51,7 +54,8 @@ export function useSignTransaction() {
       setSigning(true);
       setError(null);
       try {
-        return await signer.signTokenDefinition(meta, params, activeAccountIndex);
+        const pw = useWalletStore.getState().sessionPassword ?? undefined;
+        return await signer.signTokenDefinition(meta, params, activeAccountIndex, pw);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Signing failed";
         setError(msg);
@@ -69,7 +73,8 @@ export function useSignTransaction() {
       setSigning(true);
       setError(null);
       try {
-        return await signer.signTokenMint(meta, params, activeAccountIndex);
+        const pw = useWalletStore.getState().sessionPassword ?? undefined;
+        return await signer.signTokenMint(meta, params, activeAccountIndex, pw);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Signing failed";
         setError(msg);
@@ -87,7 +92,8 @@ export function useSignTransaction() {
       setSigning(true);
       setError(null);
       try {
-        return await signer.signTokenBurn(meta, params, activeAccountIndex);
+        const pw = useWalletStore.getState().sessionPassword ?? undefined;
+        return await signer.signTokenBurn(meta, params, activeAccountIndex, pw);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Signing failed";
         setError(msg);

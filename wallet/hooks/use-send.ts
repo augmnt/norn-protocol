@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { rpcCall } from "@/lib/rpc";
-import { QUERY_KEYS } from "@/lib/constants";
+
 import { useWallet } from "./use-wallet";
 import { useSignTransaction } from "./use-sign-transaction";
 import type { SubmitResult } from "@/types";
@@ -26,12 +26,9 @@ export function useSend() {
           throw new Error(result.reason || "Transaction rejected");
         }
         if (activeAddress) {
-          queryClient.invalidateQueries({ queryKey: QUERY_KEYS.balance(activeAddress) });
-          queryClient.invalidateQueries({ queryKey: QUERY_KEYS.threadState(activeAddress) });
+          queryClient.invalidateQueries({ queryKey: ["balance", activeAddress] });
+          queryClient.invalidateQueries({ queryKey: ["threadState", activeAddress] });
           queryClient.invalidateQueries({ queryKey: ["txHistory", activeAddress] });
-          if (params.tokenId) {
-            queryClient.invalidateQueries({ queryKey: QUERY_KEYS.balance(activeAddress, params.tokenId) });
-          }
         }
         return result;
       } catch (e) {

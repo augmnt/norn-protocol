@@ -30,8 +30,8 @@ export function useNameRegister() {
         ]);
         if (!result.success) throw new Error(result.reason || "Registration failed");
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.names(activeAddress) });
-        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.balance(activeAddress) });
-        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.threadState(activeAddress) });
+        queryClient.invalidateQueries({ queryKey: ["balance", activeAddress] });
+        queryClient.invalidateQueries({ queryKey: ["threadState", activeAddress] });
         queryClient.invalidateQueries({ queryKey: ["txHistory", activeAddress] });
         return result;
       } catch (e) {

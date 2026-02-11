@@ -24,40 +24,38 @@ export function SubscriptionsProvider({
   useKeyboardShortcuts();
 
   useEffect(() => {
-    const makeWsOpts = () => {
-      let isOpen = false;
-      return {
-        url: config.wsUrl,
-        onOpen: () => {
-          if (isOpen) return;
-          isOpen = true;
-          console.log("[WS] Connected to", config.wsUrl);
-          useRealtimeStore.getState().incrementConnected();
-        },
-        onClose: () => {
-          console.log("[WS] Disconnected");
-          if (isOpen) {
-            isOpen = false;
-            useRealtimeStore.getState().decrementConnected();
-          }
-        },
-        onError: (e: Event) => {
-          console.error("[WS] Error:", e);
-          if (isOpen) {
-            isOpen = false;
-            useRealtimeStore.getState().decrementConnected();
-          }
-        },
-      };
-    };
+    let openCount = 0;
+
+    function updateConnected(delta: 1 | -1) {
+      openCount = Math.max(0, openCount + delta);
+      const nowConnected = openCount > 0;
+      if (useRealtimeStore.getState().connected !== nowConnected) {
+        useRealtimeStore.getState().setConnected(nowConnected);
+      }
+    }
+
+    const makeWsOpts = () => ({
+      url: config.wsUrl,
+      onOpen: () => {
+        updateConnected(1);
+      },
+      onClose: () => {
+        updateConnected(-1);
+      },
+      onError: () => {
+        // onClose will follow
+      },
+    });
 
     const blockSub = subscribeNewBlocks(
       makeWsOpts(),
       (block) => {
-        console.log("[WS] New block:", block.height);
         useRealtimeStore.getState().addBlock(block);
-        // Invalidate weave state so dashboard stats refresh.
+        // Invalidate queries affected by new block
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.weaveState });
+        queryClient.invalidateQueries({ queryKey: ["blocks"] });
+        queryClient.invalidateQueries({ queryKey: ["blockTransactions"] });
+        queryClient.invalidateQueries({ queryKey: ["recentBlocks"] });
 
         const txCount = block.transfer_count;
         toast(`Block #${block.height.toLocaleString()}`, {
@@ -70,8 +68,18 @@ export function SubscriptionsProvider({
     const transferSub = subscribeTransfers(
       makeWsOpts(),
       (transfer) => {
-        console.log("[WS] New transfer:", transfer.from, "->", transfer.to, transfer.amount);
         useRealtimeStore.getState().addTransfer(transfer);
+        // Invalidate queries for affected addresses
+        if (transfer.from) {
+          queryClient.invalidateQueries({ queryKey: ["balance", transfer.from] });
+          queryClient.invalidateQueries({ queryKey: ["threadState", transfer.from] });
+          queryClient.invalidateQueries({ queryKey: ["txHistory", transfer.from] });
+        }
+        if (transfer.to) {
+          queryClient.invalidateQueries({ queryKey: ["balance", transfer.to] });
+          queryClient.invalidateQueries({ queryKey: ["threadState", transfer.to] });
+          queryClient.invalidateQueries({ queryKey: ["txHistory", transfer.to] });
+        }
 
         toast("Transfer", {
           description: `${truncateAddress(transfer.from)} → ${truncateAddress(transfer.to)}: ${formatNorn(transfer.amount)} NORN`,
@@ -85,7 +93,7 @@ export function SubscriptionsProvider({
     return () => {
       subsRef.current.forEach((sub) => sub.unsubscribe());
       subsRef.current = [];
-      useRealtimeStore.getState().resetConnected();
+      useRealtimeStore.getState().setConnected(false);
     };
   }, [queryClient]);
 

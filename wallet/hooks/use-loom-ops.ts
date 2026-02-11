@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { rpcCall } from "@/lib/rpc";
 import { strip0x } from "@/lib/format";
-import { QUERY_KEYS } from "@/lib/constants";
+
 import { useWallet } from "./use-wallet";
 import type { ExecutionResult, QueryResult } from "@/types";
 
@@ -45,8 +45,8 @@ export function useLoomOps() {
           inputHex,
           strip0x(activeAddress),
         ]);
-        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.balance(activeAddress) });
-        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.threadState(activeAddress) });
+        queryClient.invalidateQueries({ queryKey: ["balance", activeAddress] });
+        queryClient.invalidateQueries({ queryKey: ["threadState", activeAddress] });
         queryClient.invalidateQueries({ queryKey: ["txHistory", activeAddress] });
         return result;
       } catch (e) {

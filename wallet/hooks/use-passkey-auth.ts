@@ -48,6 +48,7 @@ export function usePasskeyAuth() {
         const result = await createWalletWithPassword(name, password);
         const meta = await loadWalletMeta();
         store.getState().setMeta(meta);
+        store.getState().setSessionPassword(password);
         store.getState().setState("unlocked");
         return result;
       } catch (e) {
@@ -69,6 +70,7 @@ export function usePasskeyAuth() {
         const result = await importFromPrivateKey(hex, name, password);
         const meta = await loadWalletMeta();
         store.getState().setMeta(meta);
+        if (password) store.getState().setSessionPassword(password);
         store.getState().setState("unlocked");
         return result;
       } catch (e) {
@@ -90,6 +92,7 @@ export function usePasskeyAuth() {
         const result = await importFromMnemonic(mnemonic, name, password);
         const meta = await loadWalletMeta();
         store.getState().setMeta(meta);
+        if (password) store.getState().setSessionPassword(password);
         store.getState().setState("unlocked");
         return result;
       } catch (e) {
@@ -134,6 +137,7 @@ export function usePasskeyAuth() {
         if (!meta) throw new Error("No wallet found");
         const success = await unlockWithPassword(meta, password);
         if (success) {
+          store.getState().setSessionPassword(password);
           store.getState().setState("unlocked");
         } else {
           setError("Incorrect password");

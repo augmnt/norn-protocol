@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { rpcCall } from "@/lib/rpc";
 import { strip0x } from "@/lib/format";
-import { QUERY_KEYS } from "@/lib/constants";
+
 import { useWallet } from "./use-wallet";
 import type { SubmitResult } from "@/types";
 
@@ -25,8 +25,9 @@ export function useFaucet() {
       if (!result.success) {
         throw new Error(result.reason || "Faucet request failed");
       }
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.balance(activeAddress) });
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.threadState(activeAddress) });
+      // Use 2-element prefix to match all token variants of the balance query
+      queryClient.invalidateQueries({ queryKey: ["balance", activeAddress] });
+      queryClient.invalidateQueries({ queryKey: ["threadState", activeAddress] });
       queryClient.invalidateQueries({ queryKey: ["txHistory", activeAddress] });
       return result;
     } catch (e) {

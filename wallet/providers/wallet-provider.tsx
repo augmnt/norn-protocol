@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useWalletStore } from "@/stores/wallet-store";
+import { useWalletStore, getPersistedSession } from "@/stores/wallet-store";
 import { initialize } from "@/lib/wallet-manager";
 import { useAutoLock } from "@/hooks/use-auto-lock";
 
@@ -13,9 +13,22 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     async function init() {
       try {
         const { state, meta, prfSupported } = await initialize();
-        useWalletStore.getState().setState(state);
-        useWalletStore.getState().setMeta(meta);
-        useWalletStore.getState().setPrfSupported(prfSupported);
+        const store = useWalletStore.getState();
+
+        store.setMeta(meta);
+        store.setPrfSupported(prfSupported);
+
+        // Restore session if page was reloaded while unlocked
+        const session = getPersistedSession();
+        if (meta && state === "locked" && session?.state === "unlocked") {
+          // For password wallets, restore the session password
+          if (!meta.usesPrf && session.password) {
+            store.setSessionPassword(session.password);
+          }
+          store.setState("unlocked");
+        } else {
+          store.setState(state);
+        }
       } catch (err) {
         console.error("Wallet initialization failed:", err);
         setError(err instanceof Error ? err.message : "Failed to initialize wallet");

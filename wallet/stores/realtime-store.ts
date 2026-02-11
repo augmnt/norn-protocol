@@ -12,7 +12,6 @@ import { WS_CAPS } from "@/lib/constants";
 
 interface RealtimeState {
   connected: boolean;
-  connectedCount: number;
   latestBlock: BlockInfo | null;
   recentBlocks: BlockInfo[];
   recentTransfers: TransferEvent[];
@@ -20,9 +19,7 @@ interface RealtimeState {
   tokenEvents: TokenEvent[];
   loomEvents: LoomExecutionEvent[];
 
-  incrementConnected: () => void;
-  decrementConnected: () => void;
-  resetConnected: () => void;
+  setConnected: (connected: boolean) => void;
   addBlock: (block: BlockInfo) => void;
   addTransfer: (transfer: TransferEvent) => void;
   addPendingTx: (tx: PendingTransactionEvent) => void;
@@ -33,7 +30,6 @@ interface RealtimeState {
 
 export const useRealtimeStore = create<RealtimeState>((set) => ({
   connected: false,
-  connectedCount: 0,
   latestBlock: null,
   recentBlocks: [],
   recentTransfers: [],
@@ -41,17 +37,7 @@ export const useRealtimeStore = create<RealtimeState>((set) => ({
   tokenEvents: [],
   loomEvents: [],
 
-  incrementConnected: () =>
-    set((state) => {
-      const count = state.connectedCount + 1;
-      return { connectedCount: count, connected: count > 0 };
-    }),
-  decrementConnected: () =>
-    set((state) => {
-      const count = Math.max(0, state.connectedCount - 1);
-      return { connectedCount: count, connected: count > 0 };
-    }),
-  resetConnected: () => set({ connectedCount: 0, connected: false }),
+  setConnected: (connected) => set({ connected }),
 
   addBlock: (block) =>
     set((state) => {
