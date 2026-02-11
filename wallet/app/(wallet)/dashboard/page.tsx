@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useWallet } from "@/hooks/use-wallet";
 import { useBalance } from "@/hooks/use-balance";
 import { useTokenBalances } from "@/hooks/use-token-balances";
@@ -15,6 +16,8 @@ import { AddressDisplay } from "@/components/ui/address-display";
 import { AmountDisplay } from "@/components/ui/amount-display";
 import { TimeAgo } from "@/components/ui/time-ago";
 import { LiveIndicator } from "@/components/ui/live-indicator";
+import { BalanceHistoryChart } from "@/components/charts/balance-history-chart";
+import { ActivityChart } from "@/components/charts/activity-chart";
 import { formatNorn, truncateAddress, truncateHash } from "@/lib/format";
 import { NATIVE_TOKEN_ID, QUERY_KEYS, STALE_TIMES } from "@/lib/constants";
 import { explorerAddressUrl, explorerBlockUrl, explorerTokenUrl, explorerTxUrl } from "@/lib/explorer";
@@ -23,8 +26,70 @@ import { rpcCall } from "@/lib/rpc";
 import { formatAmount } from "@/lib/format";
 import Link from "next/link";
 import { ArrowUpRight, QrCode, Coins, ArrowRightLeft, Copy } from "lucide-react";
-import type { TokenInfo } from "@/types";
+import type { TokenInfo, TransactionHistoryEntry } from "@/types";
 import { toast } from "sonner";
+
+const NORN_DECIMALS = 12;
+
+function buildChartData(
+  history: TransactionHistoryEntry[],
+  address: string,
+  currentBalance: string
+) {
+  const addr = address.toLowerCase();
+  // Sort oldest first
+  const sorted = [...history]
+    .filter((tx, i, arr) => arr.findIndex((t) => t.knot_id === tx.knot_id) === i)
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  // Walk backwards from current balance to reconstruct balance at each tx
+  let bal =
+    Number(currentBalance) / 10 ** NORN_DECIMALS;
+  const balancePoints: { balance: number; label: string; timestamp: number }[] =
+    [];
+
+  // Build from newest to oldest to reconstruct history
+  const reversed = [...sorted].reverse();
+  const snapshots: { balance: number; timestamp: number }[] = [
+    { balance: bal, timestamp: Date.now() },
+  ];
+  for (const tx of reversed) {
+    if (tx.token_id !== NATIVE_TOKEN_ID) continue;
+    const amt = Number(tx.amount) / 10 ** NORN_DECIMALS;
+    const isSent = tx.from.toLowerCase() === addr;
+    // Undo the transaction to get prior balance
+    bal = isSent ? bal + amt : bal - amt;
+    snapshots.push({ balance: Math.max(0, bal), timestamp: tx.timestamp });
+  }
+
+  // Reverse back to chronological order
+  snapshots.reverse();
+  for (const s of snapshots) {
+    const d = new Date(s.timestamp);
+    balancePoints.push({
+      balance: Math.round(s.balance * 100) / 100,
+      label: `${d.getMonth() + 1}/${d.getDate()}`,
+      timestamp: s.timestamp,
+    });
+  }
+
+  // Activity: group by day
+  const dayMap = new Map<string, { sent: number; received: number }>();
+  for (const tx of sorted) {
+    const d = new Date(tx.timestamp);
+    const key = `${d.getMonth() + 1}/${d.getDate()}`;
+    const entry = dayMap.get(key) ?? { sent: 0, received: 0 };
+    if (tx.from.toLowerCase() === addr) entry.sent++;
+    else entry.received++;
+    dayMap.set(key, entry);
+  }
+  const activityPoints = Array.from(dayMap.entries()).map(([label, v]) => ({
+    label,
+    ...v,
+  }));
+
+  return { balancePoints, activityPoints };
+}
 
 export default function DashboardPage() {
   const { activeAddress, activeAccount } = useWallet();
@@ -55,6 +120,14 @@ export default function DashboardPage() {
   const recentTxs = (history ?? [])
     .filter((tx, i, arr) => arr.findIndex((t) => t.knot_id === tx.knot_id) === i)
     .slice(0, 5);
+
+  const { balancePoints, activityPoints } = useMemo(
+    () =>
+      history && activeAddress && balance
+        ? buildChartData(history, activeAddress, balance.balance ?? "0")
+        : { balancePoints: [], activityPoints: [] },
+    [history, activeAddress, balance]
+  );
 
   return (
     <PageContainer>
@@ -107,6 +180,12 @@ export default function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Charts */}
+      <div className="grid gap-4 md:grid-cols-2 mb-4">
+        <BalanceHistoryChart data={balancePoints} />
+        <ActivityChart data={activityPoints} />
+      </div>
 
       {/* Two-Column Grid */}
       <div className="grid gap-4 md:grid-cols-2">
