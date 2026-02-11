@@ -3,44 +3,216 @@ const steps = [
     number: "01",
     title: "Threads",
     description:
-      "Each user owns a personal state chain. Your balance, your names, your history — all yours.",
+      "Personal state chains. Each user maintains their own signed history of state transitions, stored locally.",
+    art: `      ╔═══════════════════════════════════════════════════════╗
+      ║                                                       ║
+      ╠═══╤═══╤═══╤═══╤═══╤═══╤═══╤═══╤═══╤═══╤═══╤═══╤═══╣
+      │   │   │   │   │   │   │   │   │   │   │   │   │   │
+      │   │   │   │   │   │   │   │   │   │   │   │   │   │
+ ─────┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼─────
+      │   │   │   │   │   │   │   │   │   │   │   │   │   │
+ ═════╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═════
+      │   │   │   │   │   │   │   │   │   │   │   │   │   │
+ ─────┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼─────
+      │   │   │   │   │   │   │   │   │   │   │   │   │   │
+ ═════╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═════
+      │   │   │   │   │   │   │   │   │   │   │   │   │   │
+ ─────┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼─────
+      │   │   │   │   │   │   │   │   │   │   │   │   │   │
+ ═════╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═══╪═════
+      │   │   │   │   │   │   │   │   │   │   │   │   │   │
+      │   │   │   │   │   │   │   │   │   │   │   │   │   │
+      ╚═══╧═══╧═══╧═══╧═══╧═══╧═══╧═══╧═══╧═══╧═══╧═══╧═══╝`,
   },
   {
     number: "02",
     title: "Knots",
     description:
-      "Transact by co-signing state transitions with your counterparty. Instant, free, private.",
+      "Atomic state transitions. Bilateral agreements that tie Threads together, signed by all participants.",
+    art: `\\           |           |           |           /
+ \\          |           |           |          /
+  \\         |           |           |         /
+   \\        |           |           |        /
+    \\       |           |           |       /
+     \\      |           |           |      /
+──────\\─────┼───────────┼───────────┼─────/──────
+       \\    │           │           │    /
+        \\   │           │           │   /
+─────────\\──┼───────────┼───────────┼──/─────────
+          \\ │           │           │ /
+           \\│           │           │/
+────────────┼───────────┼───────────┼────────────
+           /│           │           │\\
+          / │           │           │ \\
+─────────/──┼───────────┼───────────┼──\\─────────
+        /   │           │           │   \\
+       /    │           │           │    \\
+──────/─────┼───────────┼───────────┼─────\\──────
+     /      |           |           |      \\
+    /       |           |           |       \\
+   /        |           |           |        \\
+  /         |           |           |         \\
+ /          |           |           |          \\
+/           |           |           |           \\`,
   },
   {
     number: "03",
     title: "Weave",
     description:
-      "Commit hashes to the anchor chain periodically. Fraud proofs punish cheating.",
+      "The anchor chain. A minimal BFT blockchain that processes commitments and fraud proofs.",
+    art: `┌──────────────────────────────────────────────────────────────────┐
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │                        BEAM                              │  │
+│  └──┬──┬──┬──┬──┬──┬──┬──┬──┬──┬──┬──┬──┬──┬──┬──┬──┬──┬──┘  │
+│     │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │     │
+│     │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │     │
+│     │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │     │
+│  ───┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼───  │
+│     │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │     │
+│  ═══╪══╪══╪══╪══╪══╪══╪══╪══╪══╪══╪══╪══╪══╪══╪══╪══╪══╪═══  │
+│     │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │     │
+│  ───┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼───  │
+│     │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │     │
+│◁━━━━╋━━╋━━╋━━╋━━╋━━╋━━╋━━╋━━╋━━╋━━╋━━╋━━╋━━╋━━╋━━╋━━╋━━━▷  │
+│     │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │     │
+│  ───┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼───  │
+│     │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │     │
+│  ═══╪══╪══╪══╪══╪══╪══╪══╪══╪══╪══╪══╪══╪══╪══╪══╪══╪══╪═══  │
+│     │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │     │
+│  ───┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼──┼───  │
+│     │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │     │
+│     │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │     │
+│     │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │     │
+│  ┌──┴──┴──┴──┴──┴──┴──┴──┴──┴──┴──┴──┴──┴──┴──┴──┴──┴──┴──┐  │
+│  │                       CLOTH                              │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────┘`,
+  },
+  {
+    number: "04",
+    title: "Looms",
+    description:
+      "Off-chain smart contracts. WASM programs with on-chain fraud proof guarantees.",
+    art: `                                │
+                     ┌──────────┤
+                     │          │
+          ┌──────────┤     ●────┼──────────●
+          │          │          │           │
+●─────────┤     ●────┼──────────┤      ┌───┤
+          │          │          │      │    │
+          ├──────────┤     ●────┼──────┤    │
+          │          │          │      │    │
+     ●────┤     ┌────┼──────────┤      └───┤
+          │     │    │          │           │
+          ├─────┤    ├──────────┤      ●────┼──────●
+          │     │    │          │           │
+●─────────┤     └────┼──────────┤      ┌───┤
+          │          │          │      │    │
+          ├──────────┤     ●────┼──────┤    │
+          │          │          │      │    │
+     ●────┤     ●────┼──────────┤      └───┤
+          │          │          │           │
+          └──────────┤     ●────┼──────────●
+                     │          │
+                     └──────────┤
+                                │`,
+  },
+  {
+    number: "05",
+    title: "Spindles",
+    description:
+      "Watchtower services. Monitor the Weave and submit fraud proofs when misbehavior is detected.",
+    art: `╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷ ╷
+┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼
+│ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ │
+┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼
+│ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ │
+┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼
+│ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ │
+┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼
+│ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ │
+┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼
+│ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ │
+┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼
+│ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ │
+┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼
+│ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ │
+┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼ ┼─┼
+╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵ ╵`,
+  },
+  {
+    number: "06",
+    title: "Relays",
+    description:
+      "P2P message buffers. Asynchronous delivery between Threads via the libp2p stack.",
+    art: `                          │
+                          │
+                          │
+                     ─────┼─────
+                  ─── ────┼──── ───
+               ──── ──────┼────── ────
+             ───── ───────┼─────── ─────
+           ─────  ────────┼────────  ─────
+         ──────  ─────────┼─────────  ──────
+        ──────  ──────────┼──────────  ──────
+       ──────  ───────────┼───────────  ──────
+      ──────  ────────────┼────────────  ──────
+      ──────  ────────────┼────────────  ──────
+       ──────  ───────────┼───────────  ──────
+        ──────  ──────────┼──────────  ──────
+         ──────  ─────────┼─────────  ──────
+           ─────  ────────┼────────  ─────
+             ───── ───────┼─────── ─────
+               ──── ──────┼────── ────
+                  ─── ────┼──── ───
+                     ─────┼─────
+                          │
+                          │
+                          │`,
   },
 ];
 
 export function HowItWorks() {
   return (
     <section className="border-t">
-      <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-        <h2 className="text-heading mb-12">How it works</h2>
-        <div className="grid gap-12 sm:grid-cols-3">
+      <div className="mx-auto max-w-7xl px-4 py-24 sm:px-6 sm:py-32 lg:px-8">
+        <div className="mb-20">
+          <p className="font-mono text-sm text-norn mb-4 tracking-wide">
+            architecture
+          </p>
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-5">
+            Six primitives, one protocol
+          </h2>
+          <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
+            Users transact peer-to-peer. The chain only exists to settle
+            disputes and anchor history.
+          </p>
+        </div>
+
+        <div className="grid gap-x-10 gap-y-20 sm:grid-cols-2 lg:grid-cols-3">
           {steps.map((step) => (
-            <div key={step.number}>
-              <p className="font-mono text-sm text-norn mb-3">{step.number}</p>
-              <h3 className="text-xl font-semibold mb-2">{step.title}</h3>
-              <p className="text-muted-foreground leading-relaxed">
-                {step.description}
-              </p>
+            <div key={step.number} className="group flex flex-col">
+              <div className="flex-1 flex items-end overflow-hidden mb-8">
+                <pre className="font-mono text-[6.5px] sm:text-[7.5px] lg:text-[8px] leading-[1.15] text-muted-foreground/20 group-hover:text-norn/30 transition-colors duration-500 select-none whitespace-pre">
+                  {step.art}
+                </pre>
+              </div>
+              <div>
+                <div className="flex items-baseline gap-3 mb-1.5">
+                  <span className="font-mono text-[11px] text-muted-foreground/40 tabular-nums">
+                    {step.number}
+                  </span>
+                  <h3 className="text-base font-semibold tracking-tight">
+                    {step.title}
+                  </h3>
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed pl-[calc(11px+0.75rem)]">
+                  {step.description}
+                </p>
+              </div>
             </div>
           ))}
         </div>
-        <p className="mt-12 text-muted-foreground max-w-2xl">
-          Need smart contracts?{" "}
-          <span className="text-foreground">
-            Looms run WebAssembly off-chain with on-chain guarantees.
-          </span>
-        </p>
       </div>
     </section>
   );
