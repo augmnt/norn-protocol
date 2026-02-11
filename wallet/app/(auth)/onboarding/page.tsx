@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-type Step = "welcome" | "create" | "import" | "backup" | "success";
+type Step = "welcome" | "create" | "import" | "recover" | "backup" | "success";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -75,6 +75,22 @@ export default function OnboardingPage() {
         return;
       }
       toast.error(auth.error || "Failed to create wallet");
+    }
+  };
+
+  const handleRecover = async () => {
+    try {
+      const result = await auth.recover();
+      setCreatedAddress(result.address);
+      setStep("success");
+      toast.success("Wallet recovered successfully");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      if (msg.includes("not allowed") || msg.includes("abort")) {
+        // User cancelled the passkey prompt
+        return;
+      }
+      toast.error("No passkey found for this device");
     }
   };
 
@@ -182,6 +198,26 @@ export default function OnboardingPage() {
                 <Import className="mr-2 h-4 w-4" />
                 Import Existing Wallet
               </Button>
+              {prfSupported && (
+                <Button
+                  variant="ghost"
+                  className="w-full h-10 text-muted-foreground"
+                  onClick={handleRecover}
+                  disabled={auth.loading}
+                >
+                  {auth.loading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      Recovering...
+                    </span>
+                  ) : (
+                    <>
+                      <Fingerprint className="mr-2 h-4 w-4" />
+                      Recover with Passkey
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
           </div>
         )}

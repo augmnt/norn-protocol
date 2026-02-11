@@ -5,6 +5,7 @@ import { useWalletStore } from "@/stores/wallet-store";
 import {
   createWallet,
   createWalletWithPassword,
+  recoverWallet,
   importFromPrivateKey,
   importFromMnemonic,
   unlock,
@@ -61,6 +62,24 @@ export function usePasskeyAuth() {
     },
     [store]
   );
+
+  const recover = useCallback(async (): Promise<CreateWalletResult> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await recoverWallet();
+      const meta = await loadWalletMeta();
+      store.getState().setMeta(meta);
+      store.getState().setState("unlocked");
+      return result;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to recover wallet";
+      setError(msg);
+      throw e;
+    } finally {
+      setLoading(false);
+    }
+  }, [store]);
 
   const importKey = useCallback(
     async (hex: string, name: string, password?: string): Promise<CreateWalletResult> => {
@@ -173,6 +192,7 @@ export function usePasskeyAuth() {
     error,
     create,
     createWithPassword,
+    recover,
     importKey,
     importMnemonic,
     unlock: unlockWallet,

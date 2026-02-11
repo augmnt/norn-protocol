@@ -1,7 +1,7 @@
 "use client";
 
 import { Wallet, toHex, fromHex } from "@norn-protocol/sdk";
-import { isPrfSupported, createPasskeyWithPrf, authenticateWithPrf } from "./passkey";
+import { isPrfSupported, createPasskeyWithPrf, authenticateWithPrf, discoverPasskeyWithPrf } from "./passkey";
 import { deriveSalt, deriveKeypairFromPrf, zeroBytes } from "./passkey-crypto";
 import { loadWalletMeta, saveWalletMeta, deleteWalletMeta } from "./passkey-storage";
 import { createEncryptedKey, decryptKey, encryptExistingKey } from "./passkey-fallback";
@@ -133,6 +133,40 @@ export async function createWalletWithPassword(
 
   await saveWalletMeta(meta);
   return { address, publicKeyHex, mnemonic };
+}
+
+/** Recover a PRF wallet using discoverable credentials (no stored metadata needed). */
+export async function recoverWallet(): Promise<CreateWalletResult> {
+  const rpId = getRpId();
+  const accountIndex = 0;
+  const salt = deriveSalt(accountIndex);
+
+  const { credentialId, prfOutput } = await discoverPasskeyWithPrf(rpId, salt);
+
+  const keypair = deriveKeypairFromPrf(prfOutput);
+  const address = keypair.addressHex;
+  const publicKeyHex = keypair.publicKeyHex;
+
+  zeroBytes(prfOutput, keypair.privateKey);
+
+  const meta: StoredWalletMeta = {
+    credentialId,
+    accounts: [
+      {
+        index: accountIndex,
+        label: "Recovered",
+        address,
+        publicKeyHex,
+        createdAt: Date.now(),
+      },
+    ],
+    usesPrf: true,
+    rpId,
+    createdAt: Date.now(),
+  };
+
+  await saveWalletMeta(meta);
+  return { address, publicKeyHex };
 }
 
 /** Import wallet from hex-encoded private key. */

@@ -139,6 +139,54 @@ export async function createPasskeyWithPrf(
  * Authenticate with an existing passkey and get PRF output.
  * Returns 32 bytes of deterministic key material.
  */
+/**
+ * Discover an existing passkey (no credential ID needed) and get PRF output.
+ * Uses discoverable credentials — the OS shows a picker for available passkeys.
+ * Returns the credential ID and 32 bytes of deterministic key material.
+ */
+export async function discoverPasskeyWithPrf(
+  rpId: string,
+  salt: Uint8Array
+): Promise<{ credentialId: string; prfOutput: Uint8Array }> {
+  const getOptions: CredentialRequestOptions = {
+    publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rpId,
+      userVerification: "required",
+      timeout: 60000,
+      extensions: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        prf: {
+          eval: {
+            first: salt.buffer as ArrayBuffer,
+          },
+        },
+      } as AuthenticationExtensionsClientInputs,
+    },
+  };
+
+  const assertion = (await navigator.credentials.get(
+    getOptions
+  )) as PublicKeyCredential;
+
+  const credentialId = bufferToBase64url(assertion.rawId);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const prfResults = (assertion.getClientExtensionResults() as any)?.prf;
+
+  if (!prfResults?.results?.first) {
+    throw new Error("PRF extension not available or failed");
+  }
+
+  const raw = new Uint8Array(prfResults.results.first as ArrayBuffer);
+  if (raw.length !== 32) {
+    const { blake3Hash } = await import("@norn-protocol/sdk");
+    return { credentialId, prfOutput: blake3Hash(raw) };
+  }
+
+  return { credentialId, prfOutput: raw };
+}
+
 export async function authenticateWithPrf(
   rpId: string,
   credentialId: string,
