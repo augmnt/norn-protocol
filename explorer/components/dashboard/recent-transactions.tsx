@@ -7,7 +7,7 @@ import { TimeAgo } from "@/components/ui/time-ago";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useRealtimeStore } from "@/stores/realtime-store";
 import { useRecentHistory } from "@/hooks/use-recent-history";
-import { truncateAddress, truncateHash, formatNorn } from "@/lib/format";
+import { truncateAddress, truncateHash } from "@/lib/format";
 import type { TransferEvent, TransactionHistoryEntry } from "@/types";
 
 /** Unified row for display — merges WS events and RPC history. */
@@ -17,6 +17,7 @@ interface TxRow {
   from: string;
   to: string;
   amount: string;
+  human_readable: string;
   symbol: string;
   block_height?: number;
   timestamp?: number;
@@ -92,7 +93,7 @@ export function RecentTransactions() {
                     </Link>
                   </span>
                   <span className="text-xs font-mono tabular-nums text-muted-foreground">
-                    {formatNorn(tx.amount)} {tx.symbol}
+                    {tx.human_readable} {tx.symbol}
                   </span>
                 </div>
               </div>
@@ -122,6 +123,7 @@ function mergeTransactions(
       from: tx.from,
       to: tx.to,
       amount: tx.amount,
+      human_readable: tx.human_readable,
       symbol: tx.symbol,
       block_height: tx.block_height,
       timestamp: tx.timestamp,
@@ -141,6 +143,7 @@ function mergeTransactions(
         from: tx.from,
         to: tx.to,
         amount: tx.amount,
+        human_readable: tx.human_readable,
         symbol: tx.symbol ?? "NORN",
         block_height: tx.block_height ?? undefined,
       });

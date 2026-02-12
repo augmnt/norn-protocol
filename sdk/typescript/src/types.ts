@@ -303,6 +303,7 @@ export interface TransferEvent {
   from: AddressHex;
   to: AddressHex;
   amount: string;
+  human_readable: string;
   token_id?: HashHex;
   symbol?: string;
   memo?: string;

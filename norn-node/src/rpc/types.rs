@@ -375,6 +375,8 @@ pub struct TransferEvent {
     pub to: String,
     /// Amount as string (u128).
     pub amount: String,
+    /// Human-readable formatted amount (e.g. "1,150" for 1150 with 0 fractional).
+    pub human_readable: String,
     /// Token ID as hex string (None = native NORN).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token_id: Option<String>,

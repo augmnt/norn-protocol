@@ -782,6 +782,7 @@ impl NornRpcServer for NornRpcImpl {
                 from: format_address(&faucet_address),
                 to: format_address(&address),
                 amount: faucet_amount.to_string(),
+                human_readable: format_token_amount(faucet_amount, NORN_DECIMALS as u8),
                 token_id: None,
                 symbol: Some("NORN".to_string()),
                 memo: Some("faucet".to_string()),
@@ -903,6 +904,7 @@ impl NornRpcServer for NornRpcImpl {
                         .map(|t| t.symbol.clone())
                         .unwrap_or_else(|| hex::encode(&token_id[..4]))
                 };
+                let human_readable = format_amount_for_token(amount, &token_id, &sm);
                 drop(sm);
                 self.metrics.knots_validated.inc();
 
@@ -934,6 +936,7 @@ impl NornRpcServer for NornRpcImpl {
                     from: format_address(&from),
                     to: format_address(&to),
                     amount: amount.to_string(),
+                    human_readable,
                     token_id: if token_id == native {
                         None
                     } else {

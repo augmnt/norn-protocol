@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { config } from "@/lib/config";
 import { useRealtimeStore } from "@/stores/realtime-store";
 import { QUERY_KEYS } from "@/lib/constants";
-import { formatNorn, truncateAddress } from "@/lib/format";
+import { truncateAddress } from "@/lib/format";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 
 export function SubscriptionsProvider({
@@ -82,7 +82,7 @@ export function SubscriptionsProvider({
         }
 
         toast("Transfer", {
-          description: `${truncateAddress(transfer.from)} → ${truncateAddress(transfer.to)}: ${formatNorn(transfer.amount)} NORN`,
+          description: `${truncateAddress(transfer.from)} → ${truncateAddress(transfer.to)}: ${transfer.human_readable} ${transfer.symbol ?? "NORN"}`,
           duration: 4000,
         });
       }

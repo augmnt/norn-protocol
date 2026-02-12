@@ -27,6 +27,7 @@ const columns = [
     render: (tx: TransferEvent) => (
       <AmountDisplay
         amount={tx.amount}
+        humanReadable={tx.human_readable}
         symbol={tx.symbol ?? "NORN"}
       />
     ),
