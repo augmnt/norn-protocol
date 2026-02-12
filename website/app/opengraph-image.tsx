@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 
 export const runtime = "edge";
-export const alt = "Norn Protocol — The chain is a courtroom, not a bank";
+export const alt = "Norn Protocol — You hold the thread";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -211,9 +211,9 @@ export default async function Image() {
             }}
           >
             <span style={{ color: "rgba(200,205,215,0.7)" }}>
-              The chain is a courtroom,
+              You hold
             </span>
-            <span style={{ color: "rgba(160,165,175,0.35)" }}>not a bank.</span>
+            <span style={{ color: "rgba(160,165,175,0.35)" }}>the thread.</span>
           </div>
 
           {/* Subtitle */}

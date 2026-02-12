@@ -12,7 +12,7 @@
 
 1. [Abstract](#1-abstract)
 2. [Introduction -- The Problem with Current Blockchains](#2-introduction--the-problem-with-current-blockchains)
-3. [Design Philosophy -- The Courtroom Model](#3-design-philosophy--the-courtroom-model)
+3. [Design Philosophy -- Thread-Centric State](#3-design-philosophy--thread-centric-state)
 4. [Protocol Architecture](#4-protocol-architecture)
 5. [Token Economics](#5-token-economics)
 6. [Consensus -- HotStuff BFT](#6-consensus--hotstuff-bft)
@@ -30,7 +30,7 @@
 
 ## 1. Abstract
 
-Norn is a thread-centric blockchain protocol that reimagines the relationship between users and the chain. Rather than forcing every transaction through global consensus -- the bottleneck that limits every existing blockchain -- Norn treats the chain as a **courtroom**, not a bank. Users own their state through personal cryptographic chains called *Threads*. Transfers are signed by the sender and validated by the network. Clients can independently verify their balances using Merkle proofs against the on-chain state root. This architecture achieves what no existing protocol can deliver simultaneously: zero-fee transfers, fast finality in ~3 second blocks, phone-runnable full nodes with minimal storage requirements, and cryptographic state verification that lets clients prove their balances without trusting the node. For complex multi-party logic, off-chain smart contracts called *Looms* provide WebAssembly-powered programmability with on-chain fraud proof guarantees. The result is a protocol where the chain is a lightweight validator and arbiter -- it validates state transitions and guarantees correctness, but users own their state.
+Norn is a thread-centric blockchain protocol that reimagines the relationship between users and the chain. Rather than forcing every transaction through global consensus -- the bottleneck that limits every existing blockchain -- Norn puts state ownership back in your hands. You hold the thread. Users own their state through personal cryptographic chains called *Threads*. Transfers are signed by the sender and validated by the network. Clients can independently verify their balances using Merkle proofs against the on-chain state root. This architecture achieves what no existing protocol can deliver simultaneously: zero-fee transfers, fast finality in ~3 second blocks, phone-runnable full nodes with minimal storage requirements, and cryptographic state verification that lets clients prove their balances without trusting the node. For complex multi-party logic, off-chain smart contracts called *Looms* provide WebAssembly-powered programmability with on-chain fraud proof guarantees. The result is a protocol where the chain is a lightweight validator and arbiter -- it validates state transitions and guarantees correctness, but users own their state.
 
 ---
 
@@ -74,7 +74,7 @@ By inverting the traditional blockchain architecture, Norn achieves properties t
 
 ---
 
-## 3. Design Philosophy -- The Courtroom Model
+## 3. Design Philosophy -- Thread-Centric State
 
 ### 3.1 Six Principles
 

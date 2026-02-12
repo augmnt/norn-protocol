@@ -4,7 +4,7 @@ export const metadata = {
 
 # Architecture
 
-Norn reimagines the relationship between users and the chain. Rather than forcing every transaction through global consensus, Norn treats the chain as a **courtroom**, not a bank.
+Norn reimagines the relationship between users and the chain. Rather than forcing every transaction through global consensus, Norn puts state ownership back in your hands. **You hold the thread.**
 
 Users own their state through personal cryptographic chains called *Threads*. Transfers are signed by the sender and validated by the network. Clients can independently verify their balances using Merkle proofs against the on-chain state root.
 
@@ -19,9 +19,9 @@ Users own their state through personal cryptographic chains called *Threads*. Tr
 | **Spindles** | Watchtower services -- monitor the Weave on behalf of offline users and submit fraud proofs when misbehavior is detected. |
 | **Relays** | P2P message buffers -- asynchronous message delivery between Threads via the libp2p protocol stack. |
 
-## The Courtroom Model
+## Thread-Centric State
 
-Traditional blockchains act as banks: they hold your state and control access. This creates inherent scalability limits -- throughput is bounded by block size and consensus overhead.
+Traditional blockchains hold your state and control access. This creates inherent scalability limits -- throughput is bounded by block size and consensus overhead.
 
 Norn inverts this model. Users own their state through Threads -- the chain validates transitions and guarantees correctness. The anchor chain (the Weave) serves as a lightweight validator and arbiter:
 

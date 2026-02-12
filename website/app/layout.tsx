@@ -20,7 +20,7 @@ const mono = JetBrains_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://norn.network"),
   title: {
-    default: "Norn Protocol — The chain is a courtroom, not a bank",
+    default: "Norn Protocol — You hold the thread",
     template: "%s | Norn Protocol",
   },
   description:
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "Norn Protocol" }],
   openGraph: {
-    title: "Norn Protocol — The chain is a courtroom, not a bank",
+    title: "Norn Protocol — You hold the thread",
     description:
       "A thread-centric blockchain where users own their state. Zero-fee transfers, fast finality.",
     siteName: "Norn Protocol",

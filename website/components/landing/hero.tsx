@@ -54,9 +54,9 @@ export function Hero() {
           <div className="max-w-2xl flex-1">
             <p className="font-mono text-sm text-norn mb-6">norn protocol</p>
             <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl leading-[1.1]">
-              The chain is a courtroom,
+              You hold
               <br />
-              <span className="text-muted-foreground">not a bank.</span>
+              <span className="text-muted-foreground">the thread.</span>
             </h1>
             <p className="mt-6 text-lg text-muted-foreground max-w-2xl leading-relaxed">
               Norn is a blockchain where users own their state through personal
