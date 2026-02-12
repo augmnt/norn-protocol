@@ -10,6 +10,9 @@ import type { BlockInfo } from "@/types";
 
 const CHART_BLOCK_COUNT = 30;
 
+/** Block times above this threshold (in seconds) are idle gaps, not meaningful measurements. */
+const MAX_MEANINGFUL_BLOCK_TIME = 30;
+
 export interface BlockChartPoint {
   height: number;
   timestamp: number;
@@ -28,9 +31,14 @@ function buildChartData(blocks: BlockInfo[]): BlockChartPoint[] {
   const sorted = [...blocks].sort((a, b) => a.height - b.height);
   return sorted.map((block, i) => {
     const prevTimestamp = i > 0 ? sorted[i - 1].timestamp : null;
-    const blockTime =
+    const rawBlockTime =
       prevTimestamp !== null
         ? Math.max(0, block.timestamp - prevTimestamp)
+        : null;
+    // Treat idle gaps (no transactions = no blocks produced) as null
+    const blockTime =
+      rawBlockTime !== null && rawBlockTime <= MAX_MEANINGFUL_BLOCK_TIME
+        ? rawBlockTime
         : null;
 
     const totalActivity =
@@ -123,12 +131,12 @@ export function useChartData() {
       .map((d) => d.blockTime)
       .filter((t): t is number => t !== null && t > 0);
     if (times.length === 0) return null;
-    // Use median to avoid skew from idle gaps between blocks
     const sorted = [...times].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
-    const median = sorted.length % 2 === 0
-      ? (sorted[mid - 1] + sorted[mid]) / 2
-      : sorted[mid];
+    const median =
+      sorted.length % 2 === 0
+        ? (sorted[mid - 1] + sorted[mid]) / 2
+        : sorted[mid];
     return Math.round(median);
   }, [chartData]);
 
