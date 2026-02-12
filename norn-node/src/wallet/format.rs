@@ -33,7 +33,8 @@ pub fn style_dim() -> Style {
 // ── Amount formatting ───────────────────────────────────────────────────────
 
 /// Format an Amount using a specific number of decimal places.
-/// For example, `format_token_amount(2_110_000_00, 8)` => `"2.11000000"`.
+/// Trailing zeros after the decimal point are stripped.
+/// For example, `format_token_amount(2_110_000_00, 8)` => `"2.11"`.
 pub fn format_token_amount(amount: Amount, decimals: u8) -> String {
     if decimals == 0 {
         return format_with_commas(amount);
@@ -43,10 +44,15 @@ pub fn format_token_amount(amount: Amount, decimals: u8) -> String {
     let whole = amount / divisor;
     let frac = amount % divisor;
 
+    if frac == 0 {
+        return format_with_commas(whole);
+    }
+
     let whole_str = format_with_commas(whole);
     let frac_str = format!("{:0>width$}", frac, width = decimal_places);
+    let trimmed = frac_str.trim_end_matches('0');
 
-    format!("{}.{}", whole_str, frac_str)
+    format!("{}.{}", whole_str, trimmed)
 }
 
 /// Format a token amount with its symbol name.
@@ -54,7 +60,7 @@ pub fn format_token_amount_with_name(amount: Amount, decimals: u8, symbol: &str)
     format!("{} {}", format_token_amount(amount, decimals), symbol)
 }
 
-/// Format a native NORN Amount into a human-readable string like "1,234.567890120000".
+/// Format a native NORN Amount into a human-readable string like "1,234.56789012".
 pub fn format_amount(amount: Amount) -> String {
     format_token_amount(amount, NORN_DECIMALS as u8)
 }
@@ -313,24 +319,24 @@ mod tests {
 
     #[test]
     fn test_format_amount_zero() {
-        assert_eq!(format_amount(0), "0.000000000000");
+        assert_eq!(format_amount(0), "0");
     }
 
     #[test]
     fn test_format_amount_one_norn() {
-        assert_eq!(format_amount(ONE_NORN), "1.000000000000");
+        assert_eq!(format_amount(ONE_NORN), "1");
     }
 
     #[test]
     fn test_format_amount_fractional() {
-        assert_eq!(format_amount(ONE_NORN / 2), "0.500000000000");
+        assert_eq!(format_amount(ONE_NORN / 2), "0.5");
     }
 
     #[test]
     fn test_format_amount_large() {
         assert_eq!(
             format_amount(1_234 * ONE_NORN + 567890120000),
-            "1,234.567890120000"
+            "1,234.56789012"
         );
     }
 
@@ -398,7 +404,7 @@ mod tests {
     #[test]
     fn test_format_token_amount_8_decimals() {
         // 211_000_000 raw with 8 decimals = 2.11
-        assert_eq!(format_token_amount(211_000_000, 8), "2.11000000");
+        assert_eq!(format_token_amount(211_000_000, 8), "2.11");
     }
 
     #[test]
@@ -410,7 +416,7 @@ mod tests {
     #[test]
     fn test_format_token_amount_6_decimals() {
         // 1_500_000 raw with 6 decimals = 1.5
-        assert_eq!(format_token_amount(1_500_000, 6), "1.500000");
+        assert_eq!(format_token_amount(1_500_000, 6), "1.5");
     }
 
     #[test]

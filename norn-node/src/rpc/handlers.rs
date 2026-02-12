@@ -28,19 +28,19 @@ use norn_types::constants::{MAX_SUPPLY, NORN_DECIMALS};
 use norn_types::primitives::NATIVE_TOKEN_ID;
 
 use crate::wallet::format::{
-    format_address, format_amount_with_symbol, format_token_amount_with_name,
+    format_address, format_amount_with_symbol, format_token_amount,
 };
 
 /// Format an amount using the correct decimals for the given token.
-/// Looks up the token in the state manager's registry; falls back to NORN decimals for native.
+/// Returns just the numeric string (no symbol) for programmatic use by frontends.
 fn format_amount_for_token(amount: u128, token_id: &[u8; 32], sm: &StateManager) -> String {
     if *token_id == NATIVE_TOKEN_ID {
-        format_token_amount_with_name(amount, NORN_DECIMALS as u8, "NORN")
+        format_token_amount(amount, NORN_DECIMALS as u8)
     } else if let Some(record) = sm.get_token(token_id) {
-        format_token_amount_with_name(amount, record.decimals, &record.symbol)
+        format_token_amount(amount, record.decimals)
     } else {
-        // Unknown token — fall back to raw amount with truncated ID.
-        format!("{} (token:{}...)", amount, &hex::encode(token_id)[..8])
+        // Unknown token — fall back to raw amount.
+        amount.to_string()
     }
 }
 
