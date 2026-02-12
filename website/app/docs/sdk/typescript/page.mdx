@@ -22,21 +22,47 @@ npm run build
 
 ## Wallet
 
-The `Wallet` class manages Ed25519 key pairs and BIP-39 mnemonics.
+The `Wallet` class manages Ed25519 key pairs.
 
 ```typescript
-import { Wallet } from "@norn-protocol/sdk";
+import { Wallet, addressToHex } from "@norn-protocol/sdk";
 
-// Generate a new wallet with a random mnemonic
+// Generate a new wallet with a random private key
 const wallet = Wallet.generate();
-console.log(wallet.address);    // "0x..." (20-byte hex)
-console.log(wallet.mnemonic);   // 12-word BIP-39 phrase
 
-// Restore from a private key
-const wallet2 = Wallet.fromPrivateKey("abcd1234...");
+// Wallet properties are Uint8Array, not strings
+wallet.privateKey; // Uint8Array (32 bytes)
+wallet.publicKey;  // Uint8Array (32 bytes)
+wallet.address;    // Uint8Array (20 bytes)
 
-// Restore from a mnemonic
-const wallet3 = Wallet.fromMnemonic("word1 word2 ...");
+// Use convenience getters for hex strings
+wallet.addressHex;   // "0x..." (20-byte hex with prefix)
+wallet.publicKeyHex; // hex string (no prefix)
+
+// Or use the utility function
+addressToHex(wallet.address); // "0x..."
+```
+
+### Creating Wallets
+
+```typescript
+// From a hex-encoded private key (most common)
+const wallet = Wallet.fromPrivateKeyHex("abcd1234...");
+const wallet2 = Wallet.fromPrivateKeyHex("0xabcd1234..."); // 0x prefix OK
+
+// From raw bytes
+const keyBytes = new Uint8Array(32);
+const wallet3 = Wallet.fromPrivateKey(keyBytes);
+
+// Generate a random wallet
+const wallet4 = Wallet.generate();
+```
+
+### Signing
+
+```typescript
+// Sign a message (returns 64-byte Uint8Array signature)
+const signature = wallet.sign(messageBytes);
 ```
 
 ## NornClient
@@ -47,6 +73,13 @@ The `NornClient` class provides RPC methods for reading chain state and submitti
 import { NornClient } from "@norn-protocol/sdk";
 
 const client = new NornClient({ url: "https://seed.norn.network" });
+
+// With API key for mutation endpoints
+const authedClient = new NornClient({
+  url: "https://seed.norn.network",
+  apiKey: "your-api-key",
+  timeout: 15_000, // optional, default 10s
+});
 ```
 
 ### Read-Only Methods
@@ -59,20 +92,28 @@ const balance = await client.getBalance("0x...", nativeTokenId);
 // Get block by height
 const block = await client.getBlock(42);
 
+// Get detailed block transactions (transfers, token ops, names, looms)
+const blockTxs = await client.getBlockTransactions(42);
+
 // Get latest block
 const latest = await client.getLatestBlock();
 
 // Get weave state
 const state = await client.getWeaveState();
 
-// Get thread state (balances, names, etc.)
+// Get thread info and state
+const thread = await client.getThread("0x...");
 const threadState = await client.getThreadState("0x...");
 
 // Resolve a NornName
 const resolved = await client.resolveName("alice");
 
+// List names owned by an address
+const names = await client.listNames("0x...");
+
 // Get token info
 const token = await client.getTokenBySymbol("MTK");
+const tokenById = await client.getTokenInfo("0x...");
 
 // List tokens
 const tokens = await client.listTokens(10, 0);
@@ -80,26 +121,67 @@ const tokens = await client.listTokens(10, 0);
 // Get loom info
 const loom = await client.getLoomInfo("0x...");
 
-// Get node health
-const health = await client.health();
+// List looms
+const looms = await client.listLooms(10, 0);
 
-// Get transaction history
+// Get node health and info
+const health = await client.health();
+const nodeInfo = await client.getNodeInfo();
+
+// Get transaction history for an address
 const history = await client.getTransactionHistory("0x...", 20, 0);
+
+// Get recent transfers across all addresses
+const recent = await client.getRecentTransfers(20, 0);
+
+// Get a single transaction by knot ID
+const tx = await client.getTransaction("0x...");
+
+// Get fee estimate
+const fees = await client.getFeeEstimate();
+
+// Get validator set
+const validators = await client.getValidatorSet();
+
+// Get staking info
+const staking = await client.getStakingInfo();
+
+// Query a loom contract (read-only)
+const queryResult = await client.queryLoom("0xloomId...", "0xinputHex...");
+
+// Get metrics (Prometheus format)
+const metrics = await client.getMetrics();
 ```
 
 ### Mutation Methods
 
-Mutation methods require a signed transaction (hex-encoded borsh):
+Mutation methods require signed transaction data (hex-encoded borsh). Use the transaction builders below to construct these.
 
 ```typescript
 // Submit a transfer
 const result = await client.submitKnot(signedTransferHex);
 
-// Register a name (requires name, owner hex, and signed knot hex)
+// Register a name
 const result = await client.registerName("alice", ownerHex, signedNameHex);
 
 // Create a token
 const result = await client.createToken(signedTokenDefHex);
+
+// Mint / burn tokens
+const result = await client.mintToken(signedMintHex);
+const result = await client.burnToken(signedBurnHex);
+
+// Deploy a loom (smart contract)
+const result = await client.deployLoom(registrationHex);
+
+// Upload bytecode to a loom
+const result = await client.uploadBytecode(loomId, bytecodeHex, initMsgHex);
+
+// Execute a loom contract
+const result = await client.executeLoom(loomId, inputHex, senderHex);
+
+// Request testnet faucet tokens
+const result = await client.faucet("0xaddress...");
 ```
 
 ## Transaction Builders
@@ -117,22 +199,24 @@ import {
   buildTokenBurn,
   parseAmount,
   formatAmount,
+  addressToHex,
 } from "@norn-protocol/sdk";
 
-const wallet = Wallet.fromPrivateKey("...");
+const wallet = Wallet.fromPrivateKeyHex("abcd1234...");
 const client = new NornClient({ url: "https://seed.norn.network" });
 
-// Build a transfer (NORN uses 12 decimals by default)
+// Build a transfer (NORN uses 12 decimals)
 const transferHex = buildTransfer(wallet, {
   to: "0xrecipient...",
-  amount: parseAmount("10.5"),
+  amount: parseAmount("10.5"),     // converts "10.5" to bigint
+  tokenId: "0x...",                // optional, defaults to native NORN
+  memo: "payment",                 // optional
 });
 await client.submitKnot(transferHex);
 
 // Register a NornName
 const nameHex = buildNameRegistration(wallet, "alice");
-const ownerHex = "0x" + Buffer.from(wallet.address).toString("hex");
-await client.registerName("alice", ownerHex, nameHex);
+await client.registerName("alice", wallet.addressHex, nameHex);
 
 // Create a token
 const tokenHex = buildTokenDefinition(wallet, {
@@ -140,7 +224,7 @@ const tokenHex = buildTokenDefinition(wallet, {
   symbol: "MTK",
   decimals: 8,
   maxSupply: 1000000n,
-  initialSupply: 1000n,
+  initialSupply: 1000n,   // optional, defaults to 0
 });
 await client.createToken(tokenHex);
 
@@ -160,9 +244,21 @@ const burnHex = buildTokenBurn(wallet, {
 await client.burnToken(burnHex);
 ```
 
+### Amount Utilities
+
+```typescript
+// Parse human-readable amount to raw bigint (default 12 decimals for NORN)
+const raw = parseAmount("1.5");           // 1_500_000_000_000n
+const raw8 = parseAmount("1.5", 8);       // 150_000_000n
+
+// Format raw bigint to human-readable string
+const human = formatAmount(1_500_000_000_000n);     // "1.5"
+const human8 = formatAmount(150_000_000n, 8);       // "1.5"
+```
+
 ## WebSocket Subscriptions
 
-Subscribe to real-time events:
+Subscribe to real-time events using the `SubscribeOptions` object:
 
 ```typescript
 import {
@@ -172,41 +268,85 @@ import {
   subscribeLoomEvents,
   subscribePendingTransactions,
 } from "@norn-protocol/sdk";
+import type { SubscribeOptions } from "@norn-protocol/sdk";
+
+const options: SubscribeOptions = {
+  url: "ws://seed.norn.network:9944",
+  onOpen: () => console.log("Connected"),
+  onClose: () => console.log("Disconnected"),
+  onError: (err) => console.error("Error:", err),
+};
 
 // Subscribe to new blocks
-const blockSub = subscribeNewBlocks("wss://seed.norn.network", (block) => {
+const blockSub = subscribeNewBlocks(options, (block) => {
   console.log("New block:", block.height);
 });
 
-// Subscribe to transfers
-const transferSub = subscribeTransfers("wss://seed.norn.network", (tx) => {
+// Subscribe to transfers (optional address filter)
+const transferSub = subscribeTransfers(options, (tx) => {
   console.log("Transfer:", tx.from, "->", tx.to, tx.amount);
-});
+}, "0xaddressFilter...");
 
-// Subscribe to token events
-const tokenSub = subscribeTokenEvents("wss://seed.norn.network", (event) => {
+// Subscribe to token events (optional token ID filter)
+const tokenSub = subscribeTokenEvents(options, (event) => {
   console.log("Token event:", event);
+}, "0xtokenIdFilter...");
+
+// Subscribe to loom execution events (optional loom ID filter)
+const loomSub = subscribeLoomEvents(options, (event) => {
+  console.log("Loom event:", event);
+}, "0xloomIdFilter...");
+
+// Subscribe to pending transactions
+const pendingSub = subscribePendingTransactions(options, (event) => {
+  console.log("Pending tx:", event);
 });
 
 // Unsubscribe when done
 blockSub.unsubscribe();
 transferSub.unsubscribe();
+
+// Check if still connected
+console.log(blockSub.isActive);
+```
+
+## Address Utilities
+
+The SDK exports helper functions for converting between `Uint8Array` addresses and hex strings:
+
+```typescript
+import { addressToHex, hexToAddress, toHex, fromHex } from "@norn-protocol/sdk";
+
+// Address (20 bytes) <-> hex string
+const hex = addressToHex(wallet.address);   // "0x01010101..."
+const addr = hexToAddress("0x01010101..."); // Uint8Array(20)
+
+// General byte array <-> hex string
+const hexStr = toHex(someBytes);     // hex string (no prefix)
+const bytes = fromHex("abcd1234");   // Uint8Array
 ```
 
 ## Exports
 
 The SDK exports the following:
 
-### Functions
-- `blake3Hash`, `ed25519Sign`, `ed25519Verify`
-- `publicKeyFromPrivate`, `publicKeyToAddress`
-- `toHex`, `fromHex`, `addressToHex`, `hexToAddress`
-- `buildTransfer`, `buildNameRegistration`, `buildTokenDefinition`, `buildTokenMint`, `buildTokenBurn`
-- `parseAmount`, `formatAmount`
-- `subscribeNewBlocks`, `subscribeTransfers`, `subscribeTokenEvents`, `subscribeLoomEvents`, `subscribePendingTransactions`
-
 ### Classes
-- `Wallet` -- Key management
-- `NornClient` -- RPC client
-- `Subscription` -- WebSocket subscription handle
-- `BorshWriter`, `BorshReader` -- Borsh serialization helpers
+- `Wallet` — Ed25519 key management
+- `NornClient` — JSON-RPC client with typed methods for all 40+ endpoints
+- `Subscription` — WebSocket subscription handle with `unsubscribe()` and `isActive`
+- `BorshWriter`, `BorshReader` — Borsh serialization helpers
+
+### Functions
+- `blake3Hash`, `ed25519Sign`, `ed25519Verify` — Cryptographic primitives
+- `publicKeyFromPrivate`, `publicKeyToAddress` — Key derivation
+- `toHex`, `fromHex`, `addressToHex`, `hexToAddress` — Encoding utilities
+- `buildTransfer`, `buildNameRegistration`, `buildTokenDefinition`, `buildTokenMint`, `buildTokenBurn` — Transaction builders
+- `parseAmount`, `formatAmount` — Amount conversion (human-readable ↔ raw bigint)
+- `subscribeNewBlocks`, `subscribeTransfers`, `subscribeTokenEvents`, `subscribeLoomEvents`, `subscribePendingTransactions` — WebSocket subscriptions
+
+### Types
+- `SubscribeOptions` — WebSocket connection options (`url`, `onOpen?`, `onClose?`, `onError?`)
+- `NornClientOptions` — RPC client options (`url`, `apiKey?`, `timeout?`)
+- `BlockInfo`, `BlockTransactionsInfo`, `WeaveStateInfo`, `ThreadInfo`, `TokenInfo`, `LoomInfo` — Chain state types
+- `TransactionHistoryEntry`, `SubmitResult`, `ExecutionResult`, `QueryResult` — Transaction types
+- `AddressHex`, `HashHex`, `PubKeyHex`, `Amount` — Type aliases

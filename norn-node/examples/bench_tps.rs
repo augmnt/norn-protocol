@@ -270,7 +270,7 @@ struct E2eResult {
 }
 
 fn bench_e2e(n: usize) -> E2eResult {
-    let n = if !n.is_multiple_of(2) { n + 1 } else { n };
+    let n = if n % 2 != 0 { n + 1 } else { n };
     let ts_base: Timestamp = 100_000;
 
     let setup_start = Instant::now();
@@ -497,14 +497,11 @@ fn main() {
     println!("  Full pipeline: keygen + register + transfer + sign + commit + produce_block");
     println!();
 
-    for &size in &[10, 50, 100, 200, 500] {
+    for &size in &[100, 1_000, 5_000, 10_000] {
         let r = bench_e2e(size);
         print_e2e_result(&r);
         println!();
     }
-
-    println!("  \x1b[33mNote: Block production scales O(n^2) due to per-commitment");
-    println!("  merkle root recomputation in SparseMerkleTree.\x1b[0m");
     println!();
     println!("\x1b[35m═══════════════════════════════════════════════════\x1b[0m");
     println!();

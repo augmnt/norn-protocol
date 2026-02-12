@@ -305,6 +305,56 @@ impl Keystore {
         Ok(Some(phrase))
     }
 
+    /// Change the encryption password, re-encrypting seed and mnemonic.
+    /// Also upgrades v1/v2 wallets to v3 format (Argon2id + random salt).
+    pub fn change_password(
+        &mut self,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<(), WalletError> {
+        // Decrypt seed with old password
+        let old_keypair = self.password_keypair(old_password)?;
+        let (eph, nonce, ct) = self.file.encrypted_seed.to_parts()?;
+        let seed_bytes =
+            decrypt(&old_keypair, &eph, &nonce, &ct).map_err(|_| WalletError::InvalidPassword)?;
+
+        // Decrypt mnemonic if present
+        let mnemonic_bytes = if let Some(ref enc) = self.file.encrypted_mnemonic {
+            let (eph, nonce, ct) = enc.to_parts()?;
+            let bytes = decrypt(&old_keypair, &eph, &nonce, &ct)
+                .map_err(|_| WalletError::InvalidPassword)?;
+            Some(bytes)
+        } else {
+            None
+        };
+
+        // Generate new salt and derive new encryption keypair
+        let new_salt = generate_random_salt();
+        let new_keypair = password_to_keypair_argon2_with_salt(new_password, &new_salt)?;
+
+        // Re-encrypt seed
+        let encrypted_seed = encrypt_for_keypair(&new_keypair, &seed_bytes)
+            .map_err(|e| WalletError::SerializationError(e.to_string()))?;
+
+        // Re-encrypt mnemonic if present
+        let encrypted_mnemonic = match mnemonic_bytes {
+            Some(bytes) => {
+                let enc = encrypt_for_keypair(&new_keypair, &bytes)
+                    .map_err(|e| WalletError::SerializationError(e.to_string()))?;
+                Some(EncryptedBlob::from_encrypted(&enc))
+            }
+            None => None,
+        };
+
+        // Update file fields (upgrades to v3 if needed)
+        self.file.encrypted_seed = EncryptedBlob::from_encrypted(&encrypted_seed);
+        self.file.encrypted_mnemonic = encrypted_mnemonic;
+        self.file.salt = Some(hex::encode(new_salt));
+        self.file.version = WALLET_VERSION_RANDOM_SALT;
+
+        self.save()
+    }
+
     /// Derive the password keypair for this wallet, choosing KDF based on version and salt.
     fn password_keypair(&self, password: &str) -> Result<Keypair, WalletError> {
         password_to_keypair_for_version(password, self.file.version, self.file.salt.as_deref())
@@ -459,6 +509,41 @@ mod tests {
         // Different wallets with the same password should have different salts.
         assert_ne!(ks1.file.salt, ks2.file.salt);
         assert_eq!(ks1.file.version, WALLET_VERSION_RANDOM_SALT);
+    }
+
+    #[test]
+    fn test_change_password() {
+        let mnemonic = generate_mnemonic();
+        let phrase = mnemonic.to_string();
+        let mut ks = Keystore::create("test", &mnemonic, "", "old-pass").unwrap();
+
+        let kp_before = ks.decrypt_keypair("old-pass").unwrap();
+
+        // Change password
+        ks.change_password("old-pass", "new-pass").unwrap();
+
+        // Old password should fail
+        assert!(ks.decrypt_keypair("old-pass").is_err());
+
+        // New password should work and produce the same keypair
+        let kp_after = ks.decrypt_keypair("new-pass").unwrap();
+        assert_eq!(kp_before.public_key(), kp_after.public_key());
+
+        // Mnemonic should survive the change
+        let recovered = ks.decrypt_mnemonic("new-pass").unwrap().unwrap();
+        assert_eq!(recovered, phrase);
+
+        // Should be v3 format
+        assert_eq!(ks.file.version, WALLET_VERSION_RANDOM_SALT);
+    }
+
+    #[test]
+    fn test_change_password_wrong_old_password() {
+        let mnemonic = generate_mnemonic();
+        let mut ks = Keystore::create("test", &mnemonic, "", "correct").unwrap();
+
+        let result = ks.change_password("wrong", "new-pass");
+        assert!(result.is_err());
     }
 
     #[test]

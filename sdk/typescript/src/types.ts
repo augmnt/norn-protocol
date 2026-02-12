@@ -112,6 +112,7 @@ export interface TransactionHistoryEntry {
   from: AddressHex;
   to: AddressHex;
   token_id: HashHex;
+  symbol: string;
   amount: string;
   human_readable: string;
   memo?: string;
@@ -303,6 +304,7 @@ export interface TransferEvent {
   to: AddressHex;
   amount: string;
   token_id?: HashHex;
+  symbol?: string;
   memo?: string;
   block_height?: number | null;
 }

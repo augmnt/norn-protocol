@@ -18,7 +18,7 @@ import { PendingTransactions } from "@/components/transactions/pending-transacti
 import { useRealtimeStore } from "@/stores/realtime-store";
 import { usePendingTxSubscription } from "@/hooks/use-subscriptions";
 import { useRecentHistory } from "@/hooks/use-recent-history";
-import { PAGE_SIZE, NATIVE_TOKEN_ID } from "@/lib/constants";
+import { PAGE_SIZE } from "@/lib/constants";
 import type { TransactionHistoryEntry } from "@/types";
 
 const columns = [
@@ -56,7 +56,7 @@ const columns = [
       <AmountDisplay
         amount={tx.amount}
         humanReadable={tx.human_readable}
-        symbol={tx.token_id === NATIVE_TOKEN_ID ? "NORN" : tx.token_id.slice(0, 8) + "\u2026"}
+        symbol={tx.symbol}
       />
     ),
   },
@@ -79,7 +79,7 @@ export default function TransactionsPage() {
 }
 
 function TransactionsContent() {
-  const connected = useRealtimeStore((s) => s.connected);
+  const connected = useRealtimeStore((s) => s.connectionState === "connected");
   const searchParams = useSearchParams();
   const router = useRouter();
   usePendingTxSubscription();
@@ -126,7 +126,7 @@ function TransactionsContent() {
               <DataTable
                 columns={columns}
                 data={recentHistory ?? []}
-                keyExtractor={(tx) => tx.knot_id}
+                keyExtractor={(tx, i) => `${tx.knot_id}-${i}`}
                 emptyMessage="No transactions found"
                 onRowClick={(tx) => router.push(`/tx/${tx.knot_id}`)}
               />

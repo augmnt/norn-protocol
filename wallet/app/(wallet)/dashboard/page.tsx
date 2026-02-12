@@ -97,7 +97,7 @@ export default function DashboardPage() {
   const { data: threadState } = useTokenBalances(activeAddress ?? undefined);
   const { data: history } = useTxHistory(activeAddress ?? undefined, 1);
   const { data: health } = useHealth();
-  const connected = useRealtimeStore((s) => s.connected);
+  const connectionState = useRealtimeStore((s) => s.connectionState);
   const latestBlock = useRealtimeStore((s) => s.latestBlock);
 
   const tokenBalances = threadState?.balances?.filter(
@@ -316,7 +316,7 @@ export default function DashboardPage() {
                       <AmountDisplay
                         amount={tx.amount}
                         humanReadable={tx.human_readable}
-                        symbol={tx.token_id === NATIVE_TOKEN_ID ? "NORN" : tx.token_id.slice(0, 8) + "\u2026"}
+                        symbol={tx.symbol}
                         className="text-xs text-muted-foreground"
                       />
                     </div>
@@ -330,7 +330,16 @@ export default function DashboardPage() {
 
       {/* Network Status Bar */}
       <div className="mt-6 flex items-center justify-center gap-4 text-xs text-muted-foreground">
-        <LiveIndicator active={connected} label={connected ? "Connected" : "Disconnected"} />
+        <LiveIndicator
+          active={connectionState === "connected"}
+          label={
+            connectionState === "connected"
+              ? "Connected"
+              : connectionState === "connecting"
+                ? "Connecting\u2026"
+                : "Disconnected"
+          }
+        />
         <span className="text-border">|</span>
         <span>
           Block{" "}

@@ -785,6 +785,7 @@ impl NornRpcServer for NornRpcImpl {
                 to: format_address(&address),
                 amount: faucet_amount.to_string(),
                 token_id: None,
+                symbol: Some("NORN".to_string()),
                 memo: Some("faucet".to_string()),
                 block_height: None, // Pending — not yet in a block.
             });
@@ -897,6 +898,13 @@ impl NornRpcServer for NornRpcImpl {
         let timestamp = knot.timestamp;
         match sm.apply_transfer(from, to, token_id, amount, knot_id, memo.clone(), timestamp) {
             Ok(()) => {
+                let token_symbol = if token_id == NATIVE_TOKEN_ID {
+                    "NORN".to_string()
+                } else {
+                    sm.get_token(&token_id)
+                        .map(|t| t.symbol.clone())
+                        .unwrap_or_else(|| hex::encode(&token_id[..4]))
+                };
                 drop(sm);
                 self.metrics.knots_validated.inc();
 
@@ -933,6 +941,7 @@ impl NornRpcServer for NornRpcImpl {
                     } else {
                         Some(hex::encode(token_id))
                     },
+                    symbol: Some(token_symbol),
                     memo: memo
                         .as_ref()
                         .and_then(|m| String::from_utf8(m.clone()).ok()),
@@ -1197,6 +1206,13 @@ impl NornRpcServer for NornRpcImpl {
                     from: format_address(&r.from),
                     to: format_address(&r.to),
                     token_id: hex::encode(r.token_id),
+                    symbol: if r.token_id == NATIVE_TOKEN_ID {
+                        "NORN".to_string()
+                    } else {
+                        sm.get_token(&r.token_id)
+                            .map(|t| t.symbol.clone())
+                            .unwrap_or_else(|| hex::encode(&r.token_id[..4]))
+                    },
                     amount: r.amount.to_string(),
                     human_readable: format_amount_for_token(r.amount, &r.token_id, &sm),
                     memo: memo_str,
@@ -1228,6 +1244,13 @@ impl NornRpcServer for NornRpcImpl {
                 from: format_address(&r.from),
                 to: format_address(&r.to),
                 token_id: hex::encode(r.token_id),
+                symbol: if r.token_id == NATIVE_TOKEN_ID {
+                    "NORN".to_string()
+                } else {
+                    sm.get_token(&r.token_id)
+                        .map(|t| t.symbol.clone())
+                        .unwrap_or_else(|| hex::encode(&r.token_id[..4]))
+                },
                 amount: r.amount.to_string(),
                 human_readable: format_amount_for_token(r.amount, &r.token_id, &sm),
                 memo: r
@@ -1262,6 +1285,13 @@ impl NornRpcServer for NornRpcImpl {
                 from: format_address(&r.from),
                 to: format_address(&r.to),
                 token_id: hex::encode(r.token_id),
+                symbol: if r.token_id == NATIVE_TOKEN_ID {
+                    "NORN".to_string()
+                } else {
+                    sm.get_token(&r.token_id)
+                        .map(|t| t.symbol.clone())
+                        .unwrap_or_else(|| hex::encode(&r.token_id[..4]))
+                },
                 amount: r.amount.to_string(),
                 human_readable: format_amount_for_token(r.amount, &r.token_id, &sm),
                 memo: r

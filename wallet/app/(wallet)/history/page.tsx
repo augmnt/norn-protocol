@@ -23,7 +23,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { PAGE_SIZE, NATIVE_TOKEN_ID } from "@/lib/constants";
+import { PAGE_SIZE } from "@/lib/constants";
 import { formatTimestamp } from "@/lib/format";
 import {
   explorerAddressUrl,
@@ -146,7 +146,7 @@ function TransactionDetailDialog({
             <AmountDisplay
               amount={tx.amount}
               humanReadable={tx.human_readable}
-              symbol={tx.token_id === NATIVE_TOKEN_ID ? "NORN" : tx.token_id.slice(0, 8) + "\u2026"}
+              symbol={tx.symbol}
             />
           </DetailRow>
 
@@ -295,7 +295,7 @@ export default function HistoryPage() {
             <AmountDisplay
               amount={tx.amount}
               humanReadable={tx.human_readable}
-              symbol={tx.token_id === NATIVE_TOKEN_ID ? "NORN" : tx.token_id.slice(0, 8) + "\u2026"}
+              symbol={tx.symbol}
             />
             {tx.memo && (
               <span className="text-xs text-muted-foreground mt-0.5 max-w-[200px] truncate">

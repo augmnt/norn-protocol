@@ -190,6 +190,8 @@ pub struct TransactionHistoryEntry {
     pub to: String,
     /// Token ID as hex string.
     pub token_id: String,
+    /// Token symbol (e.g. "NORN").
+    pub symbol: String,
     /// Raw amount as string.
     pub amount: String,
     /// Human-readable formatted amount.
@@ -376,6 +378,9 @@ pub struct TransferEvent {
     /// Token ID as hex string (None = native NORN).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token_id: Option<String>,
+    /// Token symbol (e.g. "NORN").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<String>,
     /// Optional memo.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memo: Option<String>,

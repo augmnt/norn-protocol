@@ -10,8 +10,11 @@ import type {
 } from "@/types";
 import { WS_CAPS } from "@/lib/constants";
 
+type ConnectionState = "connecting" | "connected" | "disconnected";
+
 interface RealtimeState {
   connected: boolean;
+  connectionState: ConnectionState;
   latestBlock: BlockInfo | null;
   recentBlocks: BlockInfo[];
   recentTransfers: TransferEvent[];
@@ -30,6 +33,7 @@ interface RealtimeState {
 
 export const useRealtimeStore = create<RealtimeState>((set) => ({
   connected: false,
+  connectionState: "connecting" as ConnectionState,
   latestBlock: null,
   recentBlocks: [],
   recentTransfers: [],
@@ -37,7 +41,8 @@ export const useRealtimeStore = create<RealtimeState>((set) => ({
   tokenEvents: [],
   loomEvents: [],
 
-  setConnected: (connected) => set({ connected }),
+  setConnected: (connected) =>
+    set({ connected, connectionState: connected ? "connected" : "disconnected" }),
 
   addBlock: (block) =>
     set((state) => {

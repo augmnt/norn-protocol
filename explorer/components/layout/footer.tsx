@@ -6,7 +6,20 @@ import { useRealtimeStore } from "@/stores/realtime-store";
 import { cn } from "@/lib/utils";
 
 export function Footer() {
-  const connected = useRealtimeStore((s) => s.connected);
+  const connectionState = useRealtimeStore((s) => s.connectionState);
+
+  const dotColor =
+    connectionState === "connected"
+      ? "bg-green-500"
+      : connectionState === "connecting"
+        ? "bg-amber-500 animate-pulse"
+        : "bg-zinc-500";
+  const label =
+    connectionState === "connected"
+      ? config.chainName
+      : connectionState === "connecting"
+        ? "Connecting\u2026"
+        : "Disconnected";
 
   return (
     <footer className="border-t">
@@ -21,10 +34,10 @@ export function Footer() {
             <span
               className={cn(
                 "h-1.5 w-1.5 rounded-full",
-                connected ? "bg-green-500" : "bg-zinc-500"
+                dotColor
               )}
             />
-            {connected ? config.chainName : "Disconnected"}
+            {label}
           </span>
 
           <a

@@ -17,6 +17,7 @@ interface TxRow {
   from: string;
   to: string;
   amount: string;
+  symbol: string;
   block_height?: number;
   timestamp?: number;
 }
@@ -91,7 +92,7 @@ export function RecentTransactions() {
                     </Link>
                   </span>
                   <span className="text-xs font-mono tabular-nums text-muted-foreground">
-                    {formatNorn(tx.amount)} NORN
+                    {formatNorn(tx.amount)} {tx.symbol}
                   </span>
                 </div>
               </div>
@@ -121,6 +122,7 @@ function mergeTransactions(
       from: tx.from,
       to: tx.to,
       amount: tx.amount,
+      symbol: tx.symbol,
       block_height: tx.block_height,
       timestamp: tx.timestamp,
     });
@@ -139,6 +141,7 @@ function mergeTransactions(
         from: tx.from,
         to: tx.to,
         amount: tx.amount,
+        symbol: tx.symbol ?? "NORN",
         block_height: tx.block_height ?? undefined,
       });
     }

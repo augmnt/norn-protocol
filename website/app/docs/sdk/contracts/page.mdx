@@ -8,7 +8,7 @@ The `norn-sdk` crate provides the building blocks for writing Norn loom smart co
 
 ## Overview
 
-Contracts export three entry points: `init()`, `execute(ptr, len)`, and `query(ptr, len)`. The SDK provides proc macros and abstractions to simplify development.
+Contracts export three entry points: `init()`, `execute(ptr, len)`, and `query(ptr, len)`. The `#[norn_contract]` proc macro generates all boilerplate — you just write struct fields and annotated methods.
 
 ## Setup
 
@@ -30,80 +30,111 @@ Add the Wasm target:
 rustup target add wasm32-unknown-unknown
 ```
 
-## The `#[norn_contract]` Macro
-
-The `#[norn_contract]` proc macro generates boilerplate for your contract. Annotate a struct and its impl block:
+## Quick Start: Counter Contract
 
 ```rust
+#![no_std]
+
+extern crate alloc;
+
 use norn_sdk::prelude::*;
-use norn_sdk_macros::norn_contract;
-use borsh::{BorshDeserialize, BorshSerialize};
 
 #[norn_contract]
-pub struct Counter;
-
-#[derive(BorshSerialize, BorshDeserialize)]
-pub enum ExecuteMsg {
-    Increment,
-    Reset { count: u64 },
+pub struct Counter {
+    value: u64,
 }
 
-#[derive(BorshSerialize, BorshDeserialize)]
-pub enum QueryMsg {
-    GetCount,
-}
-
-impl Contract for Counter {
-    type Init = ();
-    type Exec = ExecuteMsg;
-    type Query = QueryMsg;
-
+#[norn_contract]
+impl Counter {
     #[init]
-    fn init(ctx: &mut Context, _msg: Self::Init) -> Result<Response, ContractError> {
-        COUNT.save(ctx, &0)?;
-        Ok(Response::new())
+    pub fn new(_ctx: &Context) -> Self {
+        Counter { value: 0 }
     }
 
     #[execute]
-    fn execute(ctx: &mut Context, msg: Self::Exec) -> Result<Response, ContractError> {
-        match msg {
-            ExecuteMsg::Increment => {
-                let count = COUNT.load(ctx)?.unwrap_or(0);
-                COUNT.save(ctx, &(count + 1))?;
-                Ok(Response::new().add_event(Event::new("increment")))
-            }
-            ExecuteMsg::Reset { count } => {
-                COUNT.save(ctx, &count)?;
-                Ok(Response::new())
-            }
-        }
+    pub fn increment(&mut self, _ctx: &Context) -> ContractResult {
+        self.value += 1;
+        Ok(Response::with_action("increment").set_data(&self.value))
+    }
+
+    #[execute]
+    pub fn decrement(&mut self, _ctx: &Context) -> ContractResult {
+        ensure!(self.value > 0, "counter is already zero");
+        self.value -= 1;
+        Ok(Response::with_action("decrement").set_data(&self.value))
+    }
+
+    #[execute]
+    pub fn reset(&mut self, _ctx: &Context) -> ContractResult {
+        self.value = 0;
+        Ok(Response::with_action("reset").set_data(&self.value))
     }
 
     #[query]
-    fn query(ctx: &Context, msg: Self::Query) -> Result<Vec<u8>, ContractError> {
-        match msg {
-            QueryMsg::GetCount => {
-                let count = COUNT.load(ctx)?.unwrap_or(0);
-                Ok(borsh::to_vec(&count)?)
-            }
-        }
+    pub fn get_value(&self, _ctx: &Context) -> ContractResult {
+        ok(self.value)
     }
 }
-
-const COUNT: Item<u64> = Item::new("count");
-
-norn_entry!(Counter);
 ```
 
-## Entry Point Markers
+## The `#[norn_contract]` Macro
+
+Apply `#[norn_contract]` to both a struct and its impl block:
+
+**On a struct** — automatically derives `BorshSerialize` and `BorshDeserialize`:
+
+```rust
+#[norn_contract]
+pub struct Counter { value: u64 }
+```
+
+**On an impl block** — generates dispatch enums, the `Contract` trait implementation, and the `norn_entry!` call from annotated methods:
+
+- `#[init]` — constructor (exactly one required, must return `Self`)
+- `#[execute]` — state-changing operation (`&mut self, &Context, ...`)
+- `#[query]` — read-only operation (`&self, &Context, ...`)
+- Unmarked methods are kept as internal helpers
+
+Extra parameters on `#[execute]` and `#[query]` methods become fields in auto-generated message enums.
+
+## Entry Point Signatures
 
 | Marker | Signature | Purpose |
 |--------|-----------|---------|
-| `#[init]` | `fn init(ctx: &mut Context, msg: Self::Init) -> Result<Response, ContractError>` | Called once when bytecode is uploaded |
-| `#[execute]` | `fn execute(ctx: &mut Context, msg: Self::Exec) -> Result<Response, ContractError>` | Called for state-mutating operations |
-| `#[query]` | `fn query(ctx: &Context, msg: Self::Query) -> Result<Vec<u8>, ContractError>` | Called for read-only queries |
+| `#[init]` | `fn name(ctx: &Context) -> Self` | Called once when bytecode is uploaded. Returns the initial contract state. |
+| `#[execute]` | `fn name(&mut self, ctx: &Context, ...) -> ContractResult` | Called for state-mutating operations. |
+| `#[query]` | `fn name(&self, ctx: &Context, ...) -> ContractResult` | Called for read-only queries. |
+
+`ContractResult` is defined as `Result<Response, ContractError>`.
+
+## Context
+
+The `Context` struct provides access to the runtime environment:
+
+```rust
+// Get the transaction sender's address
+let sender: Address = ctx.sender();
+
+// Get current block height and timestamp
+let height: u64 = ctx.block_height();
+let time: u64 = ctx.timestamp();
+
+// Assert sender is the expected address
+ctx.require_sender(&expected_address)?;
+
+// Emit a log message
+ctx.log("something happened");
+
+// Transfer tokens between accounts
+ctx.transfer(&from, &to, &token_id, amount);
+
+// Cross-contract call
+let result: Option<Vec<u8>> = ctx.call_contract_raw(&target_loom_id, &input_bytes);
+```
 
 ## Storage Primitives
+
+Storage primitives call host functions directly — they do **not** take a `ctx` parameter.
 
 ### `Item<T>`
 
@@ -112,11 +143,27 @@ A single stored value.
 ```rust
 const OWNER: Item<Address> = Item::new("owner");
 
-// Save
-OWNER.save(ctx, &address)?;
+// Save (returns Result)
+OWNER.save(&address)?;
 
-// Load
-let owner: Option<Address> = OWNER.load(ctx)?;
+// Save in init (panics on failure, avoids .unwrap() noise)
+OWNER.init(&address);
+
+// Load (returns Result<T, ContractError> — errors if not found)
+let owner: Address = OWNER.load()?;
+
+// Load with default (returns T, never errors)
+let owner: Address = OWNER.load_or(ZERO_ADDRESS);
+let owner: Address = OWNER.load_or_default();
+
+// Check existence
+if OWNER.exists() { /* ... */ }
+
+// Remove
+OWNER.remove();
+
+// Update in place
+OWNER.update(|val| Ok(val + 1))?;
 ```
 
 ### `Map<K, V>`
@@ -127,13 +174,28 @@ A key-value map.
 const BALANCES: Map<Address, u128> = Map::new("balances");
 
 // Save
-BALANCES.save(ctx, &address, &amount)?;
+BALANCES.save(&address, &amount)?;
 
-// Load
-let balance: Option<u128> = BALANCES.load(ctx, &address)?;
+// Save in init (panics on failure)
+BALANCES.init(&address, &amount);
+
+// Load (returns Result<V, ContractError>)
+let balance: u128 = BALANCES.load(&address)?;
+
+// Load with default
+let balance: u128 = BALANCES.load_or(&address, 0u128);
+
+// Check existence
+if BALANCES.has(&address) { /* ... */ }
 
 // Remove
-BALANCES.remove(ctx, &address);
+BALANCES.remove(&address);
+
+// Update in place
+BALANCES.update(&address, |bal| Ok(bal + amount))?;
+
+// Update with default if absent
+BALANCES.update_or(&address, 0u128, |bal| Ok(bal + amount))?;
 ```
 
 ### `IndexedMap<K, V>`
@@ -141,25 +203,51 @@ BALANCES.remove(ctx, &address);
 A map that tracks all keys for iteration.
 
 ```rust
-const ALLOWANCES: IndexedMap<(Address, Address), u128> = IndexedMap::new("allowances");
+const HOLDERS: IndexedMap<Address, u128> = IndexedMap::new("holders");
 
-// Save, load, remove -- same as Map
-// Additionally supports iteration over all entries
+// Save, load, remove — same as Map
+HOLDERS.save(&addr, &1000u128)?;
+
+// Iteration support
+let all_keys: Vec<Address> = HOLDERS.keys();
+let page: Vec<(Address, u128)> = HOLDERS.range(0, 10);
+let count: u64 = HOLDERS.len();
 ```
 
 ## Response Builder
 
+Build responses using the `Response` type:
+
 ```rust
-Response::new()
-    .add_event(Event::new("transfer")
+// Simple response
+Ok(Response::new())
+
+// Response with an action attribute
+Ok(Response::with_action("transfer"))
+
+// Response with data and events
+Ok(Response::with_action("transfer")
+    .add_attribute("from", sender_hex)
+    .add_address("to", &to_address)
+    .add_u128("amount", amount)
+    .set_data(&balance)
+    .add_event(Event::new("Transfer")
         .add_attribute("from", sender_hex)
-        .add_attribute("to", recipient_hex)
-        .add_attribute("amount", amount.to_string()))
+        .add_address("to", &to_address)
+        .add_u128("amount", amount)))
+```
+
+Use the `ok()` helper to serialize a value directly into a response:
+
+```rust
+// Returns Ok(Response { data: borsh(value), .. })
+ok(self.value)
 ```
 
 ## Guard Macros
 
 ```rust
+ensure!(amount > 0, "amount must be positive");
 ensure!(amount > 0, ContractError::Custom("amount must be positive".into()));
 ensure_eq!(sender, owner, ContractError::Unauthorized);
 ensure_ne!(from, to, ContractError::Custom("cannot self-transfer".into()));
@@ -167,7 +255,7 @@ ensure_ne!(from, to, ContractError::Custom("cannot self-transfer".into()));
 
 ## Standard Library (stdlib)
 
-The SDK includes composable mixins:
+The SDK includes composable mixins for common patterns:
 
 ### `Ownable`
 
@@ -179,14 +267,19 @@ Emergency pause/unpause functionality.
 
 ### `Norn20`
 
-Full NT-1 token implementation with mint, burn, transfer, and allowance support.
+Full NT-1 token implementation with mint, burn, transfer, and allowance support. Use `Response::merge()` to compose stdlib responses with your own:
+
+```rust
+let stdlib_resp = Norn20::mint(&to, amount)?;
+Ok(Response::with_action("mint").merge(stdlib_resp))
+```
 
 ## Cross-Contract Calls
 
 Contracts can call other contracts:
 
 ```rust
-let result = ctx.call_contract_raw(target_loom_id, &input_bytes)?;
+let result: Option<Vec<u8>> = ctx.call_contract_raw(&target_loom_id, &input_bytes);
 ```
 
 Maximum call depth is 8. Re-entrancy (calling back into the same contract) is detected and rejected.
@@ -208,18 +301,89 @@ Use `TestEnv` for native testing without a Wasm runtime:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use norn_sdk::testing::TestEnv;
+    use norn_sdk::testing::*;
 
     #[test]
     fn test_increment() {
-        let mut env = TestEnv::new();
-        Counter::init(&mut env.ctx, ()).unwrap();
+        let env = TestEnv::new();
+        let mut counter = Counter::new(&env.ctx());
 
-        Counter::execute(&mut env.ctx, ExecuteMsg::Increment).unwrap();
-        let count: u64 = borsh::from_slice(
-            &Counter::query(&env.ctx, QueryMsg::GetCount).unwrap()
-        ).unwrap();
-        assert_eq!(count, 1);
+        let resp = counter.increment(&env.ctx()).unwrap();
+        assert_attribute(&resp, "action", "increment");
+        assert_data::<u64>(&resp, &1);
+    }
+
+    #[test]
+    fn test_decrement_at_zero_fails() {
+        let env = TestEnv::new();
+        let mut counter = Counter::new(&env.ctx());
+
+        let err = counter.decrement(&env.ctx()).unwrap_err();
+        assert_eq!(err.message(), "counter is already zero");
+    }
+
+    #[test]
+    fn test_with_sender() {
+        let env = TestEnv::new().with_sender(ALICE);
+        let vault = TokenVault::new(&env.ctx());
+
+        // Change sender mid-test
+        env.set_sender(BOB);
+        let err = vault.withdraw(&env.ctx(), BOB, 50).unwrap_err();
+        assert_eq!(err, ContractError::Unauthorized);
     }
 }
+```
+
+### `TestEnv` API
+
+```rust
+// Create and configure
+let env = TestEnv::new()
+    .with_sender(ALICE)           // set sender address
+    .with_block_height(42)        // set block height
+    .with_timestamp(1700000000);  // set timestamp
+
+// Get a Context for passing to contract methods
+let ctx = env.ctx();
+
+// Change state mid-test (non-consuming)
+env.set_sender(BOB);
+env.set_block_height(100);
+env.set_timestamp(1700001000);
+
+// Inspect captured side effects
+let logs: Vec<String> = env.logs();
+let events = env.events();
+let transfers = env.transfers();
+env.clear_logs();
+```
+
+### Test Address Constants
+
+The SDK provides named constants for test addresses:
+
+```rust
+use norn_sdk::testing::{ALICE, BOB, CHARLIE, DAVE};
+// ALICE = [1u8; 20], BOB = [2u8; 20], etc.
+```
+
+### Assertion Helpers
+
+```rust
+// Assert response contains an attribute
+assert_attribute(&resp, "action", "deposit");
+
+// Assert response data deserializes to expected value
+assert_data::<u128>(&resp, &500);
+
+// Deserialize response data manually
+let info: VaultInfo = from_response(&resp).unwrap();
+
+// Assert error message contains substring
+assert_err_contains(&err, "must be positive");
+
+// Assert response contains an event
+assert_event(&resp, "Transfer");
+assert_event_attribute(&resp, "Transfer", "amount", "100");
 ```

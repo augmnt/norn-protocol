@@ -286,6 +286,12 @@ pub enum WalletCommand {
         #[arg(long)]
         to: String,
     },
+    /// Change wallet encryption password
+    ChangePassword {
+        /// Wallet name (defaults to active wallet)
+        #[arg(long)]
+        name: Option<String>,
+    },
     /// Create a new fungible token (costs 10 NORN)
     CreateToken {
         /// Token name (e.g., "My Token")

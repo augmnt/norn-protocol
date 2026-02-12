@@ -7,11 +7,24 @@ import { explorerBlockUrl } from "@/lib/explorer";
 import { cn } from "@/lib/utils";
 
 export function WalletFooter() {
-  const connected = useRealtimeStore((s) => s.connected);
+  const connectionState = useRealtimeStore((s) => s.connectionState);
   const latestBlock = useRealtimeStore((s) => s.latestBlock);
   const { network } = useNetwork();
   const { data: health } = useHealth();
   const blockHeight = latestBlock?.height ?? health?.height ?? 0;
+
+  const dotColor =
+    connectionState === "connected"
+      ? "bg-green-500"
+      : connectionState === "connecting"
+        ? "bg-amber-500 animate-pulse"
+        : "bg-zinc-500";
+  const label =
+    connectionState === "connected"
+      ? network.name
+      : connectionState === "connecting"
+        ? "Connecting\u2026"
+        : "Disconnected";
 
   return (
     <footer className="hidden md:block border-t">
@@ -37,10 +50,10 @@ export function WalletFooter() {
             <span
               className={cn(
                 "h-1.5 w-1.5 rounded-full",
-                connected ? "bg-green-500" : "bg-zinc-500"
+                dotColor
               )}
             />
-            {connected ? network.name : "Disconnected"}
+            {label}
           </span>
         </div>
       </div>

@@ -2,6 +2,7 @@ pub mod address;
 pub mod balance;
 pub mod block;
 pub mod burn_token;
+pub mod change_password;
 pub mod commit;
 pub mod config_cmd;
 pub mod create;

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::hash::{BuildHasher, Hasher};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use norn_types::error::NornError;
@@ -24,46 +25,125 @@ pub struct MerkleProof {
     pub siblings: Vec<Hash>,
 }
 
-/// In-memory sparse Merkle tree.
+// ─── FxHash-style hasher for pre-hashed keys ────────────────────────────────
+
+/// A fast non-cryptographic hasher using multiply-rotate-xor mixing.
+/// Works well for blake3-derived Hash keys which are already uniformly
+/// distributed. Faster than SipHash for small-to-medium HashMaps.
+#[derive(Default)]
+struct FxHasher(u64);
+
+const FX_SEED: u64 = 0x517cc1b727220a95;
+
+impl Hasher for FxHasher {
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        let mut chunks = bytes.chunks_exact(8);
+        for chunk in &mut chunks {
+            let val = u64::from_ne_bytes(chunk.try_into().unwrap());
+            self.0 = (self.0.rotate_left(5) ^ val).wrapping_mul(FX_SEED);
+        }
+        let remainder = chunks.remainder();
+        if !remainder.is_empty() {
+            let mut buf = [0u8; 8];
+            buf[..remainder.len()].copy_from_slice(remainder);
+            let val = u64::from_ne_bytes(buf);
+            self.0 = (self.0.rotate_left(5) ^ val).wrapping_mul(FX_SEED);
+        }
+    }
+
+    #[inline]
+    fn write_usize(&mut self, _: usize) {
+        // Ignored — length prefix is constant for fixed-size [u8; 32] keys
+    }
+
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+#[derive(Clone, Default)]
+struct FxBuildHasher;
+
+impl BuildHasher for FxBuildHasher {
+    type Hasher = FxHasher;
+
+    #[inline]
+    fn build_hasher(&self) -> FxHasher {
+        FxHasher(0)
+    }
+}
+
+type FastMap<K, V> = HashMap<K, V, FxBuildHasher>;
+
+#[inline]
+fn new_fast_map<K, V>() -> FastMap<K, V> {
+    HashMap::with_hasher(FxBuildHasher)
+}
+
+// ─── Sparse Merkle Tree ─────────────────────────────────────────────────────
+
+/// In-memory sparse Merkle tree with O(1) root queries and O(TREE_DEPTH)
+/// incremental path updates.
 ///
-/// Uses a simple approach: store key-value pairs and compute the root
-/// lazily using hash caching.
+/// Uses a layered structure: one HashMap per depth level. Each HashMap
+/// maps truncated key prefixes to cached node hashes. This keeps individual
+/// HashMaps small (~N entries where N is the number of data keys) for
+/// better cache behavior than a single massive HashMap.
 pub struct SparseMerkleTree {
     /// Stored key-value pairs.
-    data: HashMap<Hash, Vec<u8>>,
-    /// Cached internal node hashes: (depth, prefix_bits) -> hash.
-    /// Invalidated on mutation.
-    cache: HashMap<(usize, Vec<u8>), Hash>,
-    /// Whether the cache is valid.
-    cache_valid: bool,
+    data: FastMap<Hash, Vec<u8>>,
+    /// Cached node hashes per depth level. `nodes[d]` maps a truncated
+    /// prefix (with bits d..255 zeroed) to the cached hash at depth d.
+    /// Index 0 is unused (root is stored separately), indices 1..=256
+    /// correspond to depth levels 1..=256 (where 256 is the leaf level).
+    nodes: Vec<FastMap<Hash, Hash>>,
+    /// The current root hash, maintained incrementally.
+    cached_root: Hash,
 }
 
 impl SparseMerkleTree {
     /// Create a new empty sparse Merkle tree.
     pub fn new() -> Self {
+        let mut nodes = Vec::with_capacity(TREE_DEPTH + 1);
+        for _ in 0..=TREE_DEPTH {
+            nodes.push(new_fast_map());
+        }
         Self {
-            data: HashMap::new(),
-            cache: HashMap::new(),
-            cache_valid: false,
+            data: new_fast_map(),
+            nodes,
+            cached_root: EMPTY_HASH,
         }
     }
 
-    /// Get the current root hash.
+    /// Get the current root hash. O(1).
     pub fn root(&mut self) -> Hash {
         if self.data.is_empty() {
-            return EMPTY_HASH;
+            EMPTY_HASH
+        } else {
+            self.cached_root
         }
-        if !self.cache_valid {
-            self.cache.clear();
-            self.cache_valid = true;
-        }
-        self.compute_node(0, &[])
     }
 
-    /// Insert a key-value pair.
+    /// Insert a key-value pair and incrementally update the root.
     pub fn insert(&mut self, key: Hash, value: Vec<u8>) {
         self.data.insert(key, value);
-        self.cache_valid = false;
+        self.update_path(&key);
+    }
+
+    /// Batch-insert multiple key-value pairs. All data is loaded before any
+    /// path updates, ensuring correct sibling hashes for overlapping paths.
+    pub fn insert_batch(&mut self, entries: Vec<(Hash, Vec<u8>)>) {
+        if entries.is_empty() {
+            return;
+        }
+        for (key, value) in &entries {
+            self.data.insert(*key, value.clone());
+        }
+        for (key, _) in &entries {
+            self.update_path(key);
+        }
     }
 
     /// Get a value by key.
@@ -71,37 +151,27 @@ impl SparseMerkleTree {
         self.data.get(key).map(|v| v.as_slice())
     }
 
-    /// Remove a key from the tree.
+    /// Remove a key from the tree and update the root.
     pub fn remove(&mut self, key: &Hash) -> bool {
         let removed = self.data.remove(key).is_some();
         if removed {
-            self.cache_valid = false;
+            self.update_path(key);
         }
         removed
     }
 
-    /// Generate a Merkle proof for a key.
+    /// Generate a Merkle proof for a key. O(TREE_DEPTH) lookups.
     pub fn prove(&mut self, key: &Hash) -> MerkleProof {
-        if !self.cache_valid {
-            self.cache.clear();
-            self.cache_valid = true;
-            // Force computation of the full tree
-            if !self.data.is_empty() {
-                self.compute_node(0, &[]);
-            }
-        }
-
         let value = self.data.get(key).cloned().unwrap_or_default();
         let mut siblings = Vec::with_capacity(TREE_DEPTH);
 
         for depth in 0..TREE_DEPTH {
-            let bit = get_bit(key, depth);
-            // Get the sibling's prefix (same as ours but with the opposite bit at this depth)
-            let mut prefix = get_prefix(key, depth);
-            let sibling_bit = if bit == 0 { 1u8 } else { 0u8 };
-            prefix.push(sibling_bit);
-
-            let sibling_hash = self.compute_node(depth + 1, &prefix);
+            let mut sibling_prefix = truncate_key(key, depth + 1);
+            flip_bit(&mut sibling_prefix, depth);
+            let sibling_hash = self.nodes[depth + 1]
+                .get(&sibling_prefix)
+                .copied()
+                .unwrap_or(EMPTY_HASH);
             siblings.push(sibling_hash);
         }
 
@@ -118,7 +188,6 @@ impl SparseMerkleTree {
             return Err(NornError::MerkleProofInvalid);
         }
 
-        // Start from the leaf
         let mut current = if proof.value.is_empty() {
             EMPTY_HASH
         } else {
@@ -126,12 +195,9 @@ impl SparseMerkleTree {
             hash_leaf(&proof.key, &value_hash)
         };
 
-        // Walk from the leaf (depth TREE_DEPTH-1) up to the root (depth 0)
         for depth in (0..TREE_DEPTH).rev() {
             let bit = get_bit(&proof.key, depth);
             let sibling = &proof.siblings[depth];
-            // If both children are empty, the parent is also empty
-            // (matches compute_node behavior)
             if current == EMPTY_HASH && *sibling == EMPTY_HASH {
                 current = EMPTY_HASH;
             } else {
@@ -150,48 +216,57 @@ impl SparseMerkleTree {
         }
     }
 
-    /// Compute the hash of a node at the given depth with the given path prefix.
-    fn compute_node(&mut self, depth: usize, prefix: &[u8]) -> Hash {
-        // Check cache
-        let cache_key = (depth, prefix.to_vec());
-        if let Some(&cached) = self.cache.get(&cache_key) {
-            return cached;
-        }
-
-        let result = if depth == TREE_DEPTH {
-            // Leaf level — find if any key matches this exact path
-            self.data
-                .iter()
-                .find(|(k, _)| key_matches_prefix(k, prefix))
-                .map(|(k, v)| {
-                    let value_hash = blake3_hash(v);
-                    hash_leaf(k, &value_hash)
-                })
-                .unwrap_or(EMPTY_HASH)
+    /// Incrementally update all cached node hashes along the path from a
+    /// leaf to the root.
+    ///
+    /// Uses incremental prefix computation via `clear_bit_at` to avoid
+    /// allocating a new prefix array at each depth level.
+    ///
+    /// Complexity: O(TREE_DEPTH) = O(256) hash computations + HashMap ops.
+    fn update_path(&mut self, key: &Hash) {
+        let leaf_hash = if let Some(value) = self.data.get(key) {
+            let value_hash = blake3_hash(value);
+            hash_leaf(key, &value_hash)
         } else {
-            // Internal level — check if any keys exist under this prefix
-            let has_keys = self.data.keys().any(|k| key_matches_prefix(k, prefix));
-            if !has_keys {
-                EMPTY_HASH
-            } else {
-                let mut left_prefix = prefix.to_vec();
-                left_prefix.push(0);
-                let mut right_prefix = prefix.to_vec();
-                right_prefix.push(1);
-
-                let left = self.compute_node(depth + 1, &left_prefix);
-                let right = self.compute_node(depth + 1, &right_prefix);
-
-                if left == EMPTY_HASH && right == EMPTY_HASH {
-                    EMPTY_HASH
-                } else {
-                    hash_internal(&left, &right)
-                }
-            }
+            EMPTY_HASH
         };
 
-        self.cache.insert(cache_key, result);
-        result
+        let mut current_hash = leaf_hash;
+        let mut our_prefix = *key;
+
+        for depth in (0..TREE_DEPTH).rev() {
+            let bit = get_bit(key, depth);
+            let depth_idx = depth + 1;
+
+            // Store our node at depth+1
+            self.nodes[depth_idx].insert(our_prefix, current_hash);
+
+            // Look up sibling at depth+1
+            let mut sibling_prefix = our_prefix;
+            flip_bit(&mut sibling_prefix, depth);
+            let sibling_hash = self.nodes[depth_idx]
+                .get(&sibling_prefix)
+                .copied()
+                .unwrap_or(EMPTY_HASH);
+
+            // Compute parent hash
+            let (left, right) = if bit == 0 {
+                (current_hash, sibling_hash)
+            } else {
+                (sibling_hash, current_hash)
+            };
+
+            current_hash = if left == EMPTY_HASH && right == EMPTY_HASH {
+                EMPTY_HASH
+            } else {
+                hash_internal(&left, &right)
+            };
+
+            // Prepare prefix for next (shallower) level
+            clear_bit_at(&mut our_prefix, depth);
+        }
+
+        self.cached_root = current_hash;
     }
 }
 
@@ -201,21 +276,62 @@ impl Default for SparseMerkleTree {
     }
 }
 
-// ─── Hash helpers ────────────────────────────────────────────────────────────
+// ─── Key helpers ────────────────────────────────────────────────────────────
 
+/// Truncate a key to its first `depth` bits, zeroing all bits from `depth` onwards.
+#[inline]
+fn truncate_key(key: &Hash, depth: usize) -> Hash {
+    if depth >= TREE_DEPTH {
+        return *key;
+    }
+    let mut result = [0u8; 32];
+    let full_bytes = depth / 8;
+    let remaining_bits = depth % 8;
+    if full_bytes > 0 {
+        result[..full_bytes].copy_from_slice(&key[..full_bytes]);
+    }
+    if remaining_bits > 0 && full_bytes < 32 {
+        let mask = !((1u8 << (8 - remaining_bits)) - 1);
+        result[full_bytes] = key[full_bytes] & mask;
+    }
+    result
+}
+
+// ─── Bit helpers ────────────────────────────────────────────────────────────
+
+/// Flip a single bit at position `pos` in a hash (MSB-first ordering).
+#[inline]
+fn flip_bit(key: &mut Hash, pos: usize) {
+    let byte_idx = pos / 8;
+    let bit_idx = 7 - (pos % 8);
+    key[byte_idx] ^= 1 << bit_idx;
+}
+
+/// Clear a single bit at position `pos` in a hash (MSB-first ordering).
+#[inline]
+fn clear_bit_at(key: &mut Hash, pos: usize) {
+    let byte_idx = pos / 8;
+    let bit_idx = 7 - (pos % 8);
+    key[byte_idx] &= !(1 << bit_idx);
+}
+
+// ─── Hash helpers ───────────────────────────────────────────────────────────
+
+/// Hash a leaf node: H(0x00 || key || value_hash).
 pub fn hash_leaf(key: &Hash, value_hash: &Hash) -> Hash {
-    let mut data = Vec::with_capacity(65);
-    data.push(0x00); // Leaf prefix
-    data.extend_from_slice(key);
-    data.extend_from_slice(value_hash);
+    let mut data = [0u8; 65];
+    data[0] = 0x00;
+    data[1..33].copy_from_slice(key);
+    data[33..65].copy_from_slice(value_hash);
     blake3_hash(&data)
 }
 
+/// Hash an internal node: H(0x01 || left || right).
 pub fn hash_internal(left: &Hash, right: &Hash) -> Hash {
-    let mut data = Vec::with_capacity(65);
-    data.push(0x01); // Internal prefix
-    data.extend_from_slice(left);
-    data.extend_from_slice(right);
+    let mut data = [0u8; 65];
+    data[0] = 0x01;
+    data[1..33].copy_from_slice(left);
+    data[33..65].copy_from_slice(right);
     blake3_hash(&data)
 }
 
@@ -228,21 +344,6 @@ pub fn get_bit(key: &Hash, depth: usize) -> u8 {
     } else {
         0
     }
-}
-
-/// Get the first `depth` bits of a key as a Vec<u8> of 0s and 1s.
-fn get_prefix(key: &Hash, depth: usize) -> Vec<u8> {
-    (0..depth).map(|d| get_bit(key, d)).collect()
-}
-
-/// Check if a key matches a given bit prefix.
-fn key_matches_prefix(key: &Hash, prefix: &[u8]) -> bool {
-    for (i, &bit) in prefix.iter().enumerate() {
-        if get_bit(key, i) != bit {
-            return false;
-        }
-    }
-    true
 }
 
 #[cfg(test)]
@@ -378,5 +479,121 @@ mod tests {
             assert_eq!(proof.value, *value);
             assert!(SparseMerkleTree::verify_proof(&root, &proof).is_ok());
         }
+    }
+
+    #[test]
+    fn test_update_value_changes_root() {
+        let mut tree = SparseMerkleTree::new();
+        let key = blake3_hash(b"key1");
+        tree.insert(key, b"value1".to_vec());
+        let root1 = tree.root();
+        tree.insert(key, b"value2".to_vec());
+        let root2 = tree.root();
+        assert_ne!(root1, root2);
+    }
+
+    #[test]
+    fn test_proof_after_removal() {
+        let mut tree = SparseMerkleTree::new();
+        let key1 = blake3_hash(b"key1");
+        let key2 = blake3_hash(b"key2");
+        tree.insert(key1, b"value1".to_vec());
+        tree.insert(key2, b"value2".to_vec());
+        tree.remove(&key1);
+
+        let root = tree.root();
+        let proof = tree.prove(&key2);
+        assert!(SparseMerkleTree::verify_proof(&root, &proof).is_ok());
+        let proof1 = tree.prove(&key1);
+        assert!(proof1.value.is_empty());
+        assert!(SparseMerkleTree::verify_proof(&root, &proof1).is_ok());
+    }
+
+    #[test]
+    fn test_incremental_root_consistency() {
+        let keys: Vec<(Hash, Vec<u8>)> = (0..20u8)
+            .map(|i| (blake3_hash(&[i]), vec![i; 16]))
+            .collect();
+
+        let mut incremental = SparseMerkleTree::new();
+        for (key, value) in &keys {
+            incremental.insert(*key, value.clone());
+
+            let mut fresh = SparseMerkleTree::new();
+            for (k2, v2) in &keys[..=(keys.iter().position(|x| x.0 == *key).unwrap())] {
+                fresh.insert(*k2, v2.clone());
+            }
+            assert_eq!(
+                incremental.root(),
+                fresh.root(),
+                "roots diverged after inserting key index {}",
+                keys.iter().position(|x| x.0 == *key).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn test_insert_batch_matches_sequential() {
+        let entries: Vec<(Hash, Vec<u8>)> = (0..50u8)
+            .map(|i| (blake3_hash(&[i]), vec![i; 16]))
+            .collect();
+
+        let mut sequential = SparseMerkleTree::new();
+        for (key, value) in &entries {
+            sequential.insert(*key, value.clone());
+        }
+
+        let mut batched = SparseMerkleTree::new();
+        batched.insert_batch(entries.clone());
+
+        assert_eq!(
+            sequential.root(),
+            batched.root(),
+            "batch insert must produce the same root as sequential inserts"
+        );
+
+        for (key, value) in &entries {
+            assert_eq!(batched.get(key), Some(value.as_slice()));
+        }
+    }
+
+    #[test]
+    fn test_insert_batch_empty() {
+        let mut tree = SparseMerkleTree::new();
+        tree.insert_batch(vec![]);
+        assert_eq!(tree.root(), EMPTY_HASH);
+    }
+
+    #[test]
+    fn test_insert_batch_then_individual() {
+        let batch_entries: Vec<(Hash, Vec<u8>)> =
+            (0..10u8).map(|i| (blake3_hash(&[i]), vec![i; 8])).collect();
+
+        let mut tree = SparseMerkleTree::new();
+        tree.insert_batch(batch_entries.clone());
+
+        let extra_key = blake3_hash(&[99u8]);
+        tree.insert(extra_key, vec![99; 8]);
+
+        let mut sequential = SparseMerkleTree::new();
+        for (key, value) in &batch_entries {
+            sequential.insert(*key, value.clone());
+        }
+        sequential.insert(extra_key, vec![99; 8]);
+
+        assert_eq!(tree.root(), sequential.root());
+    }
+
+    #[test]
+    fn test_truncate_key() {
+        let key = [0xFF; 32];
+        assert_eq!(truncate_key(&key, 0), [0u8; 32]);
+        let mut expected = [0u8; 32];
+        expected[0] = 0xFF;
+        assert_eq!(truncate_key(&key, 8), expected);
+        let mut expected = [0u8; 32];
+        expected[0] = 0xF0;
+        assert_eq!(truncate_key(&key, 4), expected);
+        assert_eq!(truncate_key(&key, 256), key);
     }
 }
