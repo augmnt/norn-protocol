@@ -151,6 +151,7 @@ pub trait NornRpc {
     async fn get_recent_transfers(
         &self,
         limit: u64,
+        offset: u64,
     ) -> Result<Vec<TransactionHistoryEntry>, ErrorObjectOwned>;
 
     /// Get a single transaction by its knot ID (hex).
@@ -1212,11 +1213,13 @@ impl NornRpcServer for NornRpcImpl {
     async fn get_recent_transfers(
         &self,
         limit: u64,
+        offset: u64,
     ) -> Result<Vec<TransactionHistoryEntry>, ErrorObjectOwned> {
         let limit = if limit == 0 { 20 } else { limit.min(100) } as usize;
+        let offset = offset as usize;
 
         let sm = self.state_manager.read().await;
-        let records = sm.get_recent_transfers(limit);
+        let records = sm.get_recent_transfers(limit, offset);
 
         let entries = records
             .into_iter()

@@ -250,8 +250,9 @@ export class NornClient {
   /** Get recent transfers. */
   async getRecentTransfers(
     limit = 20,
+    offset = 0,
   ): Promise<TransactionHistoryEntry[]> {
-    return this.call("norn_getRecentTransfers", [limit]);
+    return this.call("norn_getRecentTransfers", [limit, offset]);
   }
 
   /** Get a single transaction by its knot ID (hex). */

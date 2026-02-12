@@ -15,7 +15,7 @@ export function useRecentHistory(limit = 10, offset = 0) {
       try {
         const entries = await rpcCall<TransactionHistoryEntry[]>(
           "norn_getRecentTransfers",
-          [limit]
+          [limit, offset]
         );
         return entries ?? [];
       } catch {
