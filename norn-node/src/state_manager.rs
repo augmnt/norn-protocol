@@ -682,7 +682,12 @@ impl StateManager {
 
     /// Get the most recent transfers across all addresses.
     pub fn get_recent_transfers(&self, limit: usize, offset: usize) -> Vec<&TransferRecord> {
-        self.transfer_log.iter().rev().skip(offset).take(limit).collect()
+        self.transfer_log
+            .iter()
+            .rev()
+            .skip(offset)
+            .take(limit)
+            .collect()
     }
 
     /// Look up a single transfer by its knot ID.

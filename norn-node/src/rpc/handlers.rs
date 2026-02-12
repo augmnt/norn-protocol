@@ -27,9 +27,7 @@ use crate::state_manager::StateManager;
 use norn_types::constants::{MAX_SUPPLY, NORN_DECIMALS};
 use norn_types::primitives::NATIVE_TOKEN_ID;
 
-use crate::wallet::format::{
-    format_address, format_amount_with_symbol, format_token_amount,
-};
+use crate::wallet::format::{format_address, format_amount_with_symbol, format_token_amount};
 
 /// Format an amount using the correct decimals for the given token.
 /// Returns just the numeric string (no symbol) for programmatic use by frontends.

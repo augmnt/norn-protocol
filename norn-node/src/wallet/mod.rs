@@ -133,9 +133,7 @@ pub async fn run(command: WalletCommand) -> Result<(), WalletError> {
             pubkey,
         } => commands::verify_message::run(&message, &signature, &pubkey),
         WalletCommand::Rename { from, to } => commands::rename::run(&from, &to),
-        WalletCommand::ChangePassword { name } => {
-            commands::change_password::run(name.as_deref())
-        }
+        WalletCommand::ChangePassword { name } => commands::change_password::run(name.as_deref()),
         WalletCommand::CreateToken {
             name,
             symbol,
