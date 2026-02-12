@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { explorerAddressUrl } from "@/lib/explorer";
 import { rpcCall } from "@/lib/rpc";
 import type { NameResolution } from "@/types";
-import { exportPrivateKeyHex, exportMnemonic, renameAccount, exportWalletBackup } from "@/lib/wallet-manager";
+import { exportPrivateKeyHex, exportMnemonic, renameAccount, exportWalletBackup, changePassword } from "@/lib/wallet-manager";
 import { useWalletStore } from "@/stores/wallet-store";
 import { useContactsStore } from "@/stores/contacts-store";
 import { isValidAddress, truncateAddress } from "@/lib/format";
@@ -60,6 +60,14 @@ export default function SettingsPage() {
   const [showMnemonic, setShowMnemonic] = useState(false);
   const [exportedKey, setExportedKey] = useState<string | null>(null);
   const [exportedMnemonic, setExportedMnemonic] = useState<string | null>(null);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [changePwLoading, setChangePwLoading] = useState(false);
+
+  const sessionPassword = useWalletStore((s) => s.sessionPassword);
+  const setSessionPassword = useWalletStore((s) => s.setSessionPassword);
 
   const handleRename = async () => {
     const trimmed = nameInput.trim();
@@ -149,6 +157,25 @@ export default function SettingsPage() {
       toast.success("Backup downloaded");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to export backup");
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!walletMeta || newPw !== confirmPw) return;
+    setChangePwLoading(true);
+    try {
+      const updated = await changePassword(walletMeta, currentPw, newPw);
+      setMeta(updated);
+      setSessionPassword(newPw);
+      setChangePasswordOpen(false);
+      setCurrentPw("");
+      setNewPw("");
+      setConfirmPw("");
+      toast.success("Password changed");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to change password");
+    } finally {
+      setChangePwLoading(false);
     }
   };
 
@@ -401,6 +428,25 @@ export default function SettingsPage() {
                 ))}
               </div>
             </div>
+
+            {!meta?.usesPrf && (
+              <>
+                <Separator />
+                <div className="space-y-2.5">
+                  <Label className="text-xs text-muted-foreground">Password</Label>
+                  <div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setChangePasswordOpen(true)}
+                    >
+                      <Key className="mr-2 h-3.5 w-3.5" />
+                      Change Password
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -726,6 +772,80 @@ export default function SettingsPage() {
             >
               <Plus className="mr-2 h-3.5 w-3.5" />
               Add Contact
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Change Password Dialog */}
+      <Dialog open={changePasswordOpen} onOpenChange={(open) => {
+        setChangePasswordOpen(open);
+        if (!open) { setCurrentPw(""); setNewPw(""); setConfirmPw(""); }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-secondary">
+                <Key className="h-3.5 w-3.5 text-muted-foreground" />
+              </div>
+              Change Password
+            </DialogTitle>
+            <DialogDescription>
+              Enter your current password and choose a new one.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Current Password</Label>
+              <Input
+                type="password"
+                value={currentPw}
+                onChange={(e) => setCurrentPw(e.target.value)}
+                placeholder="Enter current password"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">New Password</Label>
+              <Input
+                type="password"
+                value={newPw}
+                onChange={(e) => setNewPw(e.target.value)}
+                placeholder="Enter new password"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Confirm New Password</Label>
+              <Input
+                type="password"
+                value={confirmPw}
+                onChange={(e) => setConfirmPw(e.target.value)}
+                placeholder="Confirm new password"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newPw && newPw === confirmPw && currentPw) {
+                    handleChangePassword();
+                  }
+                }}
+              />
+              {confirmPw && newPw !== confirmPw && (
+                <p className="text-[11px] text-destructive">Passwords do not match</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setChangePasswordOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleChangePassword}
+              disabled={changePwLoading || !currentPw || !newPw || newPw !== confirmPw}
+            >
+              {changePwLoading ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Changing...
+                </span>
+              ) : (
+                "Change Password"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

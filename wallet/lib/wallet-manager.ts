@@ -416,6 +416,49 @@ export async function renameAccount(
   return { ...meta };
 }
 
+/** Change wallet password (password-based wallets only). */
+export async function changePassword(
+  meta: StoredWalletMeta,
+  currentPassword: string,
+  newPassword: string
+): Promise<StoredWalletMeta> {
+  if (meta.usesPrf) {
+    throw new Error("Cannot change password on a passkey wallet");
+  }
+  if (!meta.encryptedKeyBlob || !meta.pbkdfSalt || !meta.aesIv) {
+    throw new Error("No encrypted key data found");
+  }
+
+  // Decrypt with current password
+  const key = await decryptKey(
+    meta.encryptedKeyBlob,
+    currentPassword,
+    meta.pbkdfSalt,
+    meta.aesIv
+  );
+
+  // Verify decrypted key matches stored address
+  const keypair = deriveKeypairFromPrf(key);
+  if (keypair.addressHex !== meta.accounts[0].address) {
+    zeroBytes(key, keypair.privateKey);
+    throw new Error("Incorrect password");
+  }
+
+  // Re-encrypt with new password
+  const bundle = await encryptExistingKey(key, newPassword);
+  zeroBytes(key, keypair.privateKey);
+
+  // Update meta
+  const updated: StoredWalletMeta = {
+    ...meta,
+    encryptedKeyBlob: bundle.encryptedKeyBlob,
+    pbkdfSalt: bundle.pbkdfSalt,
+    aesIv: bundle.aesIv,
+  };
+  await saveWalletMeta(updated);
+  return updated;
+}
+
 /** Export wallet metadata as an encrypted JSON backup file. */
 export async function exportWalletBackup(meta: StoredWalletMeta): Promise<string> {
   const backup = {
