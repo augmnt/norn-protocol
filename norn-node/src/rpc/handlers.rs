@@ -887,6 +887,26 @@ impl NornRpcServer for NornRpcImpl {
             }
         }
 
+        // Validate before-state hash (non-zero means the client is providing a
+        // real state snapshot — reject if it doesn't match the current thread).
+        let submitted_state_hash = knot.before_states[0].state_hash;
+        if submitted_state_hash != [0u8; 32] {
+            let sm_read = self.state_manager.read().await;
+            if let Some(meta) = sm_read.get_thread_meta(&from) {
+                if submitted_state_hash != meta.state_hash {
+                    return Ok(SubmitResult {
+                        success: false,
+                        reason: Some(format!(
+                            "stale before-state: submitted {} but current is {}",
+                            hex::encode(submitted_state_hash),
+                            hex::encode(meta.state_hash),
+                        )),
+                    });
+                }
+            }
+            drop(sm_read);
+        }
+
         // Apply transfer via StateManager.
         let sender_pubkey = knot.before_states[0].pubkey;
         let mut sm = self.state_manager.write().await;

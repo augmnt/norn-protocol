@@ -30,7 +30,7 @@
 
 ## 1. Abstract
 
-Norn is a radically minimal blockchain protocol that reimagines the relationship between users and the chain. Rather than forcing every transaction through global consensus -- the bottleneck that limits every existing blockchain -- Norn treats the chain as a **courtroom**, not a bank. Users transact directly with each other using cryptographic signatures, maintaining their own personal state histories called *Threads*. The chain intervenes only when there is a dispute, processing fraud proofs rather than transactions. This architectural inversion achieves what no existing protocol can deliver simultaneously: unlimited bilateral throughput that scales with user count rather than block size, phone-runnable full nodes with minimal storage requirements, zero-fee peer-to-peer transfers, privacy by default since the chain never sees transaction details, and instant bilateral finality the moment both parties sign. For complex multi-party logic, off-chain smart contracts called *Looms* provide WebAssembly-powered programmability with on-chain fraud proof guarantees. The result is a protocol where the vast majority of economic activity happens off-chain by design, with the anchor chain serving as a minimal, efficient arbiter of last resort.
+Norn is a thread-centric blockchain protocol that reimagines the relationship between users and the chain. Rather than forcing every transaction through global consensus -- the bottleneck that limits every existing blockchain -- Norn treats the chain as a **courtroom**, not a bank. Users own their state through personal cryptographic chains called *Threads*. Transfers are signed by the sender and validated by the network. Clients can independently verify their balances using Merkle proofs against the on-chain state root. This architecture achieves what no existing protocol can deliver simultaneously: zero-fee transfers, fast finality in ~3 second blocks, phone-runnable full nodes with minimal storage requirements, and cryptographic state verification that lets clients prove their balances without trusting the node. For complex multi-party logic, off-chain smart contracts called *Looms* provide WebAssembly-powered programmability with on-chain fraud proof guarantees. The result is a protocol where the chain is a lightweight validator and arbiter -- it validates state transitions and guarantees correctness, but users own their state.
 
 ---
 
@@ -56,21 +56,21 @@ This is the equivalent of requiring every contract, every handshake, every excha
 
 Consider how value exchange works in the physical world. When Alice hands Bob a $20 bill for a cup of coffee, no central authority witnesses the transaction. The exchange is bilateral, private, and instant. The legal system (courts, police, regulators) exists as a backstop for disputes, not as a prerequisite for every exchange.
 
-Norn applies this insight to digital value. The protocol separates the act of transacting from the act of settling disputes. Users transact directly, bilaterally, with cryptographic signatures replacing physical handshakes. The chain exists as a court of last resort: a minimal, efficient mechanism for resolving the rare disputes that arise.
+Norn applies this insight to digital value. The protocol separates state ownership from state validation. Users own their state through personal cryptographic chains (Threads), signing transfers that the network validates and applies. The chain exists as a validator and arbiter: it guarantees correctness, resolves disputes, and anchors state -- but never holds your money.
 
 ### 2.3 What Norn Delivers
 
 By inverting the traditional blockchain architecture, Norn achieves properties that are impossible under the global-consensus model:
 
-- **Unlimited bilateral throughput.** Two parties can exchange value as fast as they can sign messages. There is no block size limit, no gas auction, no mempool congestion. Throughput scales linearly with the number of user pairs, not with chain capacity.
+- **Zero-fee transfers.** Transfers carry no protocol fee. Only periodic commitments and operations like name registration carry a small dynamic fee.
 
-- **Phone-runnable full nodes.** The anchor chain (the Weave) processes only commitments, registrations, and fraud proofs -- not raw transactions. This keeps the on-chain state minimal. A full node runs on a modern smartphone with 2 GB of RAM and 50 GB of storage.
+- **Fast finality.** Transactions confirm in ~3 second blocks on the Weave. No probabilistic finality, no extended confirmation wait.
 
-- **Zero-fee peer-to-peer transfers.** Bilateral transactions (Knots) are exchanged directly between parties and incur no on-chain fee. Only periodic commitments to the anchor chain carry a small dynamic fee.
+- **Phone-runnable full nodes.** The anchor chain (the Weave) processes commitments, registrations, transfers, and fraud proofs with minimal overhead. A full node runs on a modern smartphone with 2 GB of RAM and 50 GB of storage.
 
-- **Privacy by default.** The chain never sees transaction details, balances, or counterparties. It sees only cryptographic commitments -- hashes of state. Bilateral transactions are known only to the participants.
+- **State verification.** Clients can independently verify their balances using Merkle proofs against the on-chain state root. You don't need to trust the node -- you can prove your state cryptographically.
 
-- **Instant bilateral finality.** A transaction is final the moment all parties have signed the Knot. There is no confirmation time, no block wait, no probabilistic finality.
+- **Thread-centric state ownership.** Each user's state lives in their own Thread -- a personal cryptographic chain. The network validates transitions but never holds your state.
 
 ---
 
@@ -84,7 +84,7 @@ The Norn Protocol is built on six foundational principles that guide every desig
 
 **Principle 2: User sovereignty.** Users own their state. A Thread -- the complete history of a user's state transitions -- is stored on the user's own device, not on a remote server. No validator, operator, or third party can freeze, censor, or modify a user's state without their cryptographic consent. The user's private key is the sole authority over their Thread.
 
-**Principle 3: Minimal on-chain footprint.** The anchor chain (the Weave) should process the absolute minimum data necessary for security. It does not store balances. It does not execute transactions. It does not maintain a global state tree of every account. It stores only Merkle roots: compact 32-byte hashes that commit to off-chain state. This keeps the chain small, fast, and cheap to operate.
+**Principle 3: Minimal on-chain footprint.** The anchor chain (the Weave) is a lightweight validator. It validates state transitions, maintains a sparse Merkle tree of balances for state verification, and stores commitments. This keeps the chain small, fast, and cheap to operate.
 
 **Principle 4: Phone-first design.** If a full node cannot run on a modern smartphone, the protocol has failed. Decentralization is meaningless if participation requires expensive hardware. Every design decision is filtered through the question: "Can a phone handle this?"
 
@@ -100,7 +100,7 @@ Clarity about what Norn is *not* is as important as clarity about what it is.
 
 **Norn is not a data availability layer.** The Weave does not store transaction data, blobs, or calldata. Off-chain data availability is the responsibility of the transacting parties and their Spindles (watchtowers). The chain stores only cryptographic commitments to state.
 
-**Norn is not a blockchain for speculation.** The protocol is designed for real economic activity: payments, commerce, contracts. The fee structure -- zero for bilateral transfers, minimal for chain commitments -- discourages the rent-seeking that dominates existing blockchains and encourages genuine use.
+**Norn is not a blockchain for speculation.** The protocol is designed for real economic activity: payments, commerce, contracts. The fee structure -- zero for transfers, minimal for chain commitments -- discourages the rent-seeking that dominates existing blockchains and encourages genuine use.
 
 ---
 
@@ -115,7 +115,7 @@ flowchart TB
         B["Thread B<br/>(Bob)"]
     end
 
-    A <-->|"Bilateral Knots<br/>(instant, free, private)"| B
+    A <-->|"Signed Transfers<br/>(zero-fee, fast finality)"| B
 
     A -->|"Periodic commitments<br/>(state hash + version)"| W
     B -->|"Periodic commitments<br/>(state hash + version)"| W
@@ -164,22 +164,22 @@ The Thread State is never stored on-chain. Only its BLAKE3 hash appears in commi
 
 ### 4.2 Knots -- Atomic State Transitions
 
-A Knot is the atomic unit of state change in Norn. It records a bilateral or multilateral agreement between Thread participants.
+A Knot is the atomic unit of state change in Norn. It records a signed state transition that updates Thread state.
 
-The term "Knot" evokes the tying together of Threads -- a deliberate metaphor. When Alice sends Bob 10 NORN, their Threads are temporarily knotted together: both Threads' states change atomically, and both parties sign the result.
+The term "Knot" evokes the tying together of Threads -- a deliberate metaphor. When Alice sends Bob 10 NORN, their Threads are knotted together: both Threads' states change atomically as the network validates and applies the transfer.
 
 A Knot contains:
 
 - `id`: A 32-byte unique identifier computed as `BLAKE3(all fields except signatures)`.
 - `knot_type`: The category of operation -- `Transfer`, `MultiTransfer`, or `LoomInteraction`.
 - `timestamp`: When the Knot was created.
-- `expiry`: An optional expiration timestamp (default: 1 hour). If the counterparty has not co-signed by this time, the Knot is void.
+- `expiry`: An optional expiration timestamp. If the Knot has not been submitted by this time, it is void.
 - `before_states`: Each participant's Thread state snapshot *before* the Knot (thread ID, public key, version, state hash).
 - `after_states`: Each participant's Thread state snapshot *after* the Knot.
 - `payload`: The operation-specific data (transfer amount, token ID, sender, recipient, memo for transfers; Loom interaction details for Loom operations).
-- `signatures`: Ed25519 signatures from all participants, one per participant.
+- `signatures`: Ed25519 signature from the sender.
 
-**Finality is instant.** Once all required parties have signed a Knot, the state transition is final. There is no block confirmation to wait for, no probabilistic finality window, no chain latency. The cryptographic signatures constitute irrevocable agreement.
+**Finality is fast.** Once submitted, a Knot is validated by the network and included in the next block (~3 seconds). The sender's cryptographic signature authorizes the transfer; the network validates and applies it.
 
 **Knot Types:**
 
@@ -250,7 +250,7 @@ Spindles operate with rate limiting to prevent abuse and are registered on the n
 
 Relays are the networking backbone of the Norn Protocol, providing asynchronous message delivery between Threads via the libp2p protocol stack.
 
-When Alice wants to send Bob a Knot, she does not need Bob to be online at that exact moment. She sends the Knot proposal to the relay network, which buffers the message until Bob comes online and retrieves it. Bob reviews the Knot, co-signs it if he agrees, and sends the response back through the relay.
+Relays handle block propagation, state synchronization, and peer discovery. When a node produces a block, relays distribute it across the network. They also facilitate initial state sync for new nodes joining the network.
 
 Relays handle:
 
@@ -289,7 +289,7 @@ The native token is identified by a special 32-byte zero identifier (`[0x00; 32]
 
 Norn's fee model is radically different from existing blockchains because it reflects the protocol's architectural separation between off-chain transactions and on-chain commitments.
 
-**Peer-to-peer transfers are free.** Bilateral Knots between two parties incur zero protocol fees. There is no gas, no base fee, no tip. Alice can send Bob 10 NORN, and the only cost is the computational effort to sign the Knot (negligible on any modern device). This is possible because bilateral Knots do not touch the chain -- they are purely off-chain.
+**Transfers are free.** Transfer Knots incur zero protocol fees. There is no gas, no base fee, no tip. Alice can send Bob 10 NORN at zero cost. This is possible because the chain's validation overhead for transfers is minimal -- it validates the signature, checks the balance, and updates the state.
 
 **Weave commitments carry dynamic fees.** When a user commits their Thread state to the Weave, they pay a small fee that adjusts dynamically based on chain utilization. This fee mechanism is inspired by Ethereum's EIP-1559, adapted for Norn's commitment-based model:
 
@@ -450,7 +450,7 @@ All fraud proofs must be submitted within a **24-hour challenge period** followi
 
 The 24-hour window is chosen as a balance between security (giving honest parties sufficient time to detect and respond to fraud) and usability (limiting how long third parties must wait before treating a commitment as final for high-value interactions).
 
-For everyday bilateral transactions, the challenge period is irrelevant -- Knot finality is instant. The challenge period applies only to on-chain commitments and Loom anchors, affecting scenarios where third parties rely on the committed state.
+For everyday transfers, finality is fast (~3 second blocks). The challenge period applies to on-chain commitments and Loom anchors, affecting scenarios where third parties rely on the committed state.
 
 ### 7.3 Game-Theoretic Security
 
@@ -578,33 +578,28 @@ This mechanism works because WebAssembly execution is fully deterministic: the s
 
 ## 9. Privacy Model
 
-### 9.1 Privacy by Architecture
+### 9.1 Privacy Characteristics
 
-Norn achieves privacy not through complex cryptographic techniques (zero-knowledge proofs, ring signatures, or mixers) but through architectural design. The protocol simply does not put private data on-chain.
+Norn's privacy model is similar to other transparent blockchains: the network validates transfers and maintains state, so transfer details (sender, recipient, amount) are visible to nodes. However, Norn provides some privacy advantages through its architecture:
 
-**Bilateral transactions are completely private.** When Alice sends Bob 10 NORN via a bilateral Knot, the only entities that know about the transaction are Alice and Bob (and optionally their Spindles). The Knot is exchanged directly between them through the relay network. No validator, no miner, no other node ever sees the transaction details.
+**Minimal on-chain data.** The Weave stores commitments (state hash + version) rather than full transaction histories. While the validating node sees transfer details, only cryptographic commitments are anchored on-chain permanently.
 
-**The Weave sees only commitments, not transactions.** When Alice periodically commits her Thread state to the Weave, the commitment contains:
+**Thread-centric state.** Balances are stored per-thread rather than in a global account tree. State proofs allow clients to verify their own balances without exposing others' state.
 
-| What the Weave sees | What the Weave does NOT see |
-|---------------------|---------------------------|
-| Alice's public key | Transaction amounts |
-| Alice's current version number | Counterparty identities |
-| A 32-byte state hash | Token balances |
-| Commitment timing | Number or nature of transactions |
-| Alice's signature | Memo contents |
-
-An observer watching the Weave can see that Alice committed at version 42, but cannot determine whether she made 1 transaction or 1,000 since her last commitment, how much NORN she holds, or with whom she transacted.
+| What the Weave stores permanently | What only nodes see transiently |
+|-----------------------------------|--------------------------------|
+| Commitment hashes and versions | Transfer details (sender, recipient, amount) |
+| Block headers and state roots | Memo contents |
+| Fraud proof evidence | Individual balance queries |
 
 ### 9.2 Privacy Comparison
 
 | Privacy Property | Bitcoin | Ethereum | Solana | Norn |
 |-----------------|---------|----------|--------|------|
-| Transaction amounts visible on-chain | Yes | Yes | Yes | No |
-| Counterparties visible on-chain | Yes | Yes | Yes | No |
-| Balance visible on-chain | Yes | Yes | Yes | No |
-| Transaction graph analyzable | Yes | Yes | Yes | Only commitment timing |
-| Requires mixing/tumbling for privacy | Yes | Yes | Yes | No |
+| Transfer details visible to nodes | Yes | Yes | Yes | Yes |
+| Full tx history on-chain permanently | Yes | Yes | Yes | No (only commitments) |
+| State verification without full sync | No | No | No | Yes (Merkle proofs) |
+| Transaction graph analyzable | Yes | Yes | Yes | Yes |
 
 ### 9.3 Privacy Limitations and Future Enhancements
 
@@ -625,17 +620,11 @@ Future protocol enhancements under research:
 
 ## 10. Performance Analysis
 
-### 10.1 Bilateral Throughput: Unlimited
+### 10.1 Transfer Throughput
 
-The most striking performance characteristic of Norn is that bilateral throughput has no protocol-imposed limit. Two parties can create Knots as fast as they can sign Ed25519 messages and exchange them over the network.
+Transfer throughput is bounded by the network's validation capacity. The node validates the sender's signature, checks the balance, updates both threads' state, and updates the sparse Merkle tree. On modern hardware, this takes approximately 100-200 microseconds per transfer, yielding a theoretical single-node maximum of approximately 5,000-10,000 transfers per second.
 
-On modern hardware, Ed25519 signing takes approximately 50 microseconds. This translates to a theoretical maximum of approximately 20,000 Knots per second *per device*. Across the network, total bilateral throughput is:
-
-```
-Total bilateral TPS = (number of active user pairs) * (per-pair TPS)
-```
-
-With 1 million simultaneously active user pairs, each executing 10 Knots per second, the network processes 10 million bilateral state transitions per second -- with zero chain load. This is not a theoretical limit but a practical consequence of the architecture: bilateral Knots simply do not touch the chain.
+In practice, throughput is bounded by block time (3 seconds) and the number of transfers that can be included per block. The current implementation processes transfers submitted via RPC and includes them in the next block.
 
 ### 10.2 Weave Throughput
 
@@ -647,7 +636,7 @@ For example, if the average user commits after 100 Knots, 10,000 commitments per
 
 | Operation | Finality Time |
 |-----------|--------------|
-| Bilateral Knot | **Instant** (upon co-signing) |
+| Transfer | **~3 seconds** (next block) |
 | Weave commitment | **30 seconds** (10 blocks x 3 seconds) |
 | Loom state anchor | **30 seconds** (commitment finality depth) |
 | Fraud proof challenge window | **24 hours** (for third-party reliance) |
@@ -681,7 +670,7 @@ With 10 million registered Threads, the commitment state requires approximately 
 
 | Operation | Cost |
 |-----------|------|
-| Bilateral Knot (Transfer) | **$0.00** (free) |
+| Transfer | **$0.00** (free) |
 | Weave commitment | Minimal (dynamic, EIP-1559-style fee) |
 | Loom interaction | Gas cost (paid to operator, not to chain) |
 | Thread registration | One-time commitment fee |
@@ -694,12 +683,12 @@ In practice, the cost of using Norn for everyday payments is effectively zero. T
 
 | Property | Bitcoin | Ethereum | Solana | Lightning Network | Norn |
 |----------|---------|----------|--------|-------------------|------|
-| **Bilateral TPS** | ~7 | ~30 | ~5,000 | ~1,000,000+ | **Unlimited** |
+| **Transfer TPS** | ~7 | ~30 | ~5,000 | ~1,000,000+ | **~5,000-10,000** |
 | **On-chain TPS** | ~7 | ~30 | ~5,000 | N/A | ~10,000 commitments/block |
-| **Finality** | ~60 min | ~15 min | ~0.4 sec | Instant (channel) | **Instant** (bilateral) / 30 sec (Weave) |
-| **Transaction cost** | $1-50 | $0.50-50 | $0.001 | ~$0 | **$0** (bilateral) / minimal (Weave) |
+| **Finality** | ~60 min | ~15 min | ~0.4 sec | Instant (channel) | **~3 sec** (block) / 30 sec (Weave) |
+| **Transfer cost** | $1-50 | $0.50-50 | $0.001 | ~$0 | **$0** (transfers) / minimal (Weave) |
 | **Phone full node** | No | No | No | Partial | **Yes** |
-| **Privacy** | Pseudonymous | Pseudonymous | Pseudonymous | Better | **Private by default** |
+| **State verification** | Full node | Full node | Full node | N/A | **Merkle proofs** |
 | **Smart contracts** | Limited (Script) | Yes (EVM) | Yes (SVM) | Limited (HTLCs) | **Yes (Wasm Looms)** |
 | **Chain size (full)** | ~550 GB | ~1 TB+ | ~100 TB+ | N/A | **Minimal** (~hundreds of MB) |
 | **Consensus** | PoW (Nakamoto) | PoS (Gasper) | PoS + PoH | N/A | **HotStuff BFT (DPoS)** |

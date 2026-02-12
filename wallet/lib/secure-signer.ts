@@ -41,6 +41,7 @@ export async function signTransfer(
     tokenId?: string;
     memo?: string;
     decimals?: number;
+    beforeState?: { version: bigint; stateHash: string };
   },
   accountIndex = 0,
   password?: string
@@ -53,6 +54,7 @@ export async function signTransfer(
       amount: amountBigint,
       tokenId: params.tokenId,
       memo: params.memo,
+      beforeState: params.beforeState,
     });
   } finally {
     cleanupWallet(wallet);

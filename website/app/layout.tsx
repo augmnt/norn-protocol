@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     template: "%s | Norn Protocol",
   },
   description:
-    "Norn is a blockchain where users transact directly with cryptographic signatures. Instant finality, zero fees, private by default. The network only intervenes when there's a dispute.",
+    "Norn is a thread-centric blockchain where users own their state. Zero-fee transfers, fast finality, cryptographic state verification.",
   icons: { icon: "/icon.svg" },
   keywords: [
     "norn",
@@ -35,7 +35,7 @@ export const metadata: Metadata = {
     "zero fee blockchain",
     "instant finality",
     "private blockchain",
-    "bilateral transactions",
+    "thread-centric",
     "smart contracts",
     "webassembly",
     "rust blockchain",
@@ -44,7 +44,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Norn Protocol — The chain is a courtroom, not a bank",
     description:
-      "A blockchain where users transact directly. Instant finality, zero fees, private by default.",
+      "A thread-centric blockchain where users own their state. Zero-fee transfers, fast finality.",
     siteName: "Norn Protocol",
     url: "https://norn.network",
     type: "website",
@@ -54,7 +54,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Norn Protocol",
     description:
-      "A blockchain where users transact directly. Instant finality, zero fees, private by default.",
+      "A thread-centric blockchain where users own their state. Zero-fee transfers, fast finality.",
   },
   robots: {
     index: true,

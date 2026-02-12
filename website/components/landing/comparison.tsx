@@ -4,15 +4,11 @@ const chains = ["Norn", "Bitcoin", "Ethereum", "Solana"] as const;
 
 const rows: { label: string; values: Record<(typeof chains)[number], string> }[] = [
   {
-    label: "Bilateral TPS",
-    values: { Norn: "Unlimited", Bitcoin: "7", Ethereum: "~30", Solana: "~4,000" },
-  },
-  {
     label: "Finality",
-    values: { Norn: "Instant", Bitcoin: "~60 min", Ethereum: "~13 min", Solana: "~0.4s" },
+    values: { Norn: "~3s", Bitcoin: "~60 min", Ethereum: "~13 min", Solana: "~0.4s" },
   },
   {
-    label: "Tx Cost",
+    label: "Transfer Cost",
     values: { Norn: "Free", Bitcoin: "~$1–50", Ethereum: "~$0.50–30", Solana: "~$0.001" },
   },
   {
@@ -20,8 +16,12 @@ const rows: { label: string; values: Record<(typeof chains)[number], string> }[]
     values: { Norn: "Yes", Bitcoin: "No", Ethereum: "No", Solana: "No" },
   },
   {
-    label: "Private by Default",
-    values: { Norn: "Yes", Bitcoin: "No", Ethereum: "No", Solana: "No" },
+    label: "State Verification",
+    values: { Norn: "Merkle proofs", Bitcoin: "Full node", Ethereum: "Full node", Solana: "Full node" },
+  },
+  {
+    label: "Smart Contracts",
+    values: { Norn: "Wasm", Bitcoin: "Script", Ethereum: "EVM", Solana: "SVM" },
   },
 ];
 

@@ -60,6 +60,7 @@ export function buildTransfer(
     amount: bigint;
     tokenId?: string;
     memo?: string;
+    beforeState?: { version: bigint; stateHash: string };
   },
 ): string {
   const from = wallet.address; // 20 bytes
@@ -90,8 +91,12 @@ export function buildTransfer(
   body.writeU32(1);
   body.writeFixedBytes(from); // thread_id: [u8; 20]
   body.writeFixedBytes(wallet.publicKey); // pubkey: [u8; 32]
-  body.writeU64(0n); // version: u64
-  body.writeFixedBytes(new Uint8Array(32)); // state_hash: [u8; 32]
+  body.writeU64(params.beforeState?.version ?? 0n); // version: u64
+  body.writeFixedBytes(
+    params.beforeState?.stateHash
+      ? fromHex(params.beforeState.stateHash)
+      : new Uint8Array(32),
+  ); // state_hash: [u8; 32]
 
   // after_states: Vec<ParticipantState> — empty
   body.writeU32(0);

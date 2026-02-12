@@ -228,8 +228,8 @@ export default async function Image() {
               marginTop: 20,
             }}
           >
-            A blockchain where users transact directly with cryptographic
-            signatures. The network only intervenes when there's a dispute.
+            A thread-centric blockchain where users own their state.
+            Zero-fee transfers, fast finality, cryptographic state verification.
           </div>
         </div>
 

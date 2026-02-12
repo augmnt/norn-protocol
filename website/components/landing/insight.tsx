@@ -12,10 +12,10 @@ export function Insight() {
           </p>
           <p className="mt-8 text-2xl sm:text-3xl leading-relaxed font-light">
             <span className="text-foreground font-normal">
-              Two parties sign a state transition. Done.
+              You sign a transfer. The network validates it. Done.
             </span>{" "}
             <span className="text-muted-foreground">
-              The chain only exists to settle disputes and anchor history.
+              The chain validates state, settles disputes, and anchors history.
               No bottleneck. No fees. No waiting.
             </span>
           </p>

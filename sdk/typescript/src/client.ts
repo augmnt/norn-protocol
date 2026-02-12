@@ -22,6 +22,7 @@ import type {
   AddressHex,
   HashHex,
 } from "./types.js";
+import { verifyBalanceProof } from "./merkle.js";
 
 /** Options for creating a NornClient. */
 export interface NornClientOptions {
@@ -360,5 +361,30 @@ export class NornClient {
   /** Submit a fraud proof. */
   async submitFraudProof(proofHex: string): Promise<SubmitResult> {
     return this.call("norn_submitFraudProof", [proofHex]);
+  }
+
+  // ── State verification ────────────────────────────────────────────────
+
+  /**
+   * Verify a balance using a state proof from the node.
+   *
+   * Fetches the state proof for the given address/token and verifies it
+   * against the current state root using the SMT proof.
+   *
+   * @returns `true` if the proof verifies, `false` otherwise.
+   */
+  async verifyBalance(
+    address: AddressHex,
+    tokenId: HashHex,
+    expectedBalance: bigint,
+  ): Promise<boolean> {
+    const proof = await this.getStateProof(address, tokenId);
+    return verifyBalanceProof(
+      proof.state_root,
+      address,
+      tokenId,
+      expectedBalance,
+      proof.proof,
+    );
   }
 }

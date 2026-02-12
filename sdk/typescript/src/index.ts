@@ -26,6 +26,16 @@ export { NornClient } from "./client.js";
 export type { NornClientOptions } from "./client.js";
 
 export {
+  verifyStateProof,
+  verifyBalanceProof,
+  getBit,
+  hashLeaf,
+  hashInternal,
+  smtKey,
+  encodeU128LE,
+} from "./merkle.js";
+
+export {
   buildTransfer,
   buildNameRegistration,
   buildTokenDefinition,

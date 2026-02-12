@@ -6,14 +6,14 @@ export const metadata = {
 
 Norn reimagines the relationship between users and the chain. Rather than forcing every transaction through global consensus, Norn treats the chain as a **courtroom**, not a bank.
 
-Users transact directly with each other using cryptographic signatures, maintaining their own personal state histories called *Threads*. The chain intervenes only when there is a dispute, processing fraud proofs rather than transactions.
+Users own their state through personal cryptographic chains called *Threads*. Transfers are signed by the sender and validated by the network. Clients can independently verify their balances using Merkle proofs against the on-chain state root.
 
 ## Core Components
 
 | Component | Description |
 |-----------|-------------|
 | **Threads** | Personal state chains -- each user maintains their own signed history of state transitions, stored locally on their device. |
-| **Knots** | Atomic state transitions -- bilateral or multilateral agreements that tie Threads together, signed by all participants. |
+| **Knots** | Atomic state transitions -- signed transfers that update Thread state, validated by the network. |
 | **Weave** | The anchor chain -- a minimal HotStuff BFT blockchain that processes commitments, registrations, and fraud proofs. |
 | **Looms** | Off-chain smart contracts -- WebAssembly programs that execute off-chain with on-chain fraud proof guarantees. |
 | **Spindles** | Watchtower services -- monitor the Weave on behalf of offline users and submit fraud proofs when misbehavior is detected. |
@@ -21,13 +21,13 @@ Users transact directly with each other using cryptographic signatures, maintain
 
 ## The Courtroom Model
 
-Traditional blockchains act as banks: every transaction must be processed, validated, and stored by every node. This creates inherent scalability limits -- throughput is bounded by block size and consensus overhead.
+Traditional blockchains act as banks: they hold your state and control access. This creates inherent scalability limits -- throughput is bounded by block size and consensus overhead.
 
-Norn inverts this model. The vast majority of economic activity happens **off-chain** between two parties, using nothing but cryptographic signatures. The anchor chain (the Weave) serves as a minimal, efficient arbiter of last resort:
+Norn inverts this model. Users own their state through Threads -- the chain validates transitions and guarantees correctness. The anchor chain (the Weave) serves as a lightweight validator and arbiter:
 
-- **Normal operation**: Alice and Bob exchange signed messages directly. The chain never sees their transactions.
-- **Periodic commitments**: Users publish cryptographic commitments (state hash + version) to the Weave, anchoring their off-chain state.
-- **Dispute resolution**: If someone cheats (e.g., signs conflicting states), the counterparty or a Spindle submits a fraud proof. The Weave adjudicates and penalizes the cheater.
+- **Normal operation**: Alice signs a transfer to Bob. The network validates the state transition and applies it.
+- **State verification**: Clients independently verify their balances using Merkle proofs against the on-chain state root.
+- **Dispute resolution**: If someone cheats (e.g., signs conflicting states), a Spindle submits a fraud proof. The Weave adjudicates and penalizes the cheater.
 
 ## Threads
 
@@ -41,13 +41,13 @@ Threads are never uploaded to the chain in full. Only commitments (hash + versio
 
 ## Knots
 
-A Knot is an atomic agreement between two or more parties. When Alice sends Bob 10 NORN:
+A Knot is a signed state transition. When Alice sends Bob 10 NORN:
 
-1. Alice creates a Knot proposing the transfer
-2. Bob validates and co-signs the Knot
-3. Both parties append the Knot to their respective Threads
+1. Alice creates and signs a Knot containing the transfer
+2. The Knot is submitted to the network for validation
+3. The network validates the state transition and applies it to both Threads
 
-The transfer is final the moment both signatures exist. No block confirmation needed.
+The transfer is confirmed in the next block (~3 seconds).
 
 ## The Weave
 

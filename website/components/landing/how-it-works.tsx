@@ -28,7 +28,7 @@ const steps = [
     number: "02",
     title: "Knots",
     description:
-      "Atomic state transitions. Bilateral agreements that tie Threads together, signed by all participants.",
+      "Atomic state transitions. Signed transfers that update Thread state, validated by the network.",
     art: `\\           |           |           |           /
  \\          |           |           |          /
   \\         |           |           |         /
@@ -184,8 +184,8 @@ export function HowItWorks() {
             Six primitives, one protocol
           </h2>
           <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
-            Users transact peer-to-peer. The chain only exists to settle
-            disputes and anchor history.
+            Users own their state. The chain validates transitions, settles
+            disputes, and anchors history.
           </p>
         </div>
 

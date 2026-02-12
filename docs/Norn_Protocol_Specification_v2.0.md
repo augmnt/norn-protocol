@@ -87,7 +87,7 @@ This document specifies:
 
 1. **Thread sovereignty.** Each thread is owned and controlled by a single keypair. No external actor can mutate a thread's state without the owner's cryptographic consent.
 
-2. **Bilateral agreement.** State transitions (knots) require signatures from all participating threads. The protocol enforces this at the knot level, not at a global transaction level.
+2. **Sender authorization.** Transfers require the sender's cryptographic signature. The network validates state transitions and applies them.
 
 3. **Off-chain execution, on-chain verification.** Threads execute locally. The Weave only stores commitment hashes and can verify fraud proofs, but never re-executes thread logic.
 
@@ -99,7 +99,6 @@ This document specifies:
 
 - Norn does not provide a global VM (no EVM, no Move).
 - Norn does not enforce global state ordering across unrelated threads.
-- Norn does not support unilateral transfers (the recipient must co-sign).
 
 ---
 
@@ -322,9 +321,9 @@ A knot is valid if and only if all of the following hold:
 
 ### 6.6 Knot Signing Protocol
 
-1. **Initiator** constructs the knot with `before_states` from both participants, computes the proposed `after_states`, fills the `payload`, computes the `id`, signs, and sends to the counterparty.
-2. **Counterparty** validates the knot (checks all rules), co-signs, and returns the fully signed knot.
-3. Both parties apply the knot to their local `ThreadState`.
+1. **Sender** constructs the knot with their `before_state` (thread ID, public key, version, state hash), fills the `payload` (transfer details), computes the `id` as `BLAKE3(all fields except signatures)`, and signs it.
+2. **Submission** -- the signed knot is submitted to the network via RPC (`norn_submitKnot`).
+3. **Validation** -- the node validates the signature, checks balance sufficiency, verifies the before-state hash (if non-zero) matches the current thread state, and applies the transfer to both threads.
 
 ---
 
@@ -1140,9 +1139,9 @@ The top-level protocol message envelope:
 
 ```rust
 pub enum NornMessage {
-    /// A knot proposal between two parties.
+    /// A knot proposal broadcast to the network.
     KnotProposal(Box<Knot>),
-    /// A knot response (co-signed knot).
+    /// A knot response (validated knot).
     KnotResponse(Box<Knot>),
     /// A commitment update for the weave.
     Commitment(CommitmentUpdate),

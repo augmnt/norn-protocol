@@ -1,10 +1,10 @@
 const stats = [
-  { value: "Unlimited", label: "Bilateral throughput" },
-  { value: "$0", label: "Transaction fees" },
-  { value: "Instant", label: "Bilateral finality" },
+  { value: "$0", label: "Transfer fees" },
+  { value: "~3s", label: "Block finality" },
   { value: "~2 GB", label: "RAM for a full node" },
   { value: "3s", label: "Block time" },
-  { value: "Private", label: "By default" },
+  { value: "SMT", label: "State verification" },
+  { value: "Wasm", label: "Smart contracts" },
 ];
 
 export function Stats() {

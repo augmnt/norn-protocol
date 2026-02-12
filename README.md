@@ -13,19 +13,18 @@
 
 ## What is Norn?
 
-Norn is a radically minimal blockchain protocol that reimagines the relationship between users and the chain. Rather than forcing every transaction through global consensus -- the bottleneck that limits every existing blockchain -- Norn treats the chain as a **courtroom**, not a bank.
+Norn is a thread-centric blockchain protocol that reimagines the relationship between users and the chain. Rather than forcing every transaction through global consensus -- the bottleneck that limits every existing blockchain -- Norn treats the chain as a **courtroom**, not a bank.
 
-Users transact directly with each other using cryptographic signatures, maintaining their own personal state histories called *Threads*. The chain intervenes only when there is a dispute, processing fraud proofs rather than transactions. This architectural inversion moves the vast majority of economic activity off-chain by design, with the anchor chain serving as a minimal, efficient arbiter of last resort.
+Users own their state through personal cryptographic chains called *Threads*. Transfers are signed by the sender and validated by the network. Clients can independently verify their balances using Merkle proofs. The chain validates state transitions and guarantees correctness -- it doesn't hold your money.
 
-For complex multi-party logic, off-chain smart contracts called *Looms* provide WebAssembly-powered programmability with on-chain fraud proof guarantees. The result is a protocol where bilateral exchange is instant, free, and private -- and the chain exists only to keep everyone honest.
+For complex multi-party logic, off-chain smart contracts called *Looms* provide WebAssembly-powered programmability with on-chain fraud proof guarantees. The result is a protocol with zero-fee transfers, fast finality, and cryptographic state verification -- where the chain exists only to keep everyone honest.
 
 ## Key Properties
 
-- **Unlimited bilateral throughput** -- Two parties can exchange value as fast as they can sign messages. No block size limit, no gas auction, no mempool congestion.
+- **Zero-fee transfers** -- Transfers carry no protocol fee. Only periodic commitments to the anchor chain carry a small dynamic fee.
+- **Fast finality** -- Transactions confirm in ~3 second blocks on the Weave.
 - **Phone-runnable full nodes** -- The anchor chain processes only commitments and fraud proofs, keeping on-chain state minimal. A full node runs on a modern smartphone.
-- **Zero-fee P2P transfers** -- Bilateral transactions incur no on-chain fee. Only periodic commitments to the anchor chain carry a small dynamic fee.
-- **Privacy by default** -- The chain never sees transaction details, balances, or counterparties. It sees only cryptographic commitments.
-- **Instant bilateral finality** -- A transaction is final the moment both parties sign. No confirmation time, no block wait.
+- **State verification** -- Clients independently verify balances via Merkle proofs against the on-chain state root.
 - **Fraud-proof security** -- Cheating is detectable and punishable through economic penalties. Honest behavior is the Nash equilibrium.
 
 ## Installation
@@ -59,7 +58,7 @@ Norn's architecture consists of six core components:
 | Component | Description |
 |-----------|-------------|
 | **Threads** | Personal state chains -- each user maintains their own signed history of state transitions, stored locally on their device. |
-| **Knots** | Atomic state transitions -- bilateral or multilateral agreements that tie Threads together, signed by all participants. |
+| **Knots** | Atomic state transitions -- signed transfers that update Thread state, validated by the network. |
 | **Weave** | The anchor chain -- a minimal HotStuff BFT blockchain that processes commitments, registrations, and fraud proofs. |
 | **Looms** | Off-chain smart contracts -- WebAssembly programs that execute off-chain with on-chain fraud proof guarantees. |
 | **Spindles** | Watchtower services -- monitor the Weave on behalf of offline users and submit fraud proofs when misbehavior is detected. |
@@ -72,7 +71,7 @@ flowchart TB
         B["Thread B<br/>(Bob)"]
     end
 
-    A <-->|"Bilateral Knots<br/>(instant, free, private)"| B
+    A <-->|"Signed Transfers<br/>(zero-fee, fast finality)"| B
 
     A -->|"Periodic commitments<br/>(state hash + version)"| W
     B -->|"Periodic commitments<br/>(state hash + version)"| W
