@@ -2298,10 +2298,18 @@ impl NornRpcServer for NornRpcImpl {
                     .memo
                     .as_ref()
                     .and_then(|m| String::from_utf8(m.clone()).ok());
+                let symbol = if bt.token_id == NATIVE_TOKEN_ID {
+                    "NORN".to_string()
+                } else {
+                    sm.get_token(&bt.token_id)
+                        .map(|t| t.symbol.clone())
+                        .unwrap_or_else(|| hex::encode(&bt.token_id[..4]))
+                };
                 BlockTransferInfo {
                     from: format_address(&bt.from),
                     to: format_address(&bt.to),
                     token_id: hex::encode(bt.token_id),
+                    symbol,
                     amount: bt.amount.to_string(),
                     human_readable: format_amount_for_token(bt.amount, &bt.token_id, &sm),
                     memo,

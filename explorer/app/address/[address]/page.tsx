@@ -78,7 +78,7 @@ const txColumns = [
       <AmountDisplay
         amount={tx.amount}
         humanReadable={tx.human_readable}
-        symbol={tx.token_id === NATIVE_TOKEN_ID ? "NORN" : tx.token_id.slice(0, 8) + "\u2026"}
+        symbol={tx.symbol || (tx.token_id === NATIVE_TOKEN_ID ? "NORN" : tx.token_id.slice(0, 8) + "\u2026")}
       />
     ),
   },

@@ -465,6 +465,7 @@ pub struct BlockTransferInfo {
     pub from: String,
     pub to: String,
     pub token_id: String,
+    pub symbol: String,
     pub amount: String,
     pub human_readable: String,
     pub memo: Option<String>,

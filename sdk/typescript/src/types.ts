@@ -249,6 +249,7 @@ export interface BlockTransferInfo {
   from: AddressHex;
   to: AddressHex;
   token_id: HashHex;
+  symbol: string;
   amount: string;
   human_readable: string;
   memo?: string;
