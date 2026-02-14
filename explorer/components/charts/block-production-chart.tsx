@@ -28,11 +28,11 @@ function CustomTooltip({
   return (
     <div className="rounded-lg border bg-popover px-3 py-2 text-xs shadow-md">
       <p className="font-medium text-foreground">Block {d.label}</p>
-      {d.rawBlockTime !== null && (
+      {d.blockTime !== null && (
         <p className="text-muted-foreground">
           Block time:{" "}
           <span className="font-mono text-foreground">
-            {d.rawBlockTime}s
+            {d.blockTime}s
           </span>
         </p>
       )}
@@ -112,7 +112,7 @@ export function BlockProductionChart({ data }: BlockProductionChartProps) {
               <Tooltip content={<CustomTooltip />} />
               <Area
                 type="monotone"
-                dataKey="rawBlockTime"
+                dataKey="blockTime"
                 stroke="hsl(210, 12%, 49%)"
                 strokeWidth={2}
                 fill="url(#blockTimeGradient)"
