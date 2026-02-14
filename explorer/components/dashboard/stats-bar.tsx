@@ -84,7 +84,6 @@ export function StatsBar() {
                 : "~3s"
         }
         icon={Zap}
-        sparklineData={sparklineBlockTimes}
       />
       <StatCard
         label="Validators"
