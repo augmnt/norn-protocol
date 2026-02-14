@@ -3,7 +3,11 @@ use dialoguer::{Confirm, Password};
 use super::error::WalletError;
 
 /// Prompt the user for a password (hidden input).
+/// If `NORN_WALLET_PASSWORD` env var is set, uses that instead of prompting.
 pub fn prompt_password(prompt: &str) -> Result<String, WalletError> {
+    if let Ok(pw) = std::env::var("NORN_WALLET_PASSWORD") {
+        return Ok(pw);
+    }
     Password::new()
         .with_prompt(prompt)
         .interact()
