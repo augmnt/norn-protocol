@@ -95,6 +95,17 @@ impl TestEnv {
         host::mock_set_timestamp(t);
     }
 
+    /// Set the contract's own address (for testing contract custody).
+    pub fn with_contract_address(self, addr: Address) -> Self {
+        host::mock_set_contract_address(addr);
+        self
+    }
+
+    /// Change the contract address mid-test (non-consuming).
+    pub fn set_contract_address(&self, addr: Address) {
+        host::mock_set_contract_address(addr);
+    }
+
     /// Build a `Context` from the current mock state.
     pub fn ctx(&self) -> Context {
         Context::new()

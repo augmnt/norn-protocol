@@ -85,6 +85,17 @@ pub mod serde_sig_vec {
     }
 }
 
+/// Derive a 20-byte contract address from a 32-byte loom ID.
+///
+/// Uses blake3 hash of the loom_id, truncated to 20 bytes. This gives each
+/// contract a unique, deterministic address it can use to custody tokens.
+pub fn derive_contract_address(loom_id: &LoomId) -> Address {
+    let hash = blake3::hash(loom_id);
+    let mut addr = [0u8; 20];
+    addr.copy_from_slice(&hash.as_bytes()[..20]);
+    addr
+}
+
 /// A signed amount that can represent debits (negative) and credits (positive).
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,

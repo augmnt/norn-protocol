@@ -229,12 +229,16 @@ impl LoomRuntime {
                         ));
                     }
 
-                    // Verify the `from` address matches the contract caller.
-                    // Contracts can only transfer from their own address (the sender).
+                    // Verify the `from` address matches the contract caller or
+                    // the contract's own derived address (for custodied funds).
                     let sender = caller.data().sender;
-                    if from != sender {
+                    let contract_addr = caller
+                        .data()
+                        .current_loom_id
+                        .map(|id| norn_types::primitives::derive_contract_address(&id));
+                    if from != sender && Some(from) != contract_addr {
                         return Err(wasmtime::Error::msg(
-                            "norn_transfer: from address must match the contract caller",
+                            "norn_transfer: from address must match the caller or contract address",
                         ));
                     }
 
@@ -247,6 +251,36 @@ impl LoomRuntime {
             )
             .map_err(|e| LoomError::RuntimeError {
                 reason: format!("failed to register norn_transfer: {e}"),
+            })?;
+
+        // ── Host function: norn_contract_address ────────────────────────────
+        // Signature: (out_ptr: i32) -> ()
+        // Writes the 20-byte contract-derived address to the output pointer.
+        linker
+            .func_wrap(
+                "norn",
+                "norn_contract_address",
+                |mut caller: wasmtime::Caller<'_, LoomHostState>,
+                 out_ptr: i32|
+                 -> Result<(), wasmtime::Error> {
+                    let loom_id = caller.data().current_loom_id.ok_or(wasmtime::Error::msg(
+                        "norn_contract_address: no loom_id set in host state",
+                    ))?;
+                    let addr = norn_types::primitives::derive_contract_address(&loom_id);
+                    let memory = caller
+                        .get_export("memory")
+                        .and_then(|e| e.into_memory())
+                        .ok_or(wasmtime::Error::msg("missing memory export"))?;
+                    let start = out_ptr as usize;
+                    if start + 20 > memory.data(&caller).len() {
+                        return Err(wasmtime::Error::msg("out of bounds memory access"));
+                    }
+                    memory.data_mut(&mut caller)[start..start + 20].copy_from_slice(&addr);
+                    Ok(())
+                },
+            )
+            .map_err(|e| LoomError::RuntimeError {
+                reason: format!("failed to register norn_contract_address: {e}"),
             })?;
 
         // ── Host function: norn_emit_event ────────────────────────────────

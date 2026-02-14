@@ -101,6 +101,17 @@ impl Context {
         }
     }
 
+    /// Get the contract's own derived address (for custodying tokens).
+    pub fn contract_address(&self) -> Address {
+        crate::host::contract_address()
+    }
+
+    /// Transfer tokens from the contract's own balance.
+    pub fn transfer_from_contract(&self, to: &Address, token: &TokenId, amount: u128) {
+        let contract = self.contract_address();
+        self.transfer(&contract, to, token, amount);
+    }
+
     /// Call another contract (cross-contract call).
     ///
     /// Serializes the message with borsh, sends it to the target loom, and
@@ -153,6 +164,7 @@ impl Context {
             sender_addr: [0u8; 20],
             block_height_val: 0,
             timestamp_val: 0,
+            contract_addr: None,
         }
     }
 
@@ -199,6 +211,17 @@ impl Context {
         }
     }
 
+    /// Get the contract's own derived address (for custodying tokens).
+    pub fn contract_address(&self) -> Address {
+        crate::host::contract_address()
+    }
+
+    /// Transfer tokens from the contract's own balance.
+    pub fn transfer_from_contract(&self, to: &Address, token: &TokenId, amount: u128) {
+        let contract = self.contract_address();
+        self.transfer(&contract, to, token, amount);
+    }
+
     /// Call another contract (cross-contract call).
     ///
     /// Sends raw bytes to the target loom and returns the raw output.
@@ -217,6 +240,7 @@ pub struct MockContextBuilder {
     sender_addr: Address,
     block_height_val: u64,
     timestamp_val: u64,
+    contract_addr: Option<Address>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -239,11 +263,20 @@ impl MockContextBuilder {
         self
     }
 
+    /// Set the contract's own address (for testing contract custody).
+    pub fn contract_address(mut self, addr: Address) -> Self {
+        self.contract_addr = Some(addr);
+        self
+    }
+
     /// Build the mock context, also updating thread-local mock state.
     pub fn build(self) -> Context {
         crate::host::mock_set_sender(self.sender_addr);
         crate::host::mock_set_block_height(self.block_height_val);
         crate::host::mock_set_timestamp(self.timestamp_val);
+        if let Some(addr) = self.contract_addr {
+            crate::host::mock_set_contract_address(addr);
+        }
         Context {
             sender_addr: self.sender_addr,
             block_height_val: self.block_height_val,

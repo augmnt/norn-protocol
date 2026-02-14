@@ -19,6 +19,7 @@ exclude = [
     "examples/norn-token",
     "examples/norn20-token",
     "examples/coin",
+    "examples/escrow",
 ]
 
 [workspace.package]

@@ -217,6 +217,7 @@ impl LoomManager {
         // Set up host state with the loom's current data.
         let mut host_state = LoomHostState::new(sender, block_height, timestamp, DEFAULT_GAS_LIMIT);
         host_state.state = state.data.clone();
+        host_state.current_loom_id = Some(*loom_id);
 
         // Get bytecode.
         let bytecode_entry = self
@@ -475,6 +476,7 @@ impl LoomManager {
         // Set up host state with the loom's current data.
         let mut host_state = LoomHostState::new(sender, block_height, timestamp, DEFAULT_GAS_LIMIT);
         host_state.state = state.data.clone();
+        host_state.current_loom_id = Some(*loom_id);
 
         // Get bytecode.
         let bytecode_entry = self
@@ -550,6 +552,7 @@ impl LoomManager {
         let state = self.states.get(loom_id).unwrap();
         let mut host_state = LoomHostState::new([0u8; 20], 0, 0, DEFAULT_GAS_LIMIT);
         host_state.state = state.data.clone();
+        host_state.current_loom_id = Some(*loom_id);
 
         // Instantiate and call init().
         let runtime = LoomRuntime::new()?;

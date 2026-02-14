@@ -13,6 +13,7 @@ import {
   Coins,
   AtSign,
   FileCode,
+  Blocks,
   Droplets,
   Settings,
   MoreHorizontal,
@@ -34,6 +35,7 @@ const navItems: NavItem[] = [
   { href: "/tokens", label: "Tokens", icon: Coins },
   { href: "/names", label: "Names", icon: AtSign },
   { href: "/contracts", label: "Contracts", icon: FileCode },
+  { href: "/apps", label: "Apps", icon: Blocks },
   { href: "/faucet", label: "Faucet", icon: Droplets, testnetOnly: true },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

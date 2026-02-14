@@ -29,6 +29,7 @@ extern "C" {
         output_ptr: i32,
         output_max_len: i32,
     ) -> i32;
+    fn norn_contract_address(out_ptr: i32);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -170,6 +171,16 @@ pub fn call_contract(target_id: &[u8; 32], input: &[u8]) -> Option<Vec<u8>> {
     }
 }
 
+/// Get the contract's own derived address (for custodying tokens).
+#[cfg(target_arch = "wasm32")]
+pub fn contract_address() -> [u8; 20] {
+    let mut addr = [0u8; 20];
+    unsafe {
+        norn_contract_address(addr.as_mut_ptr() as i32);
+    }
+    addr
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Native implementations — thread-local mock storage for `cargo test`
 // ═══════════════════════════════════════════════════════════════════════════
@@ -202,6 +213,7 @@ mod mock {
         static TRANSFERS: RefCell<Vec<TransferRecord>> = const { RefCell::new(Vec::new()) };
         static EVENTS: RefCell<Vec<MockEvent>> = const { RefCell::new(Vec::new()) };
         static CROSS_CALL_HANDLER: RefCell<Option<CrossCallHandler>> = const { RefCell::new(None) };
+        static CONTRACT_ADDRESS: RefCell<[u8; 20]> = const { RefCell::new([0u8; 20]) };
     }
 
     // ── Host function implementations ──────────────────────────────────────
@@ -269,6 +281,10 @@ mod mock {
         })
     }
 
+    pub fn contract_address() -> [u8; 20] {
+        CONTRACT_ADDRESS.with(|a| *a.borrow())
+    }
+
     // ── Mock control functions ─────────────────────────────────────────────
 
     pub fn mock_reset() {
@@ -280,6 +296,7 @@ mod mock {
         TRANSFERS.with(|t| t.borrow_mut().clear());
         EVENTS.with(|e| e.borrow_mut().clear());
         CROSS_CALL_HANDLER.with(|h| *h.borrow_mut() = None);
+        CONTRACT_ADDRESS.with(|a| *a.borrow_mut() = [0u8; 20]);
     }
 
     pub fn mock_set_cross_call_handler<F>(handler: F)
@@ -291,6 +308,10 @@ mod mock {
 
     pub fn mock_set_sender(addr: [u8; 20]) {
         SENDER.with(|s| *s.borrow_mut() = addr);
+    }
+
+    pub fn mock_set_contract_address(addr: [u8; 20]) {
+        CONTRACT_ADDRESS.with(|a| *a.borrow_mut() = addr);
     }
 
     pub fn mock_set_block_height(h: u64) {
@@ -378,6 +399,12 @@ pub fn call_contract(target_id: &[u8; 32], input: &[u8]) -> Option<Vec<u8>> {
     mock::call_contract(target_id, input)
 }
 
+/// Get the contract's own derived address (for custodying tokens).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn contract_address() -> [u8; 20] {
+    mock::contract_address()
+}
+
 // ── Mock control (native only, public) ─────────────────────────────────────
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -388,6 +415,11 @@ pub fn mock_reset() {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn mock_set_sender(addr: [u8; 20]) {
     mock::mock_set_sender(addr);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn mock_set_contract_address(addr: [u8; 20]) {
+    mock::mock_set_contract_address(addr);
 }
 
 #[cfg(not(target_arch = "wasm32"))]
