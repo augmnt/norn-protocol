@@ -28,20 +28,30 @@ function formatProductionTime(ms: number): string {
 function CustomTooltip({
   active,
   payload,
+  useProduction,
 }: {
   active?: boolean;
   payload?: Array<{ payload: BlockChartPoint }>;
+  useProduction: boolean;
 }) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
   return (
     <div className="rounded-lg border bg-popover px-3 py-2 text-xs shadow-md">
       <p className="font-medium text-foreground">Block {d.label}</p>
-      {d.productionMs !== null && (
+      {useProduction && d.productionMs !== null && (
         <p className="text-muted-foreground">
           Production:{" "}
           <span className="font-mono text-foreground">
             {formatProductionTime(d.productionMs)}
+          </span>
+        </p>
+      )}
+      {!useProduction && d.cappedBlockTime !== null && (
+        <p className="text-muted-foreground">
+          Block gap:{" "}
+          <span className="font-mono text-foreground">
+            {d.cappedBlockTime}s
           </span>
         </p>
       )}
@@ -53,7 +63,7 @@ export function BlockProductionChart({ data }: BlockProductionChartProps) {
   const display = data.slice(-30);
   const hasProductionData = display.some((d) => d.productionMs !== null);
 
-  if (display.length < 2 || !hasProductionData) {
+  if (display.length < 2) {
     return (
       <Card>
         <CardHeader className="pb-2">
@@ -63,18 +73,22 @@ export function BlockProductionChart({ data }: BlockProductionChartProps) {
         </CardHeader>
         <CardContent>
           <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
-            Waiting for new blocks...
+            Waiting for blocks...
           </div>
         </CardContent>
       </Card>
     );
   }
 
+  // When real production data is available, show µs/ms scale.
+  // Otherwise fall back to capped block gaps in seconds.
+  const dataKey = hasProductionData ? "productionMs" : "cappedBlockTime";
+
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium">
-          Block Production Time
+          {hasProductionData ? "Block Production Time" : "Block Time"}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -120,13 +134,19 @@ export function BlockProductionChart({ data }: BlockProductionChartProps) {
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 10, fill: "hsl(240, 5%, 50%)" }}
-                tickFormatter={(v) => formatProductionTime(v)}
+                tickFormatter={(v) =>
+                  hasProductionData ? formatProductionTime(v) : `${v}s`
+                }
                 domain={[0, "auto"]}
               />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip
+                content={
+                  <CustomTooltip useProduction={hasProductionData} />
+                }
+              />
               <Area
                 type="monotone"
-                dataKey="productionMs"
+                dataKey={dataKey}
                 stroke="hsl(210, 12%, 49%)"
                 strokeWidth={2}
                 fill="url(#blockTimeGradient)"

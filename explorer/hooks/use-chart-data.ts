@@ -17,6 +17,9 @@ const CHART_BLOCK_COUNT = 30;
  */
 const MAX_MEANINGFUL_BLOCK_TIME = 5;
 
+/** Max block time shown on chart for historical blocks without production_us (seconds). */
+const MAX_CHART_BLOCK_TIME = 10;
+
 export interface BlockChartPoint {
   height: number;
   timestamp: number;
@@ -26,6 +29,8 @@ export interface BlockChartPoint {
   blockTime: number | null;
   /** Real block production time in milliseconds (from node instrumentation). */
   productionMs: number | null;
+  /** Block gap capped at MAX_CHART_BLOCK_TIME for chart display (seconds). */
+  cappedBlockTime: number | null;
   transferCount: number;
   nameCount: number;
   tokenDefCount: number;
@@ -62,12 +67,17 @@ function buildChartData(blocks: BlockInfo[]): BlockChartPoint[] {
     const productionMs =
       block.production_us != null ? block.production_us / 1000 : null;
 
+    // Cap block gap at a readable maximum for chart fallback display.
+    const cappedBlockTime =
+      rawBlockTime !== null ? Math.min(rawBlockTime, MAX_CHART_BLOCK_TIME) : null;
+
     return {
       height: block.height,
       timestamp: block.timestamp,
       rawBlockTime,
       blockTime,
       productionMs,
+      cappedBlockTime,
       transferCount: block.transfer_count,
       nameCount: block.name_registration_count,
       tokenDefCount: block.token_definition_count,
