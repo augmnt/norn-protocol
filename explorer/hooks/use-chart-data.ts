@@ -12,10 +12,10 @@ const CHART_BLOCK_COUNT = 30;
 
 /**
  * Block times above this threshold (in seconds) are idle gaps, not real
- * production time. The chain target is 3s, so anything > 6s is an idle period
- * where no transactions were pending.
+ * production time. The chain target is 3s, so only gaps ≤ 5s represent
+ * genuine back-to-back block production.
  */
-const MAX_MEANINGFUL_BLOCK_TIME = 6;
+const MAX_MEANINGFUL_BLOCK_TIME = 5;
 
 export interface BlockChartPoint {
   height: number;
