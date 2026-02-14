@@ -62,6 +62,12 @@ export default async function Image() {
     )
   ).then((res) => res.arrayBuffer());
 
+  const jetbrainsBold = await fetch(
+    new URL(
+      "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKtjPQ.ttf"
+    )
+  ).then((res) => res.arrayBuffer());
+
   return new ImageResponse(
     (
       <div
@@ -171,11 +177,11 @@ export default async function Image() {
           {/* NORN wordmark */}
           <div
             style={{
-              fontFamily: "Inter",
+              fontFamily: "JetBrains Mono",
               fontSize: 96,
               fontWeight: 700,
               color: "#fafafa",
-              letterSpacing: "-0.04em",
+              letterSpacing: "-0.02em",
               lineHeight: 1,
               marginBottom: 16,
             }}
@@ -262,6 +268,12 @@ export default async function Image() {
           data: jetbrains,
           style: "normal",
           weight: 500,
+        },
+        {
+          name: "JetBrains Mono",
+          data: jetbrainsBold,
+          style: "normal",
+          weight: 700,
         },
       ],
     }
