@@ -184,7 +184,7 @@ export default function SettingsPage() {
     { label: "5 min", value: 300_000 },
     { label: "15 min", value: 900_000 },
     { label: "30 min", value: 1_800_000 },
-    { label: "Never", value: Infinity },
+    { label: "Never", value: 0 },
   ];
 
   return (

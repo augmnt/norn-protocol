@@ -13,6 +13,9 @@ export function useAutoLock() {
   useEffect(() => {
     if (walletState !== "unlocked") return;
 
+    // timeout === 0 means "never lock"
+    if (timeout === 0) return;
+
     const resetTimer = () => {
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
@@ -22,7 +25,6 @@ export function useAutoLock() {
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        // Clear any existing timer before starting a new one
         if (timerRef.current) clearTimeout(timerRef.current);
         timerRef.current = setTimeout(() => {
           setState("locked");

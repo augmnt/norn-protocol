@@ -18,8 +18,8 @@ export const useSettingsStore = create<SettingsStoreState>()(
       showTestnetWarning: true,
 
       setAutoLockTimeout: (ms) => {
-        // Clamp to valid range: 30s–1h, or Infinity (disabled)
-        const clamped = ms === Infinity ? Infinity : Math.max(30_000, Math.min(ms, 3_600_000));
+        // 0 = never lock; otherwise clamp to valid range: 30s–1h
+        const clamped = ms === 0 ? 0 : Math.max(30_000, Math.min(ms, 3_600_000));
         set({ autoLockTimeout: clamped });
       },
       setShowTestnetWarning: (show) => set({ showTestnetWarning: show }),
