@@ -16,6 +16,12 @@ interface BlockProductionChartProps {
   data: BlockChartPoint[];
 }
 
+function formatMs(ms: number): string {
+  if (ms < 1) return `${(ms * 1000).toFixed(0)}µs`;
+  if (ms < 1000) return `${ms.toFixed(1)}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
 function CustomTooltip({
   active,
   payload,
@@ -28,11 +34,11 @@ function CustomTooltip({
   return (
     <div className="rounded-lg border bg-popover px-3 py-2 text-xs shadow-md">
       <p className="font-medium text-foreground">Block {d.label}</p>
-      {d.blockTime !== null && (
+      {d.productionMs !== null && (
         <p className="text-muted-foreground">
-          Block time:{" "}
+          Production time:{" "}
           <span className="font-mono text-foreground">
-            {d.blockTime}s
+            {formatMs(d.productionMs)}
           </span>
         </p>
       )}
@@ -42,12 +48,15 @@ function CustomTooltip({
 
 export function BlockProductionChart({ data }: BlockProductionChartProps) {
   const display = data.slice(-30);
+  const hasProductionData = display.some((d) => d.productionMs !== null);
 
-  if (display.length < 2) {
+  if (display.length < 2 || !hasProductionData) {
     return (
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">Block Time</CardTitle>
+          <CardTitle className="text-sm font-medium">
+            Block Production Time
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
@@ -61,14 +70,16 @@ export function BlockProductionChart({ data }: BlockProductionChartProps) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">Block Time</CardTitle>
+        <CardTitle className="text-sm font-medium">
+          Block Production Time
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="h-[200px] animate-fade-in">
           <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <AreaChart
               data={display}
-              margin={{ top: 4, right: 4, bottom: 0, left: -20 }}
+              margin={{ top: 4, right: 4, bottom: 0, left: -10 }}
             >
               <defs>
                 <linearGradient
@@ -106,13 +117,13 @@ export function BlockProductionChart({ data }: BlockProductionChartProps) {
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 10, fill: "hsl(240, 5%, 50%)" }}
-                tickFormatter={(v) => `${v}s`}
+                tickFormatter={(v) => formatMs(v)}
                 domain={[0, "auto"]}
               />
               <Tooltip content={<CustomTooltip />} />
               <Area
                 type="monotone"
-                dataKey="blockTime"
+                dataKey="productionMs"
                 stroke="hsl(210, 12%, 49%)"
                 strokeWidth={2}
                 fill="url(#blockTimeGradient)"
