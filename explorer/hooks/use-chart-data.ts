@@ -20,6 +20,9 @@ const MAX_MEANINGFUL_BLOCK_TIME = 5;
 export interface BlockChartPoint {
   height: number;
   timestamp: number;
+  /** Raw wall-clock gap between consecutive blocks (for charts). */
+  rawBlockTime: number | null;
+  /** Filtered block time — only meaningful production gaps ≤ threshold (for stats). */
   blockTime: number | null;
   transferCount: number;
   nameCount: number;
@@ -56,6 +59,7 @@ function buildChartData(blocks: BlockInfo[]): BlockChartPoint[] {
     return {
       height: block.height,
       timestamp: block.timestamp,
+      rawBlockTime,
       blockTime,
       transferCount: block.transfer_count,
       nameCount: block.name_registration_count,
