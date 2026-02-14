@@ -134,6 +134,12 @@ export function WalletHeader() {
     setReadCount(notifications.length);
   }
 
+  function clearAll() {
+    notificationsRef.current = [];
+    setReadCount(0);
+    forceRender((n) => n + 1);
+  }
+
   // ---- account switching ----
   function switchAccount(index: number) {
     useWalletStore.getState().setActiveAccountIndex(index);
@@ -321,12 +327,22 @@ export function WalletHeader() {
                     Notifications
                   </p>
                   {notifications.length > 0 && (
-                    <button
-                      onClick={markAllRead}
-                      className="text-[11px] text-primary hover:underline"
-                    >
-                      Mark all read
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {unreadCount > 0 && (
+                        <button
+                          onClick={markAllRead}
+                          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          Mark read
+                        </button>
+                      )}
+                      <button
+                        onClick={clearAll}
+                        className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Clear all
+                      </button>
+                    </div>
                   )}
                 </div>
 

@@ -381,16 +381,11 @@ export default function HistoryPage() {
                   onClick={() => handleRowClick(tx)}
                   className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-muted/50 active:bg-muted/70 touch-manipulation"
                 >
-                  <div
-                    className={cn(
-                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
-                      sent ? "bg-amber-500/10" : "bg-green-500/10"
-                    )}
-                  >
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary">
                     {sent ? (
-                      <ArrowUpRight className="h-4 w-4 text-amber-500" />
+                      <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
                     ) : (
-                      <ArrowDownLeft className="h-4 w-4 text-green-500" />
+                      <ArrowDownLeft className="h-4 w-4 text-muted-foreground" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">

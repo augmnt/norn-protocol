@@ -109,14 +109,14 @@ export default function ContractsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6 text-muted-foreground opacity-0 group-hover:opacity-100"
+                        className="h-9 w-9 md:h-7 md:w-7 text-muted-foreground opacity-100 md:opacity-0 md:group-hover:opacity-100"
                         onClick={(e) => {
                           e.stopPropagation();
                           removeContract(c.loomId);
                           toast.success("Contract removed");
                         }}
                       >
-                        <Trash2 className="h-3 w-3" />
+                        <Trash2 className="h-3.5 w-3.5 md:h-3 md:w-3" />
                       </Button>
                     </div>
                   </div>
@@ -152,14 +152,14 @@ export default function ContractsPage() {
                         value={saveLabel}
                         onChange={(e) => setSaveLabel(e.target.value)}
                         placeholder="Label"
-                        className="h-6 w-32 text-xs"
+                        className="h-7 w-32 text-xs"
                         onKeyDown={(e) => e.key === "Enter" && handleSave()}
                         autoFocus
                       />
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleSave}>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleSave}>
                         <BookmarkPlus className="h-3 w-3" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowSaveInput(false)}>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowSaveInput(false)}>
                         <X className="h-3 w-3" />
                       </Button>
                     </div>
@@ -251,11 +251,11 @@ export default function ContractsPage() {
                   {isError ? (
                     <AlertCircle className="h-4 w-4 text-destructive" />
                   ) : (
-                    <Terminal className="h-4 w-4 text-green-400" />
+                    <Terminal className="h-4 w-4 text-foreground" />
                   )}
                   <CardTitle className={cn(
                     "text-sm",
-                    isError ? "text-destructive" : "text-green-400"
+                    isError ? "text-destructive" : "text-foreground"
                   )}>
                     {isError ? "Error" : "Result"}
                   </CardTitle>

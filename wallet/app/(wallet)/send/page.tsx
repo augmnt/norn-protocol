@@ -376,7 +376,7 @@ function SendPageInner() {
                             {formatAmount(opt.balance, opt.decimals)}
                           </span>
                           {opt.tokenId === selectedTokenId && (
-                            <Check className="h-3.5 w-3.5 text-green-500" />
+                            <Check className="h-3.5 w-3.5 text-foreground" />
                           )}
                         </div>
                       </button>
@@ -411,7 +411,7 @@ function SendPageInner() {
                 <div className="flex items-center gap-1.5">
                   <Badge
                     variant="secondary"
-                    className="bg-green-500/10 text-green-500 border-0 text-xs font-mono"
+                    className="border-border text-muted-foreground text-xs font-mono"
                   >
                     <Check className="h-3 w-3 mr-1" />
                     {truncateAddress(resolvedAddress)}
@@ -577,7 +577,7 @@ function SendPageInner() {
                   {truncateAddress(resolvedAddress || recipient)}
                 </span>
                 {contactLabel && (
-                  <span className="text-[11px] text-blue-500">
+                  <span className="text-[11px] text-muted-foreground">
                     {contactLabel}
                   </span>
                 )}
@@ -612,7 +612,7 @@ function SendPageInner() {
               </span>
             </div>
           </div>
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter>
             <Button
               variant="outline"
               onClick={() => setConfirmOpen(false)}
