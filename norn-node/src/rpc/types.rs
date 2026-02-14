@@ -131,6 +131,8 @@ pub struct HealthInfo {
     pub version: String,
     /// Target block production time in seconds.
     pub block_time_target: u64,
+    /// Last measured block production time in milliseconds (None if no blocks produced yet).
+    pub last_block_production_ms: Option<u64>,
 }
 
 /// Information about a validator.

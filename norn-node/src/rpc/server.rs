@@ -62,6 +62,7 @@ pub async fn start_rpc_server(
     network_id: NetworkId,
     is_validator: bool,
     api_key: Option<String>,
+    last_block_production_ms: Arc<std::sync::Mutex<Option<u64>>>,
 ) -> Result<(ServerHandle, RpcBroadcasters), NodeError> {
     let broadcasters = RpcBroadcasters::new();
 
@@ -75,6 +76,7 @@ pub async fn start_rpc_server(
         network_id,
         is_validator,
         faucet_tracker: std::sync::Mutex::new(std::collections::HashMap::new()),
+        last_block_production_ms,
     };
 
     let handle = if let Some(key) = api_key {

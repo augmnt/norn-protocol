@@ -33,6 +33,14 @@ function useLastBlockAgo() {
   return ago;
 }
 
+function formatProductionTime(ms: number): string {
+  if (ms < 1) return "< 1ms";
+  if (ms < 1000) return `${ms}ms`;
+  const secs = ms / 1000;
+  if (Number.isInteger(secs)) return `${secs}s`;
+  return `${secs.toFixed(1)}s`;
+}
+
 function formatBlockTime(seconds: number): string {
   if (seconds < 1) return "< 1s";
   if (Number.isInteger(seconds)) return `${seconds}s`;
@@ -44,6 +52,7 @@ export function StatsBar() {
   const { data: validators, isLoading: validatorsLoading } = useValidatorSet();
   const { data: health, isLoading: healthLoading } = useHealth();
   const blockTimeTarget = health?.block_time_target;
+  const lastProductionMs = health?.last_block_production_ms;
   const {
     blockProductionTime,
     totalTxs,
@@ -64,8 +73,16 @@ export function StatsBar() {
         sparklineData={sparklineHeights}
       />
       <StatCard
-        label="Block Time"
-        value={blockProductionTime !== null ? formatBlockTime(blockProductionTime) : blockTimeTarget ? `~${blockTimeTarget}s` : "~3s"}
+        label="Block Speed"
+        value={
+          lastProductionMs != null
+            ? formatProductionTime(lastProductionMs)
+            : blockProductionTime !== null
+              ? formatBlockTime(blockProductionTime)
+              : blockTimeTarget
+                ? `~${blockTimeTarget}s`
+                : "~3s"
+        }
         icon={Zap}
         sparklineData={sparklineBlockTimes}
       />
