@@ -221,28 +221,28 @@ export default function SettingsPage() {
                           if (e.key === "Enter") handleRename();
                           if (e.key === "Escape") setEditingName(false);
                         }}
-                        className="h-7 w-40 text-sm"
+                        className="h-9 w-48 md:h-7 md:w-40 text-sm"
                         maxLength={32}
                         autoFocus
                       />
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6"
+                        className="h-9 w-9 md:h-7 md:w-7"
                         onClick={handleRename}
                         disabled={!nameInput.trim()}
                         aria-label="Save name"
                       >
-                        <Check className="h-3 w-3" />
+                        <Check className="h-3.5 w-3.5 md:h-3 md:w-3" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6"
+                        className="h-9 w-9 md:h-7 md:w-7"
                         onClick={() => setEditingName(false)}
                         aria-label="Cancel rename"
                       >
-                        <X className="h-3 w-3" />
+                        <X className="h-3.5 w-3.5 md:h-3 md:w-3" />
                       </Button>
                     </div>
                   ) : (
@@ -254,7 +254,7 @@ export default function SettingsPage() {
                       }}
                     >
                       <span className="text-sm font-medium">{activeAccount.label}</span>
-                      <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <Pencil className="h-3 w-3 text-muted-foreground opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity" />
                     </button>
                   )}
                 </div>
@@ -382,13 +382,13 @@ export default function SettingsPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6 text-muted-foreground opacity-0 group-hover:opacity-100"
+                      className="h-9 w-9 md:h-7 md:w-7 text-muted-foreground opacity-100 md:opacity-0 md:group-hover:opacity-100"
                       onClick={() => {
                         removeContact(c.address);
                         toast.success("Contact removed");
                       }}
                     >
-                      <Trash2 className="h-3 w-3" />
+                      <Trash2 className="h-3.5 w-3.5 md:h-3 md:w-3" />
                     </Button>
                   </div>
                 ))}
@@ -474,7 +474,7 @@ export default function SettingsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6"
+                        className="h-9 w-9 md:h-7 md:w-7"
                         aria-label="Copy recovery phrase"
                         onClick={() => {
                           navigator.clipboard.writeText(exportedMnemonic);
@@ -486,7 +486,7 @@ export default function SettingsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6"
+                        className="h-9 w-9 md:h-7 md:w-7"
                         aria-label="Hide recovery phrase"
                         onClick={() => {
                           setExportedMnemonic(null);
@@ -541,7 +541,7 @@ export default function SettingsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6"
+                        className="h-9 w-9 md:h-7 md:w-7"
                         aria-label="Copy private key"
                         onClick={() => {
                           navigator.clipboard.writeText(exportedKey);
@@ -553,7 +553,7 @@ export default function SettingsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6"
+                        className="h-9 w-9 md:h-7 md:w-7"
                         aria-label="Hide private key"
                         onClick={() => {
                           setExportedKey(null);

@@ -15,6 +15,8 @@ const nextConfig: NextConfig = {
               "img-src 'self' data: blob:",
               "font-src 'self'",
               "connect-src 'self' wss://*.norn.network https://*.norn.network ws://localhost:* http://localhost:*",
+              "worker-src 'self'",
+              "manifest-src 'self'",
               "frame-ancestors 'none'",
             ].join("; "),
           },

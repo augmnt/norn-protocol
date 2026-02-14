@@ -66,9 +66,14 @@
 @layer base {
   * {
     @apply border-border;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
   }
   body {
     @apply bg-background text-foreground;
+    overscroll-behavior-y: contain;
   }
 }
 
@@ -88,5 +93,25 @@
   .scrollbar-thin::-webkit-scrollbar-thumb {
     background-color: hsl(var(--muted));
     border-radius: 3px;
+  }
+
+  /* Safe area utilities */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+}
+
+/* Standalone mode adjustments */
+@media (display-mode: standalone) {
+  body {
+    /* Prevent overscroll bounce in PWA mode */
+    overflow: hidden;
+  }
+  body > * {
+    overflow: auto;
+    height: 100dvh;
   }
 }

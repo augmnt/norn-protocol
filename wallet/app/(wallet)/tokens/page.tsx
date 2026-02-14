@@ -274,7 +274,7 @@ export default function TokensPage() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              className="h-9 w-9 md:h-7 md:w-7 text-muted-foreground hover:text-foreground"
               title="Send NORN"
               aria-label="Send NORN"
               onClick={(e) => { e.stopPropagation(); router.push("/send"); }}
@@ -288,7 +288,7 @@ export default function TokensPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                className="h-9 w-9 md:h-7 md:w-7 text-muted-foreground hover:text-foreground"
                 title="Send"
                 aria-label={`Send ${b.symbol}`}
                 onClick={(e) => { e.stopPropagation(); router.push(`/send?token=${b.token_id}`); }}
@@ -300,7 +300,7 @@ export default function TokensPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                className="h-9 w-9 md:h-7 md:w-7 text-muted-foreground hover:text-foreground"
                 title="Mint"
                 aria-label={`Mint ${b.symbol}`}
                 onClick={(e) => { e.stopPropagation(); openMintDialog(b); }}
@@ -311,7 +311,7 @@ export default function TokensPage() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              className="h-9 w-9 md:h-7 md:w-7 text-muted-foreground hover:text-foreground"
               title="Burn"
               aria-label={`Burn ${b.symbol}`}
               onClick={(e) => { e.stopPropagation(); openBurnDialog(b); }}

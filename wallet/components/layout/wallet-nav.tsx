@@ -38,6 +38,7 @@ const navItems: NavItem[] = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
+// Show 5 tabs on mobile: Dashboard, Send, History, Tokens, More
 const MOBILE_TAB_COUNT = 4;
 
 export function WalletNav() {
@@ -61,7 +62,7 @@ export function WalletNav() {
   return (
     <>
       {/* Desktop sidebar */}
-      <nav className="hidden md:flex w-48 flex-col border-r p-3 gap-0.5">
+      <nav className="hidden md:flex w-52 flex-col border-r p-3 gap-0.5">
         {filteredItems.map((item) => {
           const active = pathname === item.href;
           return (
@@ -69,13 +70,13 @@ export function WalletNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors",
+                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
                 active
                   ? "bg-accent text-accent-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
               )}
             >
-              <item.icon className="h-3.5 w-3.5" />
+              <item.icon className="h-4 w-4" />
               {item.label}
             </Link>
           );
@@ -95,12 +96,12 @@ export function WalletNav() {
                 <span className="text-xs font-medium text-muted-foreground">More</span>
                 <button
                   onClick={() => setMoreOpen(false)}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="text-muted-foreground hover:text-foreground p-1 touch-manipulation"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
-              <div className="p-2 grid grid-cols-4 gap-1">
+              <div className="p-3 grid grid-cols-4 gap-2">
                 {moreItems.map((item) => {
                   const active = pathname === item.href;
                   return (
@@ -108,13 +109,13 @@ export function WalletNav() {
                       key={item.href}
                       href={item.href}
                       className={cn(
-                        "flex flex-col items-center gap-1 rounded-lg py-3 text-[10px] transition-colors",
+                        "flex flex-col items-center gap-1.5 rounded-lg py-4 text-[11px] font-medium transition-colors active:scale-95 touch-manipulation",
                         active
                           ? "text-foreground bg-accent"
                           : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
                       )}
                     >
-                      <item.icon className="h-5 w-5" />
+                      <item.icon className="h-6 w-6" />
                       {item.label}
                     </Link>
                   );
@@ -134,11 +135,11 @@ export function WalletNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[10px] transition-colors",
+                "flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors active:scale-95 touch-manipulation",
                 active ? "text-foreground" : "text-muted-foreground"
               )}
             >
-              <item.icon className="h-4 w-4" />
+              <item.icon className="h-5 w-5" />
               {item.label}
             </Link>
           );
@@ -146,11 +147,11 @@ export function WalletNav() {
         <button
           onClick={() => setMoreOpen(!moreOpen)}
           className={cn(
-            "flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[10px] transition-colors",
+            "flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors active:scale-95 touch-manipulation",
             moreActive || moreOpen ? "text-foreground" : "text-muted-foreground"
           )}
         >
-          <MoreHorizontal className="h-4 w-4" />
+          <MoreHorizontal className="h-5 w-5" />
           More
         </button>
       </nav>

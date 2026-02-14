@@ -49,7 +49,7 @@ export default function WalletLayout({
       )}
       <div className="flex flex-1">
         <WalletNav />
-        <main className="flex-1 overflow-auto pb-20 md:pb-0">
+        <main className="flex-1 overflow-auto pb-24 md:pb-0">
           {children}
         </main>
       </div>

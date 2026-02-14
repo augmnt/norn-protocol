@@ -153,7 +153,7 @@ export default function DashboardPage() {
                   {formatNorn(balance?.balance ?? "0")}
                   <span className="text-base font-medium text-muted-foreground ml-2">NORN</span>
                 </p>
-                <Copy className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                <Copy className="h-3.5 w-3.5 text-muted-foreground opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity" />
               </button>
             )}
             {activeAddress && (
@@ -164,13 +164,13 @@ export default function DashboardPage() {
 
             {/* Quick Actions */}
             <div className="flex gap-3 mt-6">
-              <Button asChild size="sm" className="rounded-full px-5 h-9">
+              <Button asChild className="rounded-full px-6">
                 <Link href="/send">
                   <ArrowUpRight className="mr-1.5 h-3.5 w-3.5" />
                   Send
                 </Link>
               </Button>
-              <Button asChild variant="outline" size="sm" className="rounded-full px-5 h-9">
+              <Button asChild variant="outline" className="rounded-full px-6">
                 <Link href="/receive">
                   <QrCode className="mr-1.5 h-3.5 w-3.5" />
                   Receive
@@ -239,7 +239,7 @@ export default function DashboardPage() {
                         </span>
                         <Link
                           href={`/send?token=${b.token_id}`}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                          className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
                           title="Send"
                         >
                           <ArrowUpRight className="h-3 w-3" />
@@ -275,7 +275,7 @@ export default function DashboardPage() {
             ) : (
               <div>
                 {recentTxs.map((tx) => (
-                  <div key={tx.knot_id} className="px-6 py-2.5">
+                  <div key={tx.knot_id} className="px-6 py-3">
                     <div className="flex items-center justify-between">
                       {tx.knot_id ? (
                         <a

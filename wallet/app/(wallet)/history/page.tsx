@@ -24,7 +24,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { PAGE_SIZE } from "@/lib/constants";
-import { formatTimestamp } from "@/lib/format";
+import { formatTimestamp, truncateAddress } from "@/lib/format";
 import {
   explorerAddressUrl,
   explorerTxUrl,
@@ -345,7 +345,7 @@ export default function HistoryPage() {
                 setPage(1);
               }}
               className={cn(
-                "text-xs h-7 px-2.5",
+                "text-xs h-9 md:h-7 px-3 md:px-2.5",
                 filter === opt.value && "bg-accent text-accent-foreground"
               )}
             >
@@ -370,13 +370,63 @@ export default function HistoryPage() {
         />
       ) : (
         <>
-          <DataTable
-            columns={columns}
-            data={filtered!}
-            keyExtractor={(tx, i) => `${tx.knot_id}-${i}`}
-            emptyMessage="No transactions found"
-            onRowClick={handleRowClick}
-          />
+          {/* Mobile card list */}
+          <div className="block md:hidden space-y-1">
+            {filtered!.map((tx, i) => {
+              const sent = activeAddress ? isSent(tx, activeAddress) : false;
+              const counterparty = sent ? tx.to : tx.from;
+              return (
+                <button
+                  key={`${tx.knot_id}-${i}`}
+                  onClick={() => handleRowClick(tx)}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-muted/50 active:bg-muted/70 touch-manipulation"
+                >
+                  <div
+                    className={cn(
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+                      sent ? "bg-amber-500/10" : "bg-green-500/10"
+                    )}
+                  >
+                    {sent ? (
+                      <ArrowUpRight className="h-4 w-4 text-amber-500" />
+                    ) : (
+                      <ArrowDownLeft className="h-4 w-4 text-green-500" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">
+                        {sent ? "Sent" : "Received"}
+                      </span>
+                      <AmountDisplay
+                        amount={tx.amount}
+                        humanReadable={tx.human_readable}
+                        symbol={tx.symbol}
+                        className="text-sm font-mono tabular-nums"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between mt-0.5">
+                      <span className="text-xs font-mono text-muted-foreground">
+                        {truncateAddress(counterparty)}
+                      </span>
+                      <TimeAgo timestamp={tx.timestamp} className="text-xs" />
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block">
+            <DataTable
+              columns={columns}
+              data={filtered!}
+              keyExtractor={(tx, i) => `${tx.knot_id}-${i}`}
+              emptyMessage="No transactions found"
+              onRowClick={handleRowClick}
+            />
+          </div>
           <Pagination
             page={page}
             hasNext={hasNext}

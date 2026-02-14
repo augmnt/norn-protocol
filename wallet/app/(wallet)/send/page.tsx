@@ -311,7 +311,7 @@ function SendPageInner() {
                 <button
                   type="button"
                   onClick={() => setDropdownOpen((o) => !o)}
-                  className="flex w-full items-center justify-between rounded-md border border-input bg-transparent px-3 py-2.5 text-sm shadow-sm transition-colors hover:bg-secondary/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  className="flex w-full items-center justify-between rounded-md border border-input bg-transparent px-3 py-3 text-sm shadow-sm transition-colors hover:bg-secondary/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring touch-manipulation"
                 >
                   <div className="flex items-center gap-2.5">
                     <div className="flex h-7 w-7 items-center justify-center rounded-full bg-secondary">
@@ -350,7 +350,7 @@ function SendPageInner() {
                           // Reset amount when switching tokens
                           setAmount("");
                         }}
-                        className={`flex w-full items-center justify-between px-3 py-2.5 text-sm transition-colors hover:bg-secondary/60 ${
+                        className={`flex w-full items-center justify-between px-3 py-3 text-sm transition-colors hover:bg-secondary/60 touch-manipulation ${
                           opt.tokenId === selectedTokenId
                             ? "bg-secondary/40"
                             : ""
@@ -455,7 +455,7 @@ function SendPageInner() {
                           key={addr}
                           type="button"
                           onClick={() => resolveRecipient(addr)}
-                          className="inline-flex items-center gap-1 rounded-full border border-input bg-secondary/50 px-2.5 py-1 text-xs font-mono transition-colors hover:bg-secondary hover:border-foreground/20"
+                          className="inline-flex items-center gap-1 rounded-full border border-input bg-secondary/50 px-3 py-2 text-xs font-mono transition-colors hover:bg-secondary hover:border-foreground/20 touch-manipulation"
                         >
                           {label ? (
                             <span className="font-sans font-medium">
@@ -511,9 +511,9 @@ function SendPageInner() {
             {!showMemo ? (
               <button
                 onClick={() => setShowMemo(true)}
-                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                className="flex items-center gap-1.5 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors touch-manipulation"
               >
-                <MessageSquare className="h-3 w-3" />
+                <MessageSquare className="h-4 w-4" />
                 Add memo
                 <ChevronDown className="h-3 w-3" />
               </button>

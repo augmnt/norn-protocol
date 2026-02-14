@@ -181,7 +181,7 @@ export function WalletHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 pt-[env(safe-area-inset-top)]">
       <div className="flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* ---- Brand ---- */}
         <Link href="/dashboard" className="flex items-center space-x-2">
@@ -207,7 +207,7 @@ export function WalletHeader() {
                   setAccountOpen((o) => !o);
                   setNotifOpen(false);
                 }}
-                className="inline-flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent/50"
+                className="inline-flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors hover:bg-accent/50 touch-manipulation"
               >
                 <Identicon
                   address={activeAccount.address}
@@ -238,7 +238,7 @@ export function WalletHeader() {
                         <button
                           key={acct.address}
                           onClick={() => switchAccount(i)}
-                          className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-accent/50 ${
+                          className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-accent/50 touch-manipulation ${
                             isActive ? "bg-accent/30" : ""
                           }`}
                         >
@@ -299,14 +299,14 @@ export function WalletHeader() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9 relative"
+              className="relative"
               onClick={() => {
                 setNotifOpen((o) => !o);
                 setAccountOpen(false);
               }}
               title="Notifications"
             >
-              <Bell className="h-3.5 w-3.5" />
+              <Bell className="h-4 w-4 md:h-3.5 md:w-3.5" />
               {unreadCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
                   {unreadCount > 99 ? "99+" : unreadCount}
@@ -383,9 +383,8 @@ export function WalletHeader() {
             size="icon"
             onClick={lock}
             title="Lock wallet"
-            className="h-9 w-9"
           >
-            <Lock className="h-3.5 w-3.5" />
+            <Lock className="h-4 w-4 md:h-3.5 md:w-3.5" />
           </Button>
         </div>
       </div>
