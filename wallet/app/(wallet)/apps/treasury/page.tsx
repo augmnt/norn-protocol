@@ -3,14 +3,22 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TREASURY_LOOM_ID } from "@/lib/apps-config";
 import { useTreasury } from "@/hooks/use-treasury";
 import { useWallet } from "@/hooks/use-wallet";
-import { truncateAddress, formatAmount } from "@/lib/format";
+import { truncateAddress, formatAmount, isValidAddress } from "@/lib/format";
 import {
   Plus,
   Vault,
@@ -18,7 +26,9 @@ import {
   AlertCircle,
   Loader2,
   Download,
+  X,
 } from "lucide-react";
+import { toast } from "sonner";
 import type { Proposal, TreasuryConfig, ProposalStatus } from "@/lib/borsh-treasury";
 
 const STATUS_VARIANT: Record<
@@ -77,6 +87,144 @@ function ProposalCard({
   );
 }
 
+function InitializeForm({
+  onSuccess,
+  loomId,
+  currentAddress,
+}: {
+  onSuccess: () => void;
+  loomId: string;
+  currentAddress: string;
+}) {
+  const { initialize, loading } = useTreasury(loomId);
+  const [name, setName] = useState("");
+  const [owners, setOwners] = useState<string[]>([currentAddress, ""]);
+  const [threshold, setThreshold] = useState("2");
+
+  const validOwners = owners.filter((o) => isValidAddress(o));
+  const canSubmit =
+    name.trim().length > 0 &&
+    validOwners.length >= 2 &&
+    parseInt(threshold) >= 1 &&
+    parseInt(threshold) <= validOwners.length;
+
+  const addOwner = () => setOwners([...owners, ""]);
+  const removeOwner = (i: number) => {
+    if (owners.length <= 2) return;
+    setOwners(owners.filter((_, idx) => idx !== i));
+  };
+  const updateOwner = (i: number, val: string) => {
+    const next = [...owners];
+    next[i] = val;
+    setOwners(next);
+  };
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    try {
+      await initialize(validOwners, BigInt(parseInt(threshold)), name.trim());
+      toast.success("Treasury initialized successfully");
+      onSuccess();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Initialization failed");
+    }
+  };
+
+  return (
+    <Card className="max-w-lg">
+      <CardHeader className="pb-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-norn/10">
+            <Vault className="h-4 w-4 text-norn" />
+          </div>
+          <div>
+            <CardTitle className="text-base">Initialize Treasury</CardTitle>
+            <CardDescription>
+              Set up the treasury owners and approval threshold. This can only be
+              done once.
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground">Treasury Name</Label>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Team Treasury"
+            maxLength={64}
+            className="text-sm"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground">
+            Owners ({validOwners.length} valid)
+          </Label>
+          <div className="space-y-2">
+            {owners.map((owner, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input
+                  value={owner}
+                  onChange={(e) => updateOwner(i, e.target.value)}
+                  placeholder="0x..."
+                  className="font-mono text-xs"
+                />
+                {owners.length > 2 && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    onClick={() => removeOwner(i)}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+          <Button variant="outline" size="sm" onClick={addOwner}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Add Owner
+          </Button>
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground">
+            Required Approvals
+          </Label>
+          <Input
+            type="number"
+            value={threshold}
+            onChange={(e) => setThreshold(e.target.value)}
+            min={1}
+            max={validOwners.length || 1}
+            className="w-24 font-mono text-sm tabular-nums"
+          />
+          <p className="text-[10px] text-muted-foreground">
+            Number of owner approvals needed to execute a proposal (max{" "}
+            {validOwners.length}).
+          </p>
+        </div>
+
+        <Button
+          onClick={handleSubmit}
+          disabled={!canSubmit || loading}
+          className="w-full"
+        >
+          {loading ? (
+            <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Vault className="mr-2 h-3.5 w-3.5" />
+          )}
+          Initialize Treasury
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function TreasuryDashboardPage() {
   const { activeAddress } = useWallet();
   const { getConfig, getProposal, getProposalCount, loading } =
@@ -128,6 +276,29 @@ export default function TreasuryDashboardPage() {
             </div>
           </CardContent>
         </Card>
+      </PageContainer>
+    );
+  }
+
+  // Treasury deployed but not yet initialized
+  if (!fetching && !config && TREASURY_LOOM_ID) {
+    return (
+      <PageContainer
+        title="Multisig Treasury"
+        action={
+          <Link href="/apps">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
+              Apps
+            </Button>
+          </Link>
+        }
+      >
+        <InitializeForm
+          loomId={TREASURY_LOOM_ID}
+          currentAddress={activeAddress ?? ""}
+          onSuccess={fetchData}
+        />
       </PageContainer>
     );
   }
