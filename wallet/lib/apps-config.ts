@@ -45,7 +45,7 @@ export const APPS: AppConfig[] = [
       "Time-locked token releases with cliff periods. Create vesting schedules for team members, advisors, or investors.",
     loomId: VESTING_LOOM_ID,
     href: "/apps/vesting",
-    icon: "Timer",
+    icon: "Hourglass",
   },
   {
     id: "launchpad",
@@ -63,7 +63,7 @@ export const APPS: AppConfig[] = [
       "Route incoming payments to multiple recipients by percentage. Set once for teams, royalties, or revenue sharing.",
     loomId: SPLITTER_LOOM_ID,
     href: "/apps/splitter",
-    icon: "Split",
+    icon: "GitFork",
   },
   {
     id: "crowdfund",
@@ -72,7 +72,7 @@ export const APPS: AppConfig[] = [
       "All-or-nothing fundraising with a goal and deadline. If the goal is met, the creator gets the funds. Otherwise, contributors are refunded.",
     loomId: CROWDFUND_LOOM_ID,
     href: "/apps/crowdfund",
-    icon: "Heart",
+    icon: "HandCoins",
   },
   {
     id: "governance",
@@ -81,7 +81,7 @@ export const APPS: AppConfig[] = [
       "On-chain voting on proposals with quorum requirements. Create proposals, vote for or against, and finalize outcomes.",
     loomId: GOVERNANCE_LOOM_ID,
     href: "/apps/governance",
-    icon: "Scale",
+    icon: "Vote",
   },
   {
     id: "staking",

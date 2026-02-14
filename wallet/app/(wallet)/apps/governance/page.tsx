@@ -20,7 +20,7 @@ import { useGovernance } from "@/hooks/use-governance";
 import { useWallet } from "@/hooks/use-wallet";
 import { truncateAddress, formatTimestamp } from "@/lib/format";
 import {
-  Scale,
+  Vote,
   Plus,
   ArrowLeft,
   AlertCircle,
@@ -143,7 +143,7 @@ function InitializeForm({
       <CardHeader className="pb-4">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-norn/10">
-            <Scale className="h-4 w-4 text-norn" />
+            <Vote className="h-4 w-4 text-norn" />
           </div>
           <div>
             <CardTitle className="text-base">Initialize Governance</CardTitle>
@@ -205,7 +205,7 @@ function InitializeForm({
           {loading ? (
             <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
           ) : (
-            <Scale className="mr-2 h-3.5 w-3.5" />
+            <Vote className="mr-2 h-3.5 w-3.5" />
           )}
           Initialize Governance
         </Button>
@@ -320,7 +320,7 @@ export default function GovernanceDashboardPage() {
         <Card className="mb-6">
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
-              <Scale className="h-4 w-4 text-muted-foreground" />
+              <Vote className="h-4 w-4 text-muted-foreground" />
               <CardTitle className="text-sm">{config.name}</CardTitle>
             </div>
           </CardHeader>
@@ -367,7 +367,7 @@ export default function GovernanceDashboardPage() {
           </div>
         ) : proposals.length === 0 ? (
           <EmptyState
-            icon={Scale}
+            icon={Vote}
             title="No proposals yet"
             description="Create a proposal to start governance voting."
             action={

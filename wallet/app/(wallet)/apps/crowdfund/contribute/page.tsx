@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CROWDFUND_LOOM_ID } from "@/lib/apps-config";
 import { useCrowdfund } from "@/hooks/use-crowdfund";
-import { ArrowLeft, Heart, Loader2 } from "lucide-react";
+import { ArrowLeft, HandCoins, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function CrowdfundContributePage() {
@@ -58,7 +58,7 @@ export default function CrowdfundContributePage() {
           <CardHeader className="pb-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-norn/10">
-                <Heart className="h-4 w-4 text-norn" />
+                <HandCoins className="h-4 w-4 text-norn" />
               </div>
               <div>
                 <CardTitle className="text-base">Contribute</CardTitle>
@@ -93,7 +93,7 @@ export default function CrowdfundContributePage() {
               {loading ? (
                 <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Heart className="mr-2 h-3.5 w-3.5" />
+                <HandCoins className="mr-2 h-3.5 w-3.5" />
               )}
               Contribute
             </Button>

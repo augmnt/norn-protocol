@@ -19,7 +19,7 @@ import { useSplitter } from "@/hooks/use-splitter";
 import { useWallet } from "@/hooks/use-wallet";
 import { truncateAddress, isValidAddress } from "@/lib/format";
 import {
-  Split,
+  GitFork,
   ArrowLeft,
   AlertCircle,
   Loader2,
@@ -96,7 +96,7 @@ function InitializeForm({
       <CardHeader className="pb-4">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-norn/10">
-            <Split className="h-4 w-4 text-norn" />
+            <GitFork className="h-4 w-4 text-norn" />
           </div>
           <div>
             <CardTitle className="text-base">Initialize Splitter</CardTitle>
@@ -180,7 +180,7 @@ function InitializeForm({
           {loading ? (
             <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
           ) : (
-            <Split className="mr-2 h-3.5 w-3.5" />
+            <GitFork className="mr-2 h-3.5 w-3.5" />
           )}
           Initialize Splitter
         </Button>
@@ -287,7 +287,7 @@ export default function SplitterDashboardPage() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Split className="h-4 w-4 text-muted-foreground" />
+                  <GitFork className="h-4 w-4 text-muted-foreground" />
                   <CardTitle className="text-sm">{config.name}</CardTitle>
                 </div>
               </div>

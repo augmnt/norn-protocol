@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { VESTING_LOOM_ID } from "@/lib/apps-config";
 import { useVesting } from "@/hooks/use-vesting";
 import { isValidAddress } from "@/lib/format";
-import { ArrowLeft, Timer, Loader2 } from "lucide-react";
+import { ArrowLeft, Hourglass, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -91,7 +91,7 @@ export default function CreateSchedulePage() {
           <CardHeader className="pb-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-norn/10">
-                <Timer className="h-4 w-4 text-norn" />
+                <Hourglass className="h-4 w-4 text-norn" />
               </div>
               <div>
                 <CardTitle className="text-base">
@@ -225,7 +225,7 @@ export default function CreateSchedulePage() {
               {loading ? (
                 <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Timer className="mr-2 h-3.5 w-3.5" />
+                <Hourglass className="mr-2 h-3.5 w-3.5" />
               )}
               Create Schedule
             </Button>

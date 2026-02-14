@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { GOVERNANCE_LOOM_ID } from "@/lib/apps-config";
 import { useGovernance } from "@/hooks/use-governance";
-import { ArrowLeft, Scale, Loader2 } from "lucide-react";
+import { ArrowLeft, Vote, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function CreateProposalPage() {
@@ -60,7 +60,7 @@ export default function CreateProposalPage() {
           <CardHeader className="pb-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-norn/10">
-                <Scale className="h-4 w-4 text-norn" />
+                <Vote className="h-4 w-4 text-norn" />
               </div>
               <div>
                 <CardTitle className="text-base">
@@ -113,7 +113,7 @@ export default function CreateProposalPage() {
               {loading ? (
                 <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Scale className="mr-2 h-3.5 w-3.5" />
+                <Vote className="mr-2 h-3.5 w-3.5" />
               )}
               Create Proposal
             </Button>

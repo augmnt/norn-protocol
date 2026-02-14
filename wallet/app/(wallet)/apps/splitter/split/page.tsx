@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { SPLITTER_LOOM_ID } from "@/lib/apps-config";
 import { useSplitter } from "@/hooks/use-splitter";
 import { truncateAddress, formatAmount } from "@/lib/format";
-import { ArrowLeft, Split, Loader2 } from "lucide-react";
+import { ArrowLeft, GitFork, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { SplitterConfig } from "@/lib/borsh-splitter";
 
@@ -80,7 +80,7 @@ export default function SplitPaymentPage() {
           <CardHeader className="pb-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-norn/10">
-                <Split className="h-4 w-4 text-norn" />
+                <GitFork className="h-4 w-4 text-norn" />
               </div>
               <div>
                 <CardTitle className="text-base">Split Payment</CardTitle>
@@ -128,7 +128,7 @@ export default function SplitPaymentPage() {
               {loading ? (
                 <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Split className="mr-2 h-3.5 w-3.5" />
+                <GitFork className="mr-2 h-3.5 w-3.5" />
               )}
               Split Payment
             </Button>

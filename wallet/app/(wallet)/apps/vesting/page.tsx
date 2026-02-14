@@ -14,7 +14,7 @@ import { useWallet } from "@/hooks/use-wallet";
 import { truncateAddress, formatAmount } from "@/lib/format";
 import {
   Plus,
-  Timer,
+  Hourglass,
   ArrowLeft,
   AlertCircle,
   Loader2,
@@ -191,7 +191,7 @@ export default function VestingDashboardPage() {
             </div>
           ) : vestingToMe.length === 0 ? (
             <EmptyState
-              icon={Timer}
+              icon={Hourglass}
               title="No vesting schedules"
               description="Schedules where you are the beneficiary will appear here."
             />
@@ -209,7 +209,7 @@ export default function VestingDashboardPage() {
             </div>
           ) : createdByMe.length === 0 ? (
             <EmptyState
-              icon={Timer}
+              icon={Hourglass}
               title="No schedules created"
               description="Create a vesting schedule to get started."
               action={
@@ -235,7 +235,7 @@ export default function VestingDashboardPage() {
             </div>
           ) : schedules.length === 0 ? (
             <EmptyState
-              icon={Timer}
+              icon={Hourglass}
               title="No schedules found"
               description="Create a vesting schedule to get started."
             />

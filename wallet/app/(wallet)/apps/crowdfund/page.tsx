@@ -24,7 +24,7 @@ import {
   formatTimestamp,
 } from "@/lib/format";
 import {
-  Heart,
+  HandCoins,
   ArrowLeft,
   AlertCircle,
   Loader2,
@@ -95,7 +95,7 @@ function InitializeForm({
       <CardHeader className="pb-4">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-norn/10">
-            <Heart className="h-4 w-4 text-norn" />
+            <HandCoins className="h-4 w-4 text-norn" />
           </div>
           <div>
             <CardTitle className="text-base">Create Campaign</CardTitle>
@@ -185,7 +185,7 @@ function InitializeForm({
           {loading ? (
             <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
           ) : (
-            <Heart className="mr-2 h-3.5 w-3.5" />
+            <HandCoins className="mr-2 h-3.5 w-3.5" />
           )}
           Create Campaign
         </Button>
@@ -334,7 +334,7 @@ export default function CrowdfundDashboardPage() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Heart className="h-4 w-4 text-muted-foreground" />
+                  <HandCoins className="h-4 w-4 text-muted-foreground" />
                   <CardTitle className="text-sm">{config.title}</CardTitle>
                 </div>
                 <Badge variant={STATUS_VARIANT[config.status] ?? "secondary"}>

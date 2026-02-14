@@ -13,7 +13,7 @@ import { useWallet } from "@/hooks/use-wallet";
 import { truncateAddress, formatAmount, formatTimestamp } from "@/lib/format";
 import {
   ArrowLeft,
-  Timer,
+  Hourglass,
   Loader2,
   Download,
   XCircle,
@@ -121,7 +121,7 @@ export default function ScheduleDetailPage() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Timer className="h-4 w-4 text-muted-foreground" />
+                <Hourglass className="h-4 w-4 text-muted-foreground" />
                 <CardTitle className="text-sm">Vesting Progress</CardTitle>
               </div>
               <div className="flex items-center gap-1.5">

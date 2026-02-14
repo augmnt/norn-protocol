@@ -13,7 +13,7 @@ import { useWallet } from "@/hooks/use-wallet";
 import { truncateAddress, formatTimestamp } from "@/lib/format";
 import {
   ArrowLeft,
-  Scale,
+  Vote,
   Loader2,
   ThumbsUp,
   ThumbsDown,
@@ -133,7 +133,7 @@ export default function ProposalDetailPage() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Scale className="h-4 w-4 text-muted-foreground" />
+                <Vote className="h-4 w-4 text-muted-foreground" />
                 <CardTitle className="text-sm">Proposal Details</CardTitle>
               </div>
               <Badge
