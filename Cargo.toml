@@ -20,6 +20,8 @@ exclude = [
     "examples/norn20-token",
     "examples/coin",
     "examples/escrow",
+    "examples/multisig-treasury",
+    "examples/vesting",
 ]
 
 [workspace.package]

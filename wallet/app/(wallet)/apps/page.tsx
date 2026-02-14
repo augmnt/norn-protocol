@@ -5,7 +5,19 @@ import { PageContainer } from "@/components/ui/page-container";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { APPS } from "@/lib/apps-config";
-import { ShieldCheck, ArrowRight } from "lucide-react";
+import {
+  ShieldCheck,
+  Vault,
+  Timer,
+  ArrowRight,
+  type LucideIcon,
+} from "lucide-react";
+
+const ICON_MAP: Record<string, LucideIcon> = {
+  ShieldCheck,
+  Vault,
+  Timer,
+};
 
 export default function AppsPage() {
   return (
@@ -14,30 +26,39 @@ export default function AppsPage() {
       description="Decentralized applications powered by Loom smart contracts"
     >
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {APPS.map((app) => (
-          <Link key={app.id} href={app.href}>
-            <Card className="group h-full transition-colors hover:border-norn/40">
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-norn/10">
-                    <ShieldCheck className="h-5 w-5 text-norn" />
+        {APPS.map((app) => {
+          const Icon = ICON_MAP[app.icon] ?? ShieldCheck;
+          return (
+            <Link key={app.id} href={app.href}>
+              <Card className="group h-full transition-colors hover:border-norn/40">
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-norn/10">
+                      <Icon className="h-5 w-5 text-norn" />
+                    </div>
+                    {app.loomId ? (
+                      <Badge variant="norn" className="text-[10px]">
+                        Live
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-[10px]">
+                        Coming Soon
+                      </Badge>
+                    )}
                   </div>
-                  <Badge variant="norn" className="text-[10px]">
-                    Live
-                  </Badge>
-                </div>
-                <h3 className="mt-4 text-sm font-semibold">{app.name}</h3>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
-                  {app.description}
-                </p>
-                <div className="mt-4 flex items-center gap-1 text-xs text-norn opacity-0 transition-opacity group-hover:opacity-100">
-                  Open app
-                  <ArrowRight className="h-3 w-3" />
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
+                  <h3 className="mt-4 text-sm font-semibold">{app.name}</h3>
+                  <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                    {app.description}
+                  </p>
+                  <div className="mt-4 flex items-center gap-1 text-xs text-norn opacity-0 transition-opacity group-hover:opacity-100">
+                    Open app
+                    <ArrowRight className="h-3 w-3" />
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          );
+        })}
       </div>
 
       {APPS.length === 0 && (
