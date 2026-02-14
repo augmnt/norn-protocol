@@ -23,6 +23,7 @@ interface RealtimeState {
   loomEvents: LoomExecutionEvent[];
 
   setConnected: (connected: boolean) => void;
+  setConnectionState: (state: ConnectionState) => void;
   addBlock: (block: BlockInfo) => void;
   addTransfer: (transfer: TransferEvent) => void;
   addPendingTx: (tx: PendingTransactionEvent) => void;
@@ -43,6 +44,9 @@ export const useRealtimeStore = create<RealtimeState>((set) => ({
 
   setConnected: (connected) =>
     set({ connected, connectionState: connected ? "connected" : "disconnected" }),
+
+  setConnectionState: (connectionState) =>
+    set({ connectionState, connected: connectionState === "connected" }),
 
   addBlock: (block) =>
     set((state) => {

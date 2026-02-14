@@ -124,6 +124,11 @@ export function useSubscriptions(filterAddress?: string) {
         MAX_RECONNECT_DELAY
       );
       attemptRef.current++;
+      // Show "Connecting…" while waiting to retry
+      const store = useRealtimeStore.getState();
+      if (store.connectionState !== "connecting") {
+        store.setConnectionState("connecting");
+      }
       reconnectRef.current = setTimeout(() => {
         if (mounted) connect();
       }, delay);
