@@ -64,8 +64,32 @@ function concat(...arrays: Uint8Array[]): Uint8Array {
 
 // ── Execute message encoders ──────────────────────────────────────────
 
-// Discriminants: Propose=0, Approve=1, Reject=2, Deposit=3,
-// RevokeApproval=4, ExpireProposal=5
+// Discriminants: Initialize=0, Propose=1, Approve=2, Reject=3,
+// Deposit=4, RevokeApproval=5, ExpireProposal=6
+
+function encodeAddress(addr: string): Uint8Array {
+  return hexToBytes(addr);
+}
+
+function encodeVecAddress(addrs: string[]): Uint8Array {
+  const len = new Uint8Array(4);
+  new DataView(len.buffer).setUint32(0, addrs.length, true);
+  return concat(len, ...addrs.map((a) => encodeAddress(a)));
+}
+
+export function encodeInitialize(
+  owners: string[],
+  requiredApprovals: bigint,
+  name: string
+): string {
+  const parts = concat(
+    new Uint8Array([0]),
+    encodeVecAddress(owners),
+    encodeU64(requiredApprovals),
+    encodeString(name)
+  );
+  return bytesToHex(parts);
+}
 
 export function encodePropose(
   to: string,
@@ -75,7 +99,7 @@ export function encodePropose(
   deadline: bigint
 ): string {
   const parts = concat(
-    new Uint8Array([0]),
+    new Uint8Array([1]),
     hexToBytes(to),
     hexToBytes(tokenId),
     encodeU128(amount),
@@ -86,25 +110,25 @@ export function encodePropose(
 }
 
 export function encodeApprove(proposalId: bigint): string {
-  return bytesToHex(concat(new Uint8Array([1]), encodeU64(proposalId)));
+  return bytesToHex(concat(new Uint8Array([2]), encodeU64(proposalId)));
 }
 
 export function encodeReject(proposalId: bigint): string {
-  return bytesToHex(concat(new Uint8Array([2]), encodeU64(proposalId)));
+  return bytesToHex(concat(new Uint8Array([3]), encodeU64(proposalId)));
 }
 
 export function encodeDeposit(tokenId: string, amount: bigint): string {
   return bytesToHex(
-    concat(new Uint8Array([3]), hexToBytes(tokenId), encodeU128(amount))
+    concat(new Uint8Array([4]), hexToBytes(tokenId), encodeU128(amount))
   );
 }
 
 export function encodeRevokeApproval(proposalId: bigint): string {
-  return bytesToHex(concat(new Uint8Array([4]), encodeU64(proposalId)));
+  return bytesToHex(concat(new Uint8Array([5]), encodeU64(proposalId)));
 }
 
 export function encodeExpireProposal(proposalId: bigint): string {
-  return bytesToHex(concat(new Uint8Array([5]), encodeU64(proposalId)));
+  return bytesToHex(concat(new Uint8Array([6]), encodeU64(proposalId)));
 }
 
 // ── Query message encoders ──────────────────────────────────────────

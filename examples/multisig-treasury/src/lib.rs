@@ -10,6 +10,7 @@ use norn_sdk::prelude::*;
 
 // ── Storage layout ──────────────────────────────────────────────────────
 
+const INITIALIZED: Item<bool> = Item::new("initialized");
 const CONFIG: Item<TreasuryConfig> = Item::new("config");
 const PROPOSAL_COUNT: Item<u64> = Item::new("prop_count");
 const PROPOSALS: Map<u64, Proposal> = Map::new("proposals");
@@ -72,24 +73,40 @@ pub struct MultisigTreasury;
 #[norn_contract]
 impl MultisigTreasury {
     #[init]
-    pub fn new(ctx: &Context, owners: Vec<Address>, required_approvals: u64, name: String) -> Self {
-        assert!(owners.len() >= 2, "need at least 2 owners");
-        assert!(required_approvals >= 1, "need at least 1 approval");
-        assert!(
+    pub fn new(_ctx: &Context) -> Self {
+        INITIALIZED.init(&false);
+        PROPOSAL_COUNT.init(&0u64);
+        MultisigTreasury
+    }
+
+    #[execute]
+    pub fn initialize(
+        &mut self,
+        ctx: &Context,
+        owners: Vec<Address>,
+        required_approvals: u64,
+        name: String,
+    ) -> ContractResult {
+        let already = INITIALIZED.load_or(false);
+        ensure!(!already, "already initialized");
+        ensure!(owners.len() >= 2, "need at least 2 owners");
+        ensure!(required_approvals >= 1, "need at least 1 approval");
+        ensure!(
             required_approvals <= owners.len() as u64,
             "required_approvals exceeds owner count"
         );
-        assert!(name.len() <= 64, "name too long (max 64)");
-        assert!(!has_duplicates(&owners), "duplicate owner addresses");
+        ensure!(name.len() <= 64, "name too long (max 64)");
+        ensure!(!has_duplicates(&owners), "duplicate owner addresses");
 
-        CONFIG.init(&TreasuryConfig {
+        CONFIG.save(&TreasuryConfig {
             name,
             owners,
             required_approvals,
             created_at: ctx.timestamp(),
-        });
-        PROPOSAL_COUNT.init(&0u64);
-        MultisigTreasury
+        })?;
+        INITIALIZED.save(&true)?;
+
+        Ok(Response::with_action("initialize"))
     }
 
     #[execute]
@@ -275,8 +292,15 @@ mod tests {
             .with_sender(ALICE)
             .with_timestamp(1000)
             .with_contract_address(CONTRACT_ADDR);
-        let treasury =
-            MultisigTreasury::new(&env.ctx(), vec![ALICE, BOB], 2, String::from("Team Treasury"));
+        let mut treasury = MultisigTreasury::new(&env.ctx());
+        treasury
+            .initialize(
+                &env.ctx(),
+                vec![ALICE, BOB],
+                2,
+                String::from("Team Treasury"),
+            )
+            .unwrap();
         (env, treasury)
     }
 
@@ -305,28 +329,29 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "need at least 2 owners")]
     fn test_init_min_owners() {
         let env = TestEnv::new()
             .with_sender(ALICE)
             .with_timestamp(1000)
             .with_contract_address(CONTRACT_ADDR);
-        MultisigTreasury::new(&env.ctx(), vec![ALICE], 1, String::from("Solo"));
+        let mut treasury = MultisigTreasury::new(&env.ctx());
+        let err = treasury
+            .initialize(&env.ctx(), vec![ALICE], 1, String::from("Solo"))
+            .unwrap_err();
+        assert_err_contains(&err, "need at least 2 owners");
     }
 
     #[test]
-    #[should_panic(expected = "duplicate owner addresses")]
     fn test_init_duplicate_owners() {
         let env = TestEnv::new()
             .with_sender(ALICE)
             .with_timestamp(1000)
             .with_contract_address(CONTRACT_ADDR);
-        MultisigTreasury::new(
-            &env.ctx(),
-            vec![ALICE, ALICE],
-            1,
-            String::from("Dup"),
-        );
+        let mut treasury = MultisigTreasury::new(&env.ctx());
+        let err = treasury
+            .initialize(&env.ctx(), vec![ALICE, ALICE], 1, String::from("Dup"))
+            .unwrap_err();
+        assert_err_contains(&err, "duplicate owner addresses");
     }
 
     #[test]

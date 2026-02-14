@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { useLoomOps } from "./use-loom-ops";
 import {
+  encodeInitialize,
   encodePropose,
   encodeApprove,
   encodeReject,
@@ -21,6 +22,18 @@ import { strip0x } from "@/lib/format";
 
 export function useTreasury(loomId: string) {
   const { queryLoom, executeLoom, loading, error } = useLoomOps();
+
+  const initialize = useCallback(
+    async (owners: string[], requiredApprovals: bigint, name: string) => {
+      const input = encodeInitialize(
+        owners.map(strip0x),
+        requiredApprovals,
+        name
+      );
+      return executeLoom(loomId, input);
+    },
+    [loomId, executeLoom]
+  );
 
   const propose = useCallback(
     async (
@@ -111,6 +124,7 @@ export function useTreasury(loomId: string) {
   }, [loomId, queryLoom]);
 
   return {
+    initialize,
     propose,
     approve,
     reject,
