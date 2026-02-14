@@ -58,6 +58,9 @@ pub struct BlockInfo {
     /// Cumulative state root as hex string.
     #[serde(default)]
     pub state_root: String,
+    /// Block production time in microseconds (only present for blocks produced by this node).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub production_us: Option<u64>,
 }
 
 /// Information about the current weave state.
@@ -548,6 +551,7 @@ mod tests {
             loom_deploy_count: 4,
             stake_operation_count: 1,
             state_root: "ff".repeat(32),
+            production_us: None,
         };
         let json = serde_json::to_string(&info).unwrap();
         let deserialized: BlockInfo = serde_json::from_str(&json).unwrap();

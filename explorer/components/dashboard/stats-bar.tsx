@@ -7,11 +7,15 @@ import { useWeaveState } from "@/hooks/use-weave-state";
 import { useValidatorSet } from "@/hooks/use-validator-set";
 import { useHealth } from "@/hooks/use-health";
 import { useChartData } from "@/hooks/use-chart-data";
+import { useLatestBlock } from "@/hooks/use-block";
 import { useRealtimeStore } from "@/stores/realtime-store";
 import { formatNumber } from "@/lib/format";
 
 function useLastBlockAgo() {
-  const latestBlock = useRealtimeStore((s) => s.latestBlock);
+  const wsBlock = useRealtimeStore((s) => s.latestBlock);
+  const { data: polledBlock } = useLatestBlock();
+  // Prefer WS block (freshest), fall back to polled block.
+  const latestBlock = wsBlock ?? polledBlock ?? null;
   const [ago, setAgo] = useState<string>("—");
 
   useEffect(() => {

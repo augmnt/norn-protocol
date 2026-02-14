@@ -992,7 +992,7 @@ impl Node {
 
                             // Fix: notify WebSocket subscribers for peer blocks too.
                             if let Some(ref bc) = self.broadcasters {
-                                let _ = bc.block_tx.send(block_info_from_weave(&block));
+                                let _ = bc.block_tx.send(block_info_from_weave(&block, None));
                             }
                         }
                         NornMessage::StateRequest {
@@ -1363,7 +1363,7 @@ impl Node {
 
                                 // Notify WebSocket subscribers.
                                 if let Some(ref bc) = self.broadcasters {
-                                    let _ = bc.block_tx.send(block_info_from_weave(&block));
+                                    let _ = bc.block_tx.send(block_info_from_weave(&block, Some(production_us)));
                                 }
                             }
                             drop(engine); // Release lock before metrics.
@@ -1459,7 +1459,7 @@ impl Node {
 
                                     // Notify WebSocket subscribers.
                                     if let Some(ref bc) = self.broadcasters {
-                                        let _ = bc.block_tx.send(block_info_from_weave(block));
+                                        let _ = bc.block_tx.send(block_info_from_weave(block, None));
                                     }
                                 }
 
@@ -1543,7 +1543,10 @@ impl Node {
 }
 
 /// Convert a WeaveBlock into a BlockInfo for WebSocket subscribers.
-fn block_info_from_weave(block: &WeaveBlock) -> crate::rpc::types::BlockInfo {
+fn block_info_from_weave(
+    block: &WeaveBlock,
+    production_us: Option<u64>,
+) -> crate::rpc::types::BlockInfo {
     crate::rpc::types::BlockInfo {
         height: block.height,
         hash: hex::encode(block.hash),
@@ -1562,6 +1565,7 @@ fn block_info_from_weave(block: &WeaveBlock) -> crate::rpc::types::BlockInfo {
         loom_deploy_count: block.loom_deploys.len(),
         stake_operation_count: block.stake_operations.len(),
         state_root: hex::encode(block.state_root),
+        production_us,
     }
 }
 

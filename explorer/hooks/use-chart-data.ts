@@ -24,6 +24,8 @@ export interface BlockChartPoint {
   rawBlockTime: number | null;
   /** Filtered block time — only meaningful production gaps ≤ threshold (for stats). */
   blockTime: number | null;
+  /** Real block production time in milliseconds (from node instrumentation). */
+  productionMs: number | null;
   transferCount: number;
   nameCount: number;
   tokenDefCount: number;
@@ -56,11 +58,16 @@ function buildChartData(blocks: BlockInfo[]): BlockChartPoint[] {
       block.token_burn_count +
       block.loom_deploy_count;
 
+    // Real production time from node instrumentation (µs → ms).
+    const productionMs =
+      block.production_us != null ? block.production_us / 1000 : null;
+
     return {
       height: block.height,
       timestamp: block.timestamp,
       rawBlockTime,
       blockTime,
+      productionMs,
       transferCount: block.transfer_count,
       nameCount: block.name_registration_count,
       tokenDefCount: block.token_definition_count,

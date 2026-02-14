@@ -403,6 +403,7 @@ impl NornRpcServer for NornRpcImpl {
                 loom_deploy_count: block.loom_deploys.len(),
                 stake_operation_count: block.stake_operations.len(),
                 state_root: hex::encode(block.state_root),
+                production_us: None,
             }));
         }
 
@@ -431,6 +432,7 @@ impl NornRpcServer for NornRpcImpl {
                 loom_deploy_count: block.loom_deploys.len(),
                 stake_operation_count: block.stake_operations.len(),
                 state_root: hex::encode(block.state_root),
+                production_us: None,
             }))
         } else {
             let height = engine.weave_state().height;
@@ -457,6 +459,7 @@ impl NornRpcServer for NornRpcImpl {
                     loom_deploy_count: block.loom_deploys.len(),
                     stake_operation_count: block.stake_operations.len(),
                     state_root: hex::encode(block.state_root),
+                    production_us: None,
                 }));
             }
 
@@ -2420,6 +2423,7 @@ mod tests {
             loom_deploy_count: 0,
             stake_operation_count: 0,
             state_root: String::new(),
+            production_us: None,
         };
     }
 }

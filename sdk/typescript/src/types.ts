@@ -29,6 +29,8 @@ export interface BlockInfo {
   loom_deploy_count: number;
   stake_operation_count: number;
   state_root: HashHex;
+  /** Block production time in microseconds (only present for blocks produced by the connected node). */
+  production_us?: number | null;
 }
 
 /** Current weave state. */
