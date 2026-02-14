@@ -12,6 +12,7 @@ use alloc::vec::Vec;
 // ── Raw extern declarations (wasm32 only) ──────────────────────────────────
 
 #[cfg(target_arch = "wasm32")]
+#[link(wasm_import_module = "norn")]
 extern "C" {
     fn norn_log(msg_ptr: i32, msg_len: i32);
     fn norn_state_get(key_ptr: i32, key_len: i32, out_ptr: i32, out_max_len: i32) -> i32;
