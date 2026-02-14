@@ -37,7 +37,7 @@ pub struct Node {
     relay_rx: Option<tokio::sync::broadcast::Receiver<(NornMessage, Option<PeerId>)>>,
     relay_handle: Option<RelayHandle>,
     spindle: SpindleService,
-    last_block_production_ms: Arc<std::sync::Mutex<Option<u64>>>,
+    last_block_production_us: Arc<std::sync::Mutex<Option<u64>>>,
 }
 
 /// Create a storage backend from the node configuration.
@@ -513,7 +513,7 @@ impl Node {
         }
 
         // Shared state for block production timing (node tick loop → RPC health).
-        let last_block_production_ms = Arc::new(std::sync::Mutex::new(None));
+        let last_block_production_us = Arc::new(std::sync::Mutex::new(None));
 
         // Start the RPC server if enabled.
         let (rpc_handle, broadcasters) = if config.rpc.enabled {
@@ -527,7 +527,7 @@ impl Node {
                 network_id,
                 config.validator.enabled,
                 config.rpc.api_key.clone(),
-                last_block_production_ms.clone(),
+                last_block_production_us.clone(),
             )
             .await?;
             (Some(handle), Some(bc))
@@ -557,7 +557,7 @@ impl Node {
             relay_rx,
             relay_handle,
             spindle,
-            last_block_production_ms,
+            last_block_production_us,
         })
     }
 
@@ -1256,9 +1256,9 @@ impl Node {
                             };
                             let production_start = std::time::Instant::now();
                             if let Some(block) = engine.produce_block(timestamp, state_root) {
-                                let production_ms = production_start.elapsed().as_millis() as u64;
-                                if let Ok(mut guard) = self.last_block_production_ms.lock() {
-                                    *guard = Some(production_ms);
+                                let production_us = production_start.elapsed().as_micros() as u64;
+                                if let Ok(mut guard) = self.last_block_production_us.lock() {
+                                    *guard = Some(production_us);
                                 }
                                 tracing::info!(
                                     height = block.height,
@@ -1266,7 +1266,7 @@ impl Node {
                                     registrations = block.registrations.len(),
                                     name_registrations = block.name_registrations.len(),
                                     transfers = block.transfers.len(),
-                                    production_ms,
+                                    production_us,
                                     "produced block (solo mode)"
                                 );
                                 self.metrics.blocks_produced.inc();

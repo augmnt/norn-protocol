@@ -75,7 +75,7 @@ export interface HealthInfo {
   chain_id: string;
   version: string;
   block_time_target: number;
-  last_block_production_ms: number | null;
+  last_block_production_us: number | null;
 }
 
 /** Validator info. */

@@ -33,11 +33,11 @@ function useLastBlockAgo() {
   return ago;
 }
 
-function formatProductionTime(ms: number): string {
-  if (ms < 1) return "< 1ms";
-  if (ms < 1000) return `${ms}ms`;
+function formatProductionTime(us: number): string {
+  if (us < 1000) return `${us}µs`;
+  const ms = us / 1000;
+  if (ms < 1000) return `${ms.toFixed(1)}ms`;
   const secs = ms / 1000;
-  if (Number.isInteger(secs)) return `${secs}s`;
   return `${secs.toFixed(1)}s`;
 }
 
@@ -52,7 +52,7 @@ export function StatsBar() {
   const { data: validators, isLoading: validatorsLoading } = useValidatorSet();
   const { data: health, isLoading: healthLoading } = useHealth();
   const blockTimeTarget = health?.block_time_target;
-  const lastProductionMs = health?.last_block_production_ms;
+  const lastProductionUs = health?.last_block_production_us;
   const {
     blockProductionTime,
     totalTxs,
@@ -75,8 +75,8 @@ export function StatsBar() {
       <StatCard
         label="Block Speed"
         value={
-          lastProductionMs != null
-            ? formatProductionTime(lastProductionMs)
+          lastProductionUs != null
+            ? formatProductionTime(lastProductionUs)
             : blockProductionTime !== null
               ? formatBlockTime(blockProductionTime)
               : blockTimeTarget

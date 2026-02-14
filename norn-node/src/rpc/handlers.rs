@@ -328,7 +328,7 @@ pub struct NornRpcImpl {
     pub is_validator: bool,
     pub faucet_tracker: std::sync::Mutex<std::collections::HashMap<[u8; 20], u64>>,
     /// Last measured block production time in milliseconds (shared with node tick loop).
-    pub last_block_production_ms: Arc<std::sync::Mutex<Option<u64>>>,
+    pub last_block_production_us: Arc<std::sync::Mutex<Option<u64>>>,
 }
 
 /// Parse a hex string into a 20-byte address.
@@ -1003,7 +1003,7 @@ impl NornRpcServer for NornRpcImpl {
             chain_id: self.network_id.chain_id().to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             block_time_target: norn_types::constants::BLOCK_TIME_TARGET.as_secs(),
-            last_block_production_ms: self.last_block_production_ms.lock().ok().and_then(|v| *v),
+            last_block_production_us: self.last_block_production_us.lock().ok().and_then(|v| *v),
         })
     }
 
