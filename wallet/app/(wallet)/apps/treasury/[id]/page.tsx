@@ -69,7 +69,9 @@ export default function ProposalDetailPage() {
   const addr = activeAddress?.toLowerCase() ?? "";
   const isOwner = config?.owners.some((o) => o.toLowerCase() === addr) ?? false;
   const now = Math.floor(Date.now() / 1000);
-  const isExpired = proposal ? now >= Number(proposal.deadline) : false;
+  const deadlineTs = proposal ? Number(proposal.deadline) : 0;
+  const isExpired = proposal ? now >= deadlineTs : false;
+  const timeRemaining = deadlineTs - now;
 
   const handleAction = async (
     action: () => Promise<unknown>,
@@ -154,6 +156,9 @@ export default function ProposalDetailPage() {
                   style={{ width: `${Math.min(approvalPct, 100)}%` }}
                 />
               </div>
+              <p className="mt-1 text-right text-xs text-muted-foreground font-mono tabular-nums">
+                {Math.min(approvalPct, 100)}%
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -195,6 +200,12 @@ export default function ProposalDetailPage() {
                 </span>
               </div>
               <div className="flex justify-between">
+                <span className="text-muted-foreground">Token ID</span>
+                <span className="font-mono text-xs">
+                  {proposal.tokenId.slice(0, 8)}...{proposal.tokenId.slice(-8)}
+                </span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-muted-foreground">Created</span>
                 <span className="text-xs">
                   {proposal.createdAt > 0n
@@ -207,8 +218,15 @@ export default function ProposalDetailPage() {
                 <span
                   className={cn("text-xs", isExpired && "text-destructive")}
                 >
-                  {formatTimestamp(Number(proposal.deadline))}
-                  {isExpired && " (expired)"}
+                  {formatTimestamp(deadlineTs)}
+                  {isExpired ? (
+                    <span className="ml-1">(expired)</span>
+                  ) : (
+                    <span className="ml-1 text-muted-foreground">
+                      ({Math.floor(timeRemaining / 3600)}h{" "}
+                      {Math.floor((timeRemaining % 3600) / 60)}m remaining)
+                    </span>
+                  )}
                 </span>
               </div>
             </div>

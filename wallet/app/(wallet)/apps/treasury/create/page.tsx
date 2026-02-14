@@ -31,7 +31,7 @@ export default function CreateProposalPage() {
   const [amount, setAmount] = useState("");
   const [tokenId, setTokenId] = useState(NATIVE_TOKEN_ID);
   const [description, setDescription] = useState("");
-  const [deadlineHours, setDeadlineHours] = useState("72");
+  const [deadlineHours, setDeadlineHours] = useState("168");
 
   const canSubmit =
     isValidAddress(to) &&
@@ -119,7 +119,7 @@ export default function CreateProposalPage() {
                   type="number"
                   value={deadlineHours}
                   onChange={(e) => setDeadlineHours(e.target.value)}
-                  placeholder="72"
+                  placeholder="168"
                   min="1"
                   className="font-mono text-sm tabular-nums"
                 />

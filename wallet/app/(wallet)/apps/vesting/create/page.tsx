@@ -31,7 +31,7 @@ export default function CreateSchedulePage() {
   const [amount, setAmount] = useState("");
   const [tokenId, setTokenId] = useState(NATIVE_TOKEN_ID);
   const [startDelayHours, setStartDelayHours] = useState("0");
-  const [cliffDays, setCliffDays] = useState("90");
+  const [cliffDays, setCliffDays] = useState("30");
   const [durationDays, setDurationDays] = useState("365");
   const [revocable, setRevocable] = useState(true);
 
@@ -156,7 +156,7 @@ export default function CreateSchedulePage() {
                   type="number"
                   value={cliffDays}
                   onChange={(e) => setCliffDays(e.target.value)}
-                  placeholder="90"
+                  placeholder="30"
                   min="0"
                   className="font-mono text-sm tabular-nums"
                 />

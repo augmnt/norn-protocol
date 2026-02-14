@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -21,13 +21,13 @@ import {
 } from "lucide-react";
 import type { Deal } from "@/lib/borsh-escrow";
 
-const STATUS_VARIANT: Record<string, "norn" | "destructive" | "secondary" | "outline"> = {
-  Created: "outline",
+const STATUS_VARIANT: Record<string, "norn" | "destructive" | "secondary"> = {
+  Created: "norn",
   Funded: "norn",
   Delivered: "norn",
   Completed: "secondary",
   Disputed: "destructive",
-  Cancelled: "secondary",
+  Cancelled: "destructive",
   Refunded: "secondary",
 };
 
@@ -97,12 +97,13 @@ export default function EscrowDashboardPage() {
     fetchDeals();
   }, [fetchDeals]);
 
-  const normalizedAddress = activeAddress?.toLowerCase() ?? "";
-  const buyerDeals = deals.filter(
-    (d) => d.buyer.toLowerCase() === normalizedAddress
+  const addr = activeAddress?.toLowerCase() ?? "";
+  const activeDeals = deals.filter(
+    (d) =>
+      d.status === "Created" || d.status === "Funded" || d.status === "Delivered"
   );
-  const sellerDeals = deals.filter(
-    (d) => d.seller.toLowerCase() === normalizedAddress
+  const myDeals = deals.filter(
+    (d) => d.buyer.toLowerCase() === addr || d.seller.toLowerCase() === addr
   );
 
   if (!ESCROW_LOOM_ID) {
@@ -139,60 +140,74 @@ export default function EscrowDashboardPage() {
           <Link href="/apps/escrow/create">
             <Button size="sm">
               <Plus className="mr-1.5 h-3.5 w-3.5" />
-              New Deal
+              Create Deal
             </Button>
           </Link>
         </div>
       }
     >
-      <Tabs defaultValue="buyer" className="space-y-4">
+      <Tabs defaultValue="active" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="buyer">
-            As Buyer ({buyerDeals.length})
+          <TabsTrigger value="active">
+            Active ({activeDeals.length})
           </TabsTrigger>
-          <TabsTrigger value="seller">
-            As Seller ({sellerDeals.length})
+          <TabsTrigger value="mine">
+            My Deals ({myDeals.length})
           </TabsTrigger>
           <TabsTrigger value="all">All ({deals.length})</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="buyer" className="space-y-3">
+        <TabsContent value="active" className="space-y-3">
           {fetching || loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
-          ) : buyerDeals.length === 0 ? (
+          ) : activeDeals.length === 0 ? (
             <EmptyState
               icon={ShieldCheck}
-              title="No deals as buyer"
-              description="Create a new deal to get started."
+              title="No active deals"
+              description="Create a deal to get started."
               action={
                 <Link href="/apps/escrow/create">
                   <Button variant="outline" size="sm">
                     <Plus className="mr-1.5 h-3.5 w-3.5" />
-                    New Deal
+                    Create Deal
                   </Button>
                 </Link>
               }
             />
           ) : (
-            buyerDeals.map((deal) => <DealCard key={deal.id.toString()} deal={deal} />)
+            activeDeals
+              .slice()
+              .reverse()
+              .map((deal) => <DealCard key={deal.id.toString()} deal={deal} />)
           )}
         </TabsContent>
 
-        <TabsContent value="seller" className="space-y-3">
+        <TabsContent value="mine" className="space-y-3">
           {fetching || loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
-          ) : sellerDeals.length === 0 ? (
+          ) : myDeals.length === 0 ? (
             <EmptyState
               icon={ShieldCheck}
-              title="No deals as seller"
-              description="Deals where you are the seller will appear here."
+              title="No deals found"
+              description="Deals where you are the buyer or seller will appear here."
+              action={
+                <Link href="/apps/escrow/create">
+                  <Button variant="outline" size="sm">
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    Create Deal
+                  </Button>
+                </Link>
+              }
             />
           ) : (
-            sellerDeals.map((deal) => <DealCard key={deal.id.toString()} deal={deal} />)
+            myDeals
+              .slice()
+              .reverse()
+              .map((deal) => <DealCard key={deal.id.toString()} deal={deal} />)
           )}
         </TabsContent>
 
@@ -205,10 +220,13 @@ export default function EscrowDashboardPage() {
             <EmptyState
               icon={ShieldCheck}
               title="No deals found"
-              description="Create a new deal to get started."
+              description="Create a deal to get started."
             />
           ) : (
-            deals.map((deal) => <DealCard key={deal.id.toString()} deal={deal} />)
+            deals
+              .slice()
+              .reverse()
+              .map((deal) => <DealCard key={deal.id.toString()} deal={deal} />)
           )}
         </TabsContent>
       </Tabs>

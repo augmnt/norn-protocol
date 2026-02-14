@@ -21,11 +21,20 @@ import {
 } from "lucide-react";
 import type { VestingSchedule } from "@/lib/borsh-vesting";
 
+function getVestingPercent(schedule: VestingSchedule): number {
+  const now = Math.floor(Date.now() / 1000);
+  const start = Number(schedule.startTime);
+  const cliff = start + Number(schedule.cliffDuration);
+  const end = start + Number(schedule.totalDuration);
+  if (now < start || now < cliff) return 0;
+  if (now >= end) return 100;
+  const elapsed = now - start;
+  const total = Number(schedule.totalDuration);
+  return total > 0 ? Math.min(Math.floor((elapsed / total) * 100), 100) : 0;
+}
+
 function ScheduleCard({ schedule }: { schedule: VestingSchedule }) {
-  const pct =
-    schedule.totalAmount > 0n
-      ? Number((schedule.claimedAmount * 100n) / schedule.totalAmount)
-      : 0;
+  const vestPct = getVestingPercent(schedule);
 
   return (
     <Link href={`/apps/vesting/${schedule.id}`}>
@@ -46,16 +55,16 @@ function ScheduleCard({ schedule }: { schedule: VestingSchedule }) {
             </div>
           </div>
 
-          {/* Progress bar */}
+          {/* Vesting progress bar */}
           <div className="mt-3">
             <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-              <span>Claimed</span>
-              <span className="font-mono tabular-nums">{pct}%</span>
+              <span>Vested</span>
+              <span className="font-mono tabular-nums">{vestPct}%</span>
             </div>
             <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
               <div
                 className="h-full rounded-full bg-norn transition-all"
-                style={{ width: `${Math.min(pct, 100)}%` }}
+                style={{ width: `${vestPct}%` }}
               />
             </div>
           </div>
@@ -76,6 +85,7 @@ function ScheduleCard({ schedule }: { schedule: VestingSchedule }) {
               </span>
             </div>
             <span className="font-mono tabular-nums">
+              {formatAmount(schedule.claimedAmount.toString())} /{" "}
               {formatAmount(schedule.totalAmount.toString())}
             </span>
           </div>
@@ -163,10 +173,10 @@ export default function VestingDashboardPage() {
         </div>
       }
     >
-      <Tabs defaultValue="to_me" className="space-y-4">
+      <Tabs defaultValue="my_vesting" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="to_me">
-            Vesting to Me ({vestingToMe.length})
+          <TabsTrigger value="my_vesting">
+            My Vesting ({vestingToMe.length})
           </TabsTrigger>
           <TabsTrigger value="created">
             Created by Me ({createdByMe.length})
@@ -174,7 +184,7 @@ export default function VestingDashboardPage() {
           <TabsTrigger value="all">All ({schedules.length})</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="to_me" className="space-y-3">
+        <TabsContent value="my_vesting" className="space-y-3">
           {fetching || loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />

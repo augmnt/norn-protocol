@@ -26,13 +26,13 @@ import { toast } from "sonner";
 import type { Deal, DealStatus } from "@/lib/borsh-escrow";
 import { cn } from "@/lib/utils";
 
-const STATUS_VARIANT: Record<string, "norn" | "destructive" | "secondary" | "outline"> = {
-  Created: "outline",
+const STATUS_VARIANT: Record<string, "norn" | "destructive" | "secondary"> = {
+  Created: "norn",
   Funded: "norn",
   Delivered: "norn",
   Completed: "secondary",
   Disputed: "destructive",
-  Cancelled: "secondary",
+  Cancelled: "destructive",
   Refunded: "secondary",
 };
 
@@ -237,7 +237,13 @@ export default function DealDetailPage() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Amount</span>
                 <span className="font-mono tabular-nums">
-                  {formatAmount(deal.amount.toString())} NORN
+                  {formatAmount(deal.amount.toString())}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Token</span>
+                <span className="font-mono text-xs truncate max-w-48">
+                  {deal.tokenId}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -245,9 +251,17 @@ export default function DealDetailPage() {
                 <span className="text-xs">
                   {deal.createdAt > 0n
                     ? formatTimestamp(Number(deal.createdAt))
-                    : "—"}
+                    : "\u2014"}
                 </span>
               </div>
+              {deal.fundedAt > 0n && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Funded</span>
+                  <span className="text-xs">
+                    {formatTimestamp(Number(deal.fundedAt))}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Deadline</span>
                 <span className={cn("text-xs", isExpired && "text-destructive")}>

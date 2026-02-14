@@ -86,17 +86,22 @@ export default function ScheduleDetailPage() {
     );
   }
 
-  const vestedPct =
-    schedule.totalAmount > 0n
-      ? Number((schedule.claimedAmount * 100n) / schedule.totalAmount)
-      : 0;
-
   const cliffEnd = Number(schedule.startTime) + Number(schedule.cliffDuration);
   const vestingEnd =
     Number(schedule.startTime) + Number(schedule.totalDuration);
   const now = Math.floor(Date.now() / 1000);
   const cliffPassed = now >= cliffEnd;
   const fullyVested = now >= vestingEnd;
+
+  // Time-based vesting percentage
+  const vestedPct = (() => {
+    const start = Number(schedule.startTime);
+    if (now < start || now < cliffEnd) return 0;
+    if (now >= vestingEnd) return 100;
+    const elapsed = now - start;
+    const total = Number(schedule.totalDuration);
+    return total > 0 ? Math.min(Math.floor((elapsed / total) * 100), 100) : 0;
+  })();
 
   return (
     <PageContainer
@@ -139,20 +144,31 @@ export default function ScheduleDetailPage() {
             </div>
           </CardHeader>
           <CardContent className="pt-0 space-y-3">
-            {/* Progress bar */}
+            {/* Vesting progress bar */}
             <div>
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
-                <span>Claimed / Total</span>
-                <span className="font-mono tabular-nums">
-                  {formatAmount(schedule.claimedAmount.toString())} /{" "}
-                  {formatAmount(schedule.totalAmount.toString())}
-                </span>
+                <span>Vested</span>
+                <span className="font-mono tabular-nums">{vestedPct}%</span>
               </div>
               <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
                 <div
                   className="h-full rounded-full bg-norn transition-all"
-                  style={{ width: `${Math.min(vestedPct, 100)}%` }}
+                  style={{ width: `${vestedPct}%` }}
                 />
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1">
+                <span>
+                  Claimed:{" "}
+                  <span className="font-mono tabular-nums">
+                    {formatAmount(schedule.claimedAmount.toString())}
+                  </span>
+                </span>
+                <span>
+                  Total:{" "}
+                  <span className="font-mono tabular-nums">
+                    {formatAmount(schedule.totalAmount.toString())}
+                  </span>
+                </span>
               </div>
             </div>
 
@@ -220,9 +236,27 @@ export default function ScheduleDetailPage() {
                 </span>
               </div>
               <div className="flex justify-between">
+                <span className="text-muted-foreground">Token</span>
+                <span className="font-mono text-xs truncate max-w-48">
+                  {schedule.tokenId}
+                </span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-muted-foreground">Total Amount</span>
                 <span className="font-mono tabular-nums">
-                  {formatAmount(schedule.totalAmount.toString())} NORN
+                  {formatAmount(schedule.totalAmount.toString())}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Claimed Amount</span>
+                <span className="font-mono tabular-nums">
+                  {formatAmount(schedule.claimedAmount.toString())}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Claimable Now</span>
+                <span className="font-mono tabular-nums text-norn">
+                  {formatAmount(claimable.toString())}
                 </span>
               </div>
               <div className="flex justify-between">

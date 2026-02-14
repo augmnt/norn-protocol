@@ -14,11 +14,17 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TREASURY_LOOM_ID } from "@/lib/apps-config";
 import { useTreasury } from "@/hooks/use-treasury";
 import { useWallet } from "@/hooks/use-wallet";
-import { truncateAddress, formatAmount, isValidAddress } from "@/lib/format";
+import {
+  truncateAddress,
+  formatAmount,
+  formatTimestamp,
+  isValidAddress,
+} from "@/lib/format";
 import {
   Plus,
   Vault,
@@ -26,14 +32,17 @@ import {
   AlertCircle,
   Loader2,
   Download,
-  X,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { Proposal, TreasuryConfig, ProposalStatus } from "@/lib/borsh-treasury";
+import type {
+  Proposal,
+  TreasuryConfig,
+  ProposalStatus,
+} from "@/lib/borsh-treasury";
 
 const STATUS_VARIANT: Record<
   ProposalStatus,
-  "norn" | "destructive" | "secondary" | "outline"
+  "norn" | "destructive" | "secondary"
 > = {
   Proposed: "norn",
   Executed: "secondary",
@@ -64,9 +73,9 @@ function ProposalCard({
           <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
             <div className="flex items-center gap-3">
               <span>
-                To:{" "}
+                By:{" "}
                 <span className="font-mono">
-                  {truncateAddress(proposal.to)}
+                  {truncateAddress(proposal.proposer)}
                 </span>
               </span>
               <span>
@@ -90,39 +99,30 @@ function ProposalCard({
 function InitializeForm({
   onSuccess,
   loomId,
-  currentAddress,
 }: {
   onSuccess: () => void;
   loomId: string;
-  currentAddress: string;
 }) {
   const { initialize, loading } = useTreasury(loomId);
   const [name, setName] = useState("");
-  const [owners, setOwners] = useState<string[]>([currentAddress, ""]);
+  const [ownersText, setOwnersText] = useState("");
   const [threshold, setThreshold] = useState("2");
 
-  const validOwners = owners.filter((o) => isValidAddress(o));
+  const parsedOwners = ownersText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => isValidAddress(line));
+
   const canSubmit =
     name.trim().length > 0 &&
-    validOwners.length >= 2 &&
+    parsedOwners.length >= 2 &&
     parseInt(threshold) >= 1 &&
-    parseInt(threshold) <= validOwners.length;
-
-  const addOwner = () => setOwners([...owners, ""]);
-  const removeOwner = (i: number) => {
-    if (owners.length <= 2) return;
-    setOwners(owners.filter((_, idx) => idx !== i));
-  };
-  const updateOwner = (i: number, val: string) => {
-    const next = [...owners];
-    next[i] = val;
-    setOwners(next);
-  };
+    parseInt(threshold) <= parsedOwners.length;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
     try {
-      await initialize(validOwners, BigInt(parseInt(threshold)), name.trim());
+      await initialize(parsedOwners, BigInt(parseInt(threshold)), name.trim());
       toast.success("Treasury initialized successfully");
       onSuccess();
     } catch (e) {
@@ -160,34 +160,18 @@ function InitializeForm({
 
         <div className="space-y-2">
           <Label className="text-xs text-muted-foreground">
-            Owners ({validOwners.length} valid)
+            Owner Addresses ({parsedOwners.length} valid)
           </Label>
-          <div className="space-y-2">
-            {owners.map((owner, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <Input
-                  value={owner}
-                  onChange={(e) => updateOwner(i, e.target.value)}
-                  placeholder="0x..."
-                  className="font-mono text-xs"
-                />
-                {owners.length > 2 && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0"
-                    onClick={() => removeOwner(i)}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-              </div>
-            ))}
-          </div>
-          <Button variant="outline" size="sm" onClick={addOwner}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            Add Owner
-          </Button>
+          <Textarea
+            value={ownersText}
+            onChange={(e) => setOwnersText(e.target.value)}
+            placeholder={"0x...\n0x...\n0x..."}
+            className="font-mono text-xs min-h-[100px] resize-y"
+            rows={4}
+          />
+          <p className="text-[10px] text-muted-foreground">
+            One address per line. At least 2 owners required.
+          </p>
         </div>
 
         <div className="space-y-2">
@@ -199,12 +183,12 @@ function InitializeForm({
             value={threshold}
             onChange={(e) => setThreshold(e.target.value)}
             min={1}
-            max={validOwners.length || 1}
+            max={parsedOwners.length || 1}
             className="w-24 font-mono text-sm tabular-nums"
           />
           <p className="text-[10px] text-muted-foreground">
             Number of owner approvals needed to execute a proposal (max{" "}
-            {validOwners.length}).
+            {parsedOwners.length}).
           </p>
         </div>
 
@@ -294,11 +278,7 @@ export default function TreasuryDashboardPage() {
           </Link>
         }
       >
-        <InitializeForm
-          loomId={TREASURY_LOOM_ID}
-          currentAddress={activeAddress ?? ""}
-          onSuccess={fetchData}
-        />
+        <InitializeForm loomId={TREASURY_LOOM_ID} onSuccess={fetchData} />
       </PageContainer>
     );
   }
@@ -371,11 +351,11 @@ export default function TreasuryDashboardPage() {
                 </p>
               </div>
               <div>
-                <span className="text-xs text-muted-foreground">
-                  Proposals
-                </span>
-                <p className="mt-1 font-mono tabular-nums">
-                  {proposals.length}
+                <span className="text-xs text-muted-foreground">Created</span>
+                <p className="mt-1 text-xs">
+                  {config.createdAt > 0n
+                    ? formatTimestamp(Number(config.createdAt))
+                    : "\u2014"}
                 </p>
               </div>
             </div>
