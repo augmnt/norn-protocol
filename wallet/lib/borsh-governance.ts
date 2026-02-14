@@ -77,7 +77,7 @@ export function encodeInitialize(
     new Uint8Array([0]),
     encodeString(name),
     encodeU64(votingPeriod),
-    encodeU128(quorum)
+    encodeU64(quorum)
   );
   return bytesToHex(parts);
 }
@@ -207,7 +207,7 @@ export function decodeGovConfig(hex: string): GovConfig {
   let votingPeriod: bigint;
   [votingPeriod, offset] = readU64(data, offset);
   let quorum: bigint;
-  [quorum, offset] = readU128(data, offset);
+  [quorum, offset] = readU64(data, offset);
   let createdAt: bigint;
   [createdAt, offset] = readU64(data, offset);
 
@@ -233,9 +233,9 @@ export function decodeGovProposal(hex: string): GovProposal {
   let description: string;
   [description, offset] = readString(data, offset);
   let forVotes: bigint;
-  [forVotes, offset] = readU128(data, offset);
+  [forVotes, offset] = readU64(data, offset);
   let againstVotes: bigint;
-  [againstVotes, offset] = readU128(data, offset);
+  [againstVotes, offset] = readU64(data, offset);
   let startTime: bigint;
   [startTime, offset] = readU64(data, offset);
   let endTime: bigint;
