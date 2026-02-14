@@ -43,6 +43,7 @@ export function StatsBar() {
   const { data: weave, isLoading: weaveLoading } = useWeaveState();
   const { data: validators, isLoading: validatorsLoading } = useValidatorSet();
   const { data: health, isLoading: healthLoading } = useHealth();
+  const blockTimeTarget = health?.block_time_target;
   const {
     blockProductionTime,
     totalTxs,
@@ -64,7 +65,7 @@ export function StatsBar() {
       />
       <StatCard
         label="Block Time"
-        value={blockProductionTime !== null ? formatBlockTime(blockProductionTime) : "~3s"}
+        value={blockProductionTime !== null ? formatBlockTime(blockProductionTime) : blockTimeTarget ? `~${blockTimeTarget}s` : "~3s"}
         icon={Zap}
         sparklineData={sparklineBlockTimes}
       />

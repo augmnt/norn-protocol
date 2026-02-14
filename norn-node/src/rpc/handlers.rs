@@ -1000,6 +1000,7 @@ impl NornRpcServer for NornRpcImpl {
             network: self.network_id.as_str().to_string(),
             chain_id: self.network_id.chain_id().to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
+            block_time_target: norn_types::constants::BLOCK_TIME_TARGET.as_secs(),
         })
     }
 

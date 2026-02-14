@@ -74,6 +74,7 @@ export interface HealthInfo {
   network: string;
   chain_id: string;
   version: string;
+  block_time_target: number;
 }
 
 /** Validator info. */

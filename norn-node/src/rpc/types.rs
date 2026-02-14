@@ -129,6 +129,8 @@ pub struct HealthInfo {
     pub chain_id: String,
     /// Node software version.
     pub version: String,
+    /// Target block production time in seconds.
+    pub block_time_target: u64,
 }
 
 /// Information about a validator.
