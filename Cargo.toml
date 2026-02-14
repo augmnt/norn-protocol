@@ -22,6 +22,14 @@ exclude = [
     "examples/escrow",
     "examples/multisig-treasury",
     "examples/vesting",
+    "examples/launchpad",
+    "examples/splitter",
+    "examples/crowdfund",
+    "examples/governance",
+    "examples/staking",
+    "examples/swap",
+    "examples/airdrop",
+    "examples/timelock",
 ]
 
 [workspace.package]

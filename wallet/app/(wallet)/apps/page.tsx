@@ -9,6 +9,14 @@ import {
   ShieldCheck,
   Vault,
   Timer,
+  Rocket,
+  Split,
+  Heart,
+  Scale,
+  Landmark,
+  ArrowLeftRight,
+  Gift,
+  Clock,
   ArrowRight,
   type LucideIcon,
 } from "lucide-react";
@@ -17,6 +25,14 @@ const ICON_MAP: Record<string, LucideIcon> = {
   ShieldCheck,
   Vault,
   Timer,
+  Rocket,
+  Split,
+  Heart,
+  Scale,
+  Landmark,
+  ArrowLeftRight,
+  Gift,
+  Clock,
 };
 
 export default function AppsPage() {
