@@ -154,7 +154,7 @@ export default async function Image() {
               fontFamily: "JetBrains Mono",
               fontSize: 10.5,
               lineHeight: 1.25,
-              color: "rgba(140,150,165,0.10)",
+              color: "rgba(140,150,165,0.45)",
               whiteSpace: "pre",
             }}
           >

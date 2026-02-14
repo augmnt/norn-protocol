@@ -83,7 +83,7 @@ export function Hero() {
             </div>
           </div>
           <div className="hidden lg:block flex-shrink-0" aria-hidden="true">
-            <pre className="font-mono text-[9px] leading-[1.2] text-muted-foreground/20 select-none">
+            <pre className="font-mono text-[9px] leading-[1.2] text-muted-foreground/45 select-none">
               {heroArt}
             </pre>
           </div>

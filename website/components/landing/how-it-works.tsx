@@ -193,7 +193,7 @@ export function HowItWorks() {
           {steps.map((step) => (
             <div key={step.number} className="group flex flex-col">
               <div className="flex-1 flex items-end overflow-hidden mb-8">
-                <pre className="font-mono text-[6.5px] sm:text-[7.5px] lg:text-[8px] leading-[1.15] text-muted-foreground/20 group-hover:text-norn/30 transition-colors duration-500 select-none whitespace-pre">
+                <pre className="font-mono text-[6.5px] sm:text-[7.5px] lg:text-[8px] leading-[1.15] text-muted-foreground/45 group-hover:text-norn/60 transition-colors duration-500 select-none whitespace-pre">
                   {step.art}
                 </pre>
               </div>
