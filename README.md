@@ -1,6 +1,6 @@
-# Norn
-
-**Your thread. Your fate. The chain just watches.**
+<p align="center">
+  <img src="banner.svg" alt="Norn Protocol" width="100%" />
+</p>
 
 <p>
   <a href="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml"><img src="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
