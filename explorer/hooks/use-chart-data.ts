@@ -10,8 +10,12 @@ import type { BlockInfo } from "@/types";
 
 const CHART_BLOCK_COUNT = 30;
 
-/** Block times above this threshold (in seconds) are idle gaps, not meaningful measurements. */
-const MAX_MEANINGFUL_BLOCK_TIME = 30;
+/**
+ * Block times above this threshold (in seconds) are idle gaps, not real
+ * production time. The chain target is 3s, so anything > 6s is an idle period
+ * where no transactions were pending.
+ */
+const MAX_MEANINGFUL_BLOCK_TIME = 6;
 
 export interface BlockChartPoint {
   height: number;
@@ -126,18 +130,17 @@ export function useChartData() {
     return buildChartData(merged);
   }, [wsBlocks, latestBlock, historicalBlocks]);
 
-  const avgBlockTime = useMemo(() => {
+  /** Median production time from consecutive blocks (excludes idle gaps). */
+  const blockProductionTime = useMemo(() => {
     const times = chartData
       .map((d) => d.blockTime)
       .filter((t): t is number => t !== null && t > 0);
     if (times.length === 0) return null;
     const sorted = [...times].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
-    const median =
-      sorted.length % 2 === 0
-        ? (sorted[mid - 1] + sorted[mid]) / 2
-        : sorted[mid];
-    return Math.round(median);
+    return sorted.length % 2 === 0
+      ? (sorted[mid - 1] + sorted[mid]) / 2
+      : sorted[mid];
   }, [chartData]);
 
   const totalTxs = useMemo(
@@ -171,7 +174,7 @@ export function useChartData() {
 
   return {
     chartData,
-    avgBlockTime,
+    blockProductionTime,
     totalTxs,
     sparklineHeights,
     sparklineTxs,

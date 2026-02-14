@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Blocks, Layers, Users, Activity, Clock } from "lucide-react";
+import { Blocks, Clock, Users, Activity, Zap } from "lucide-react";
 import { StatCard } from "@/components/ui/stat-card";
 import { useWeaveState } from "@/hooks/use-weave-state";
 import { useValidatorSet } from "@/hooks/use-validator-set";
@@ -33,11 +33,18 @@ function useLastBlockAgo() {
   return ago;
 }
 
+function formatBlockTime(seconds: number): string {
+  if (seconds < 1) return "< 1s";
+  if (Number.isInteger(seconds)) return `${seconds}s`;
+  return `${seconds.toFixed(1)}s`;
+}
+
 export function StatsBar() {
   const { data: weave, isLoading: weaveLoading } = useWeaveState();
   const { data: validators, isLoading: validatorsLoading } = useValidatorSet();
   const { data: health, isLoading: healthLoading } = useHealth();
   const {
+    blockProductionTime,
     totalTxs,
     sparklineHeights,
     sparklineTxs,
@@ -56,10 +63,10 @@ export function StatsBar() {
         sparklineData={sparklineHeights}
       />
       <StatCard
-        label="Threads"
-        value={weave ? formatNumber(weave.thread_count) : "—"}
-        icon={Layers}
-        loading={weaveLoading}
+        label="Block Time"
+        value={blockProductionTime !== null ? formatBlockTime(blockProductionTime) : "~3s"}
+        icon={Zap}
+        sparklineData={sparklineBlockTimes}
       />
       <StatCard
         label="Validators"
@@ -73,7 +80,6 @@ export function StatsBar() {
         label="Last Block"
         value={lastBlockAgo}
         icon={Clock}
-        sparklineData={sparklineBlockTimes}
       />
       <StatCard
         label="Transactions"
