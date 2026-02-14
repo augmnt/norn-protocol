@@ -45,23 +45,15 @@ function CustomTooltip({
           </span>
         </p>
       )}
-      {d.productionMs === null && d.rawBlockTime !== null && (
-        <p className="text-muted-foreground">
-          Block gap:{" "}
-          <span className="font-mono text-foreground">{d.rawBlockTime}s</span>
-        </p>
-      )}
     </div>
   );
 }
 
 export function BlockProductionChart({ data }: BlockProductionChartProps) {
   const display = data.slice(-30);
-
-  // Use production_ms data if available, otherwise fall back to raw block time.
   const hasProductionData = display.some((d) => d.productionMs !== null);
 
-  if (display.length < 2) {
+  if (display.length < 2 || !hasProductionData) {
     return (
       <Card>
         <CardHeader className="pb-2">
@@ -71,7 +63,7 @@ export function BlockProductionChart({ data }: BlockProductionChartProps) {
         </CardHeader>
         <CardContent>
           <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
-            Waiting for blocks...
+            Waiting for new blocks...
           </div>
         </CardContent>
       </Card>
@@ -128,15 +120,13 @@ export function BlockProductionChart({ data }: BlockProductionChartProps) {
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 10, fill: "hsl(240, 5%, 50%)" }}
-                tickFormatter={(v) =>
-                  hasProductionData ? `${v}ms` : `${v}s`
-                }
+                tickFormatter={(v) => formatProductionTime(v)}
                 domain={[0, "auto"]}
               />
               <Tooltip content={<CustomTooltip />} />
               <Area
                 type="monotone"
-                dataKey={hasProductionData ? "productionMs" : "rawBlockTime"}
+                dataKey="productionMs"
                 stroke="hsl(210, 12%, 49%)"
                 strokeWidth={2}
                 fill="url(#blockTimeGradient)"
