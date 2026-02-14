@@ -695,14 +695,21 @@ impl Node {
                                 }
                             }
                             // Apply loom deploys from synced block.
-                            for ld in &block.loom_deploys {
-                                let loom_id = norn_types::loom::compute_loom_id(ld);
-                                sm.apply_peer_loom_deploy(
-                                    loom_id,
-                                    &ld.config.name,
-                                    ld.operator,
-                                    ld.timestamp,
-                                );
+                            if !block.loom_deploys.is_empty() {
+                                let mut loom_mgr = self.loom_manager.write().await;
+                                for ld in &block.loom_deploys {
+                                    let loom_id = norn_types::loom::compute_loom_id(ld);
+                                    sm.apply_peer_loom_deploy(
+                                        loom_id,
+                                        &ld.config.name,
+                                        ld.operator,
+                                        ld.timestamp,
+                                    );
+                                    loom_mgr.register_loom(
+                                        loom_id,
+                                        crate::loom_from_registration(ld, loom_id),
+                                    );
+                                }
                             }
                             for bt in &block.transfers {
                                 if !sm.has_transfer(&bt.knot_id) {
@@ -927,14 +934,21 @@ impl Node {
                                     }
                                 }
                                 // Apply loom deploys from peer block.
-                                for ld in &block.loom_deploys {
-                                    let loom_id = norn_types::loom::compute_loom_id(ld);
-                                    sm.apply_peer_loom_deploy(
-                                        loom_id,
-                                        &ld.config.name,
-                                        ld.operator,
-                                        ld.timestamp,
-                                    );
+                                if !block.loom_deploys.is_empty() {
+                                    let mut loom_mgr = self.loom_manager.write().await;
+                                    for ld in &block.loom_deploys {
+                                        let loom_id = norn_types::loom::compute_loom_id(ld);
+                                        sm.apply_peer_loom_deploy(
+                                            loom_id,
+                                            &ld.config.name,
+                                            ld.operator,
+                                            ld.timestamp,
+                                        );
+                                        loom_mgr.register_loom(
+                                            loom_id,
+                                            crate::loom_from_registration(ld, loom_id),
+                                        );
+                                    }
                                 }
                                 for bt in &block.transfers {
                                     if !sm.has_transfer(&bt.knot_id) {
@@ -1098,14 +1112,21 @@ impl Node {
                                         }
                                     }
                                     // Apply loom deploys from synced block.
-                                    for ld in &block.loom_deploys {
-                                        let loom_id = norn_types::loom::compute_loom_id(ld);
-                                        sm.apply_peer_loom_deploy(
-                                            loom_id,
-                                            &ld.config.name,
-                                            ld.operator,
-                                            ld.timestamp,
-                                        );
+                                    if !block.loom_deploys.is_empty() {
+                                        let mut loom_mgr = self.loom_manager.write().await;
+                                        for ld in &block.loom_deploys {
+                                            let loom_id = norn_types::loom::compute_loom_id(ld);
+                                            sm.apply_peer_loom_deploy(
+                                                loom_id,
+                                                &ld.config.name,
+                                                ld.operator,
+                                                ld.timestamp,
+                                            );
+                                            loom_mgr.register_loom(
+                                                loom_id,
+                                                crate::loom_from_registration(ld, loom_id),
+                                            );
+                                        }
                                     }
                                     for bt in &block.transfers {
                                         if !sm.has_transfer(&bt.knot_id) {
@@ -1281,17 +1302,21 @@ impl Node {
                                         }
                                     }
                                     // Apply loom deploys (solo — deduct deploy fee locally).
-                                    for ld in &block.loom_deploys {
-                                        let loom_id = norn_types::loom::compute_loom_id(ld);
-                                        let operator_addr = pubkey_to_address(&ld.operator);
-                                        if let Err(e) = sm.deploy_loom(
-                                            loom_id,
-                                            &ld.config.name,
-                                            ld.operator,
-                                            operator_addr,
-                                            ld.timestamp,
-                                        ) {
-                                            tracing::debug!("solo loom deploy skipped: {}", e);
+                                    if !block.loom_deploys.is_empty() {
+                                        let mut loom_mgr = self.loom_manager.write().await;
+                                        for ld in &block.loom_deploys {
+                                            let loom_id = norn_types::loom::compute_loom_id(ld);
+                                            let operator_addr = pubkey_to_address(&ld.operator);
+                                            if let Err(e) = sm.deploy_loom(
+                                                loom_id,
+                                                &ld.config.name,
+                                                ld.operator,
+                                                operator_addr,
+                                                ld.timestamp,
+                                            ) {
+                                                tracing::debug!("solo loom deploy skipped: {}", e);
+                                            }
+                                            loom_mgr.register_loom(loom_id, crate::loom_from_registration(ld, loom_id));
                                         }
                                     }
                                     // Note: transfers are NOT re-applied here — they were
@@ -1386,17 +1411,21 @@ impl Node {
                                                 tracing::debug!("consensus token burn skipped: {}", e);
                                             }
                                         }
-                                        for ld in &block.loom_deploys {
-                                            let loom_id = norn_types::loom::compute_loom_id(ld);
-                                            let operator_addr = pubkey_to_address(&ld.operator);
-                                            if let Err(e) = sm.deploy_loom(
-                                                loom_id,
-                                                &ld.config.name,
-                                                ld.operator,
-                                                operator_addr,
-                                                ld.timestamp,
-                                            ) {
-                                                tracing::debug!("consensus loom deploy skipped: {}", e);
+                                        if !block.loom_deploys.is_empty() {
+                                            let mut loom_mgr = self.loom_manager.write().await;
+                                            for ld in &block.loom_deploys {
+                                                let loom_id = norn_types::loom::compute_loom_id(ld);
+                                                let operator_addr = pubkey_to_address(&ld.operator);
+                                                if let Err(e) = sm.deploy_loom(
+                                                    loom_id,
+                                                    &ld.config.name,
+                                                    ld.operator,
+                                                    operator_addr,
+                                                    ld.timestamp,
+                                                ) {
+                                                    tracing::debug!("consensus loom deploy skipped: {}", e);
+                                                }
+                                                loom_mgr.register_loom(loom_id, crate::loom_from_registration(ld, loom_id));
                                             }
                                         }
                                         let fee_per = norn_weave::fees::compute_fee(
