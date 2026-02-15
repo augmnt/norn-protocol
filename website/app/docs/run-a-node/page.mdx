@@ -22,14 +22,43 @@ Get a node running with a single command:
 curl -sSf https://raw.githubusercontent.com/augmnt/norn-protocol/main/scripts/setup-node.sh | bash
 ```
 
-This script will:
+This installs Rust (if needed), builds `norn` from source, creates a wallet, and configures for the devnet. After it finishes, start your node:
 
-1. Install Rust via `rustup` (if not already installed)
-2. Build `norn` from source
-3. Create a wallet for you
-4. Start the node and connect to the devnet
+```bash
+norn run --dev
+```
 
-Once it completes, your node is live and syncing blocks.
+### Start immediately
+
+To install **and** start the node in one go:
+
+```bash
+curl -sSf https://raw.githubusercontent.com/augmnt/norn-protocol/main/scripts/setup-node.sh | bash -s -- --start --faucet
+```
+
+This starts the node in the background and requests devnet faucet funds automatically. Your node is live and earning rewards immediately.
+
+### Production setup (Linux)
+
+For servers that should run 24/7, use `--systemd` to create and enable a systemd service:
+
+```bash
+curl -sSf https://raw.githubusercontent.com/augmnt/norn-protocol/main/scripts/setup-node.sh | bash -s -- --systemd --faucet
+```
+
+This creates a dedicated `norn` system user, writes a systemd service file, copies your wallet, and starts the service. The node auto-restarts on failure and starts on boot.
+
+### Script Options
+
+| Option | Description |
+|--------|-------------|
+| `--start` | Start the node in the background after setup |
+| `--systemd` | Install and enable a systemd service (Linux only, requires sudo) |
+| `--faucet` | Request devnet faucet funds after the node is running |
+| `--data-dir <PATH>` | Custom data directory (default: `~/.norn/data`) |
+| `--help` | Show help message |
+
+Options can be combined: `--start --faucet` or `--systemd --faucet`.
 
 ## Manual Setup
 
@@ -118,21 +147,26 @@ norn wallet validators
 
 ## Running as a Service
 
-For production deployments, run `norn` as a systemd service so it starts automatically and restarts on failure.
+The setup script's `--systemd` flag handles this automatically. If you prefer to configure it manually:
 
 Create the service file at `/etc/systemd/system/norn-node.service`:
 
 ```ini
 [Unit]
 Description=Norn Protocol Node
-After=network.target
+Documentation=https://norn.network/docs/run-a-node
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=norn
+Group=norn
 ExecStart=/usr/local/bin/norn run --dev --storage sqlite --data-dir /var/lib/norn/data
 Restart=always
 RestartSec=5
+LimitNOFILE=65535
+Environment=HOME=/var/lib/norn
 
 [Install]
 WantedBy=multi-user.target
@@ -145,6 +179,11 @@ Then enable and start it:
 sudo useradd --system --home /var/lib/norn --shell /usr/sbin/nologin norn
 sudo mkdir -p /var/lib/norn/data
 sudo chown norn:norn /var/lib/norn/data
+
+# Copy your wallet to the service user
+sudo mkdir -p /var/lib/norn/.norn/wallets
+sudo cp ~/.norn/wallets/* /var/lib/norn/.norn/wallets/
+sudo chown -R norn:norn /var/lib/norn/.norn
 
 # Enable the service
 sudo systemctl daemon-reload
@@ -213,7 +252,7 @@ curl http://localhost:9741/health
 
 ## Next Steps
 
-- [Wallet CLI](/docs/wallet) -- Full reference for all 45 wallet commands
+- [Wallet CLI](/docs/wallet) -- Full reference for all wallet commands
 - [Architecture](/docs/architecture) -- Understand Threads, Knots, and the Weave
 - [Quick Start](/docs/quickstart) -- Installation and devnet quickstart
 - [NornNames](/docs/names) -- Register a human-readable name for your validator
