@@ -16,8 +16,6 @@ export function useLoomOps() {
 
   const queryLoom = useCallback(
     async (loomId: string, inputHex: string): Promise<QueryResult> => {
-      setLoading(true);
-      setError(null);
       try {
         return await rpcCall<QueryResult>("norn_queryLoom", [
           strip0x(loomId),
@@ -27,8 +25,6 @@ export function useLoomOps() {
         const msg = e instanceof Error ? e.message : "Query failed";
         setError(msg);
         throw e;
-      } finally {
-        setLoading(false);
       }
     },
     []

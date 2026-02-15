@@ -273,7 +273,7 @@ export default function SplitterDashboardPage() {
         </div>
       }
     >
-      {fetching || loading ? (
+      {fetching ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
