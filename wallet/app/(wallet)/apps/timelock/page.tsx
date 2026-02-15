@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { TIMELOCK_LOOM_ID } from "@/lib/apps-config";
 import { useTimelock } from "@/hooks/use-timelock";
+import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
 import { truncateAddress, formatAmount, formatTimestamp } from "@/lib/format";
 import {
@@ -104,6 +105,8 @@ export default function TimelockDashboardPage() {
   useEffect(() => {
     fetchLocks();
   }, [fetchLocks]);
+
+  useLoomRefresh(TIMELOCK_LOOM_ID, fetchLocks);
 
   const addr = activeAddress?.toLowerCase() ?? "";
   const myLocks = locks.filter((l) => l.owner.toLowerCase() === addr);

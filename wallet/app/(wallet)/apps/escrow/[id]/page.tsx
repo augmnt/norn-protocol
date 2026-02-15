@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ESCROW_LOOM_ID } from "@/lib/apps-config";
 import { useEscrow } from "@/hooks/use-escrow";
+import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
 import { truncateAddress, formatAmount, formatTimestamp } from "@/lib/format";
 import {
@@ -124,6 +125,8 @@ export default function DealDetailPage() {
   useEffect(() => {
     fetchDeal();
   }, [fetchDeal]);
+
+  useLoomRefresh(ESCROW_LOOM_ID, fetchDeal);
 
   const addr = activeAddress?.toLowerCase() ?? "";
   const isBuyer = deal?.buyer.toLowerCase() === addr;

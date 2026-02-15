@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SWAP_LOOM_ID } from "@/lib/apps-config";
 import { useSwap } from "@/hooks/use-swap";
+import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
 import { truncateAddress, formatAmount, formatTimestamp } from "@/lib/format";
 import {
@@ -49,6 +50,8 @@ export default function OrderDetailPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useLoomRefresh(SWAP_LOOM_ID, fetchData);
 
   const addr = activeAddress?.toLowerCase() ?? "";
   const isCreator = order?.creator.toLowerCase() === addr;

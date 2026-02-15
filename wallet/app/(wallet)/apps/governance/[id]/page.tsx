@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { GOVERNANCE_LOOM_ID } from "@/lib/apps-config";
 import { useGovernance } from "@/hooks/use-governance";
+import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
 import { truncateAddress, formatTimestamp } from "@/lib/format";
 import {
@@ -63,6 +64,8 @@ export default function ProposalDetailPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useLoomRefresh(GOVERNANCE_LOOM_ID, fetchData);
 
   const handleAction = async (
     action: () => Promise<unknown>,

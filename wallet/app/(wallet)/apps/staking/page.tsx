@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { STAKING_LOOM_ID } from "@/lib/apps-config";
 import { useStaking } from "@/hooks/use-staking";
+import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
 import { formatAmount, truncateAddress } from "@/lib/format";
 import {
@@ -210,6 +211,8 @@ export default function StakingDashboardPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useLoomRefresh(STAKING_LOOM_ID, fetchData);
 
   const handleAction = async (
     action: () => Promise<unknown>,

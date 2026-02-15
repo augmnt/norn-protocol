@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TREASURY_LOOM_ID } from "@/lib/apps-config";
 import { useTreasury } from "@/hooks/use-treasury";
+import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
 import { truncateAddress, formatAmount, formatTimestamp } from "@/lib/format";
 import {
@@ -65,6 +66,8 @@ export default function ProposalDetailPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useLoomRefresh(TREASURY_LOOM_ID, fetchData);
 
   const addr = activeAddress?.toLowerCase() ?? "";
   const isOwner = config?.owners.some((o) => o.toLowerCase() === addr) ?? false;

@@ -6,6 +6,7 @@ import {
   subscribeNewBlocks,
   subscribeTransfers,
   subscribeTokenEvents,
+  subscribeLoomEvents,
   type Subscription,
 } from "@norn-protocol/sdk";
 import { toast } from "sonner";
@@ -112,7 +113,11 @@ export function useSubscriptions(filterAddress?: string) {
         }
       });
 
-      subsRef.current = [blockSub, transferSub, tokenSub];
+      const loomSub = subscribeLoomEvents(makeWsOpts(), (event) => {
+        useRealtimeStore.getState().addLoomEvent(event);
+      });
+
+      subsRef.current = [blockSub, transferSub, tokenSub, loomSub];
     }
 
     function scheduleReconnect() {

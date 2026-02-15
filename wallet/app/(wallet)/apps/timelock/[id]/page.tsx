@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TIMELOCK_LOOM_ID } from "@/lib/apps-config";
 import { useTimelock } from "@/hooks/use-timelock";
+import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
 import { truncateAddress, formatAmount, formatTimestamp } from "@/lib/format";
 import {
@@ -50,6 +51,8 @@ export default function LockDetailPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useLoomRefresh(TIMELOCK_LOOM_ID, fetchData);
 
   // Update countdown every minute
   useEffect(() => {

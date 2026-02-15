@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { SWAP_LOOM_ID } from "@/lib/apps-config";
 import { useSwap } from "@/hooks/use-swap";
+import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
 import { truncateAddress, formatAmount } from "@/lib/format";
 import {
@@ -108,6 +109,8 @@ export default function SwapDashboardPage() {
   useEffect(() => {
     fetchOrders();
   }, [fetchOrders]);
+
+  useLoomRefresh(SWAP_LOOM_ID, fetchOrders);
 
   const addr = activeAddress?.toLowerCase() ?? "";
   const myOrders = orders.filter((o) => o.creator.toLowerCase() === addr);

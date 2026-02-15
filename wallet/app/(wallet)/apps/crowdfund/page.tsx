@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CROWDFUND_LOOM_ID } from "@/lib/apps-config";
 import { useCrowdfund } from "@/hooks/use-crowdfund";
+import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
 import {
   truncateAddress,
@@ -255,6 +256,8 @@ export default function CrowdfundDashboardPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useLoomRefresh(CROWDFUND_LOOM_ID, fetchData);
 
   const addr = activeAddress?.toLowerCase() ?? "";
   const isCreator = config?.creator.toLowerCase() === addr;

@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ESCROW_LOOM_ID } from "@/lib/apps-config";
 import { useEscrow } from "@/hooks/use-escrow";
+import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
 import { truncateAddress, formatAmount } from "@/lib/format";
 import {
@@ -96,6 +97,8 @@ export default function EscrowDashboardPage() {
   useEffect(() => {
     fetchDeals();
   }, [fetchDeals]);
+
+  useLoomRefresh(ESCROW_LOOM_ID, fetchDeals);
 
   const addr = activeAddress?.toLowerCase() ?? "";
   const activeDeals = deals.filter(

@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LAUNCHPAD_LOOM_ID } from "@/lib/apps-config";
 import { useLaunchpad } from "@/hooks/use-launchpad";
+import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
 import {
   truncateAddress,
@@ -280,6 +281,8 @@ export default function LaunchpadDashboardPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useLoomRefresh(LAUNCHPAD_LOOM_ID, fetchData);
 
   const now = Math.floor(Date.now() / 1000);
   const isCreator =

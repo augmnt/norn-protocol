@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/ui/empty-state";
 import { GOVERNANCE_LOOM_ID } from "@/lib/apps-config";
 import { useGovernance } from "@/hooks/use-governance";
+import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
 import { truncateAddress, formatTimestamp } from "@/lib/format";
 import {
@@ -259,6 +260,8 @@ export default function GovernanceDashboardPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useLoomRefresh(GOVERNANCE_LOOM_ID, fetchData);
 
   const addr = activeAddress?.toLowerCase() ?? "";
   const isCreator = config?.creator.toLowerCase() === addr;

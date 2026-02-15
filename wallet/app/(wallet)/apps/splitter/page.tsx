@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SPLITTER_LOOM_ID } from "@/lib/apps-config";
 import { useSplitter } from "@/hooks/use-splitter";
+import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
 import { truncateAddress, isValidAddress } from "@/lib/format";
 import {
@@ -221,6 +222,8 @@ export default function SplitterDashboardPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useLoomRefresh(SPLITTER_LOOM_ID, fetchData);
 
   const addr = activeAddress?.toLowerCase() ?? "";
   const isCreator = config?.creator.toLowerCase() === addr;
