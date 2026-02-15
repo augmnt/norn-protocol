@@ -1,0 +1,78 @@
+export const metadata = {
+  title: "Token Launchpad",
+};
+
+# Token Launchpad
+
+Fixed-price token sale with a hard cap. The creator deposits tokens, sets a price, and buyers contribute during the sale window. After the sale ends, buyers claim their allocated tokens.
+
+## Use Cases
+
+- Initial token offerings with fixed pricing
+- Fair launch events with per-wallet caps
+- Community token sales with automatic distribution
+
+## Init Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `token_id` | `TokenId` | Token being sold |
+| `price` | `u128` | NORN per token (scaled to 1e12) |
+| `hard_cap` | `u128` | Maximum NORN to raise |
+| `max_per_wallet` | `u128` | Maximum contribution per wallet |
+| `start_time` | `u64` | Sale start (Unix timestamp) |
+| `end_time` | `u64` | Sale end (Unix timestamp) |
+| `total_tokens` | `u128` | Tokens deposited by creator for sale |
+
+## Execute Methods
+
+| Method | Parameters | Description |
+|--------|-----------|-------------|
+| `initialize` | `token_id`, `price`, `hard_cap`, `max_per_wallet`, `start_time`, `end_time`, `total_tokens` | Set up the sale. Creator must have tokens available. |
+| `contribute` | `amount: u128` | Buyer sends NORN during the sale window. |
+| `claim_tokens` | -- | Buyer claims allocated tokens after finalization. |
+| `finalize` | -- | Creator ends the sale. NORN sent to creator, unsold tokens returned. |
+| `refund` | -- | Contributor claims refund if sale had no contributions. |
+
+## Query Methods
+
+| Method | Parameters | Returns | Description |
+|--------|-----------|---------|-------------|
+| `get_config` | -- | `LaunchConfig` | Full sale configuration |
+| `get_contribution` | `address: Address` | `u128` | NORN contributed by a specific address |
+| `get_total_raised` | -- | `u128` | Total NORN raised |
+
+## Key Types
+
+### LaunchConfig
+
+```rust
+pub struct LaunchConfig {
+    pub creator: Address,
+    pub token_id: TokenId,
+    pub price: u128,
+    pub hard_cap: u128,
+    pub max_per_wallet: u128,
+    pub start_time: u64,
+    pub end_time: u64,
+    pub total_tokens: u128,
+    pub finalized: bool,
+}
+```
+
+## CLI Usage
+
+```bash
+# Deploy
+norn wallet deploy-loom --name my-launchpad
+
+# Upload bytecode
+norn wallet upload-bytecode --loom-id <LOOM_ID> \
+  --bytecode launchpad.wasm
+
+# Execute (borsh-encoded input)
+norn wallet execute-loom --loom-id <LOOM_ID> --input <HEX>
+
+# Query config
+norn wallet query-loom --loom-id <LOOM_ID>
+```

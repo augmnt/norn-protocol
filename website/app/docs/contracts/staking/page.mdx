@@ -1,0 +1,90 @@
+export const metadata = {
+  title: "Token Staking",
+};
+
+# Token Staking
+
+Stake tokens for a lock period and earn rewards over time. The operator funds a reward pool, and stakers earn proportional rewards based on their stake amount and duration.
+
+## Use Cases
+
+- Protocol staking with reward distribution
+- Liquidity mining incentives
+- Token lock-up programs with yield
+
+## Init Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `token_id` | `TokenId` | Token to stake |
+| `reward_rate` | `u128` | Reward per second per 1e12 tokens staked |
+| `min_lock_period` | `u64` | Minimum lock duration (seconds) before unstaking |
+
+## Execute Methods
+
+| Method | Parameters | Description |
+|--------|-----------|-------------|
+| `initialize` | `token_id`, `reward_rate`, `min_lock_period` | Set up the staking vault. Only callable once. |
+| `stake` | `amount: u128` | Deposit tokens. Auto-claims pending rewards if existing stake. |
+| `unstake` | `amount: u128` | Withdraw tokens. Auto-claims rewards. Requires lock period elapsed. |
+| `claim_rewards` | -- | Claim pending rewards without changing stake. |
+| `fund_rewards` | `amount: u128` | Operator adds tokens to the reward pool. |
+
+## Query Methods
+
+| Method | Parameters | Returns | Description |
+|--------|-----------|---------|-------------|
+| `get_config` | -- | `StakingConfig` | Vault configuration |
+| `get_stake` | `address: Address` | `StakeInfo` | Stake details for an address |
+| `get_pending_rewards` | `address: Address` | `u128` | Claimable rewards for an address |
+| `get_total_staked` | -- | `u128` | Total tokens staked across all users |
+| `get_reward_pool` | -- | `u128` | Remaining tokens in the reward pool |
+
+## Key Types
+
+### StakingConfig
+
+```rust
+pub struct StakingConfig {
+    pub operator: Address,
+    pub token_id: TokenId,
+    pub reward_rate: u128,
+    pub min_lock_period: u64,
+    pub created_at: u64,
+}
+```
+
+### StakeInfo
+
+```rust
+pub struct StakeInfo {
+    pub amount: u128,
+    pub start_time: u64,
+    pub last_claim_time: u64,
+}
+```
+
+### Reward Calculation
+
+```
+elapsed = now - last_claim_time
+rewards = (stake_amount * elapsed * reward_rate) / 1e12
+actual = min(rewards, available_pool)
+```
+
+## CLI Usage
+
+```bash
+# Deploy
+norn wallet deploy-loom --name my-staking
+
+# Upload bytecode
+norn wallet upload-bytecode --loom-id <LOOM_ID> \
+  --bytecode staking.wasm
+
+# Execute (borsh-encoded input)
+norn wallet execute-loom --loom-id <LOOM_ID> --input <HEX>
+
+# Query config
+norn wallet query-loom --loom-id <LOOM_ID>
+```

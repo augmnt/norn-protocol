@@ -1,0 +1,87 @@
+export const metadata = {
+  title: "Crowdfund",
+};
+
+# Crowdfund
+
+All-or-nothing fundraising with a goal and deadline. If the goal is met by the deadline, the creator receives the funds. Otherwise, contributors can claim refunds.
+
+## Use Cases
+
+- Community fundraisers with transparent goals
+- Project kickstarters with automatic refund on failure
+- Charity drives with on-chain accountability
+
+## Init Parameters
+
+The contract is initialized through the `initialize` execute method after deployment:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `title` | `String` | Campaign title (max 128 chars) |
+| `description` | `String` | Campaign description (max 512 chars) |
+| `token_id` | `TokenId` | Token to accept (use all-zeros for native NORN) |
+| `goal` | `u128` | Fundraising goal amount |
+| `deadline` | `u64` | Unix timestamp when the campaign ends |
+
+## Execute Methods
+
+| Method | Parameters | Description |
+|--------|-----------|-------------|
+| `initialize` | `title`, `description`, `token_id`, `goal`, `deadline` | Create the campaign. Only callable once. |
+| `contribute` | `amount: u128` | Contribute tokens to the campaign. Must be active and before deadline. |
+| `finalize` | -- | End the campaign. If goal met, funds go to creator. If not, status set to Failed. |
+| `refund` | -- | Claim a refund after campaign has failed. Returns contributor's full amount. |
+
+## Query Methods
+
+| Method | Parameters | Returns | Description |
+|--------|-----------|---------|-------------|
+| `get_config` | -- | `CrowdfundConfig` | Full campaign configuration and status |
+| `get_contribution` | `address: Address` | `u128` | Contribution amount for a specific address |
+| `get_total_raised` | -- | `u128` | Total tokens raised so far |
+| `get_contributor_count` | -- | `u64` | Number of unique contributors |
+
+## Key Types
+
+### CampaignStatus
+
+```rust
+pub enum CampaignStatus {
+    Active,     // Campaign is accepting contributions
+    Succeeded,  // Goal met, funds released to creator
+    Failed,     // Goal not met, contributors can refund
+}
+```
+
+### CrowdfundConfig
+
+```rust
+pub struct CrowdfundConfig {
+    pub creator: Address,
+    pub title: String,
+    pub description: String,
+    pub token_id: TokenId,
+    pub goal: u128,
+    pub deadline: u64,
+    pub status: CampaignStatus,
+    pub created_at: u64,
+}
+```
+
+## CLI Usage
+
+```bash
+# Deploy a crowdfund contract
+norn wallet deploy-loom --name my-crowdfund
+
+# Upload bytecode
+norn wallet upload-bytecode --loom-id <LOOM_ID> \
+  --bytecode crowdfund.wasm
+
+# Initialize (borsh-encoded input)
+norn wallet execute-loom --loom-id <LOOM_ID> --input <HEX>
+
+# Query config
+norn wallet query-loom --loom-id <LOOM_ID>
+```

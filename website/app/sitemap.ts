@@ -15,6 +15,17 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "contributing",
     "sdk/typescript",
     "sdk/contracts",
+    "contracts/crowdfund",
+    "contracts/governance",
+    "contracts/escrow",
+    "contracts/treasury",
+    "contracts/vesting",
+    "contracts/launchpad",
+    "contracts/splitter",
+    "contracts/staking",
+    "contracts/swap",
+    "contracts/airdrop",
+    "contracts/timelock",
   ];
 
   return [

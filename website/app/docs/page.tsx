@@ -12,6 +12,7 @@ import {
   Chrome,
   Fingerprint,
   GitPullRequest,
+  Blocks,
   type LucideIcon,
 } from "lucide-react";
 
@@ -73,6 +74,13 @@ const sections: {
     description: "Build JavaScript/TypeScript apps with @norn-protocol/sdk.",
     href: "/docs/sdk/typescript",
     icon: Code2,
+  },
+  {
+    title: "Smart Contracts",
+    description:
+      "Pre-built contracts: crowdfund, governance, escrow, treasury, and more.",
+    href: "/docs/contracts/crowdfund",
+    icon: Blocks,
   },
   {
     title: "Block Explorer",

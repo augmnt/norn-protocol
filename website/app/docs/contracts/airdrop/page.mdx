@@ -1,0 +1,88 @@
+export const metadata = {
+  title: "Token Airdrop",
+};
+
+# Token Airdrop
+
+Distribute tokens to a list of addresses. The creator uploads recipients and amounts in batches, finalizes the airdrop, and recipients claim their allocations.
+
+## Use Cases
+
+- Token distribution events
+- Community rewards and incentives
+- Retroactive airdrops for early users
+
+## How It Works
+
+1. **Creator** initializes with token ID and total amount
+2. **Creator** adds recipients in batches (up to 100 per batch)
+3. **Creator** finalizes the airdrop
+4. **Recipients** claim their individual allocations
+5. **Creator** can reclaim any unclaimed tokens after finalization
+
+## Init Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `token_id` | `TokenId` | Token to distribute |
+| `total_amount` | `u128` | Total tokens allocated for the airdrop |
+
+## Execute Methods
+
+| Method | Parameters | Description |
+|--------|-----------|-------------|
+| `initialize` | `token_id`, `total_amount` | Set up the airdrop. Only callable once. |
+| `add_recipients` | `recipients: Vec<Allocation>` | Add a batch of recipients (max 100 per call). Creator only. |
+| `finalize` | -- | Lock in the recipient list. No more additions after this. |
+| `claim` | -- | Recipient claims their allocated tokens. Requires finalization. |
+| `reclaim_remaining` | -- | Creator reclaims unclaimed tokens after finalization. |
+
+## Query Methods
+
+| Method | Parameters | Returns | Description |
+|--------|-----------|---------|-------------|
+| `get_config` | -- | `AirdropConfig` | Airdrop configuration and progress |
+| `get_allocation` | `address: Address` | `u128` | Allocation amount for a specific address |
+| `is_claimed` | `address: Address` | `bool` | Whether an address has claimed their tokens |
+
+## Key Types
+
+### AirdropConfig
+
+```rust
+pub struct AirdropConfig {
+    pub creator: Address,
+    pub token_id: TokenId,
+    pub total_amount: u128,
+    pub claimed_amount: u128,
+    pub recipient_count: u64,
+    pub finalized: bool,
+    pub created_at: u64,
+}
+```
+
+### Allocation
+
+```rust
+pub struct Allocation {
+    pub address: Address,
+    pub amount: u128,
+}
+```
+
+## CLI Usage
+
+```bash
+# Deploy
+norn wallet deploy-loom --name my-airdrop
+
+# Upload bytecode
+norn wallet upload-bytecode --loom-id <LOOM_ID> \
+  --bytecode airdrop.wasm
+
+# Execute (borsh-encoded input)
+norn wallet execute-loom --loom-id <LOOM_ID> --input <HEX>
+
+# Query config
+norn wallet query-loom --loom-id <LOOM_ID>
+```

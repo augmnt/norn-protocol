@@ -1,0 +1,84 @@
+export const metadata = {
+  title: "Token Vesting",
+};
+
+# Token Vesting
+
+Time-locked token releases with cliff periods. Creators set up vesting schedules for beneficiaries, who can claim tokens as they vest over time.
+
+## Use Cases
+
+- Team token vesting with cliff and linear unlock
+- Advisor compensation with gradual release
+- Investor lock-ups with revocable schedules
+
+## How It Works
+
+1. **Creator** creates a vesting schedule specifying beneficiary, amount, cliff, and duration
+2. Tokens are held by the contract until they vest
+3. After the cliff period, tokens unlock linearly over the remaining duration
+4. **Beneficiary** can claim vested tokens at any time
+5. If the schedule is revocable, the creator can revoke it (vested tokens go to beneficiary, unvested return to creator)
+
+### Vesting Formula
+
+```
+if now < start_time: vested = 0
+if now < start_time + cliff_duration: vested = 0
+if now >= start_time + total_duration: vested = total_amount
+else: vested = total_amount * (now - start_time) / total_duration
+```
+
+## Execute Methods
+
+| Method | Parameters | Description |
+|--------|-----------|-------------|
+| `create_schedule` | `beneficiary`, `token_id`, `amount`, `start_time`, `cliff_duration`, `total_duration`, `revocable` | Create a vesting schedule. Returns schedule ID. |
+| `claim` | `schedule_id: u64` | Beneficiary claims vested tokens. |
+| `revoke` | `schedule_id: u64` | Creator revokes a revocable schedule. Vested tokens go to beneficiary. |
+
+## Query Methods
+
+| Method | Parameters | Returns | Description |
+|--------|-----------|---------|-------------|
+| `get_schedule` | `schedule_id: u64` | `VestingSchedule` | Full schedule details |
+| `get_schedule_count` | -- | `u64` | Total number of schedules |
+| `get_claimable` | `schedule_id: u64` | `u128` | Amount currently claimable |
+
+## Key Types
+
+### VestingSchedule
+
+```rust
+pub struct VestingSchedule {
+    pub id: u64,
+    pub creator: Address,
+    pub beneficiary: Address,
+    pub token_id: TokenId,
+    pub total_amount: u128,
+    pub claimed_amount: u128,
+    pub start_time: u64,
+    pub cliff_duration: u64,
+    pub total_duration: u64,
+    pub revocable: bool,
+    pub revoked: bool,
+    pub created_at: u64,
+}
+```
+
+## CLI Usage
+
+```bash
+# Deploy
+norn wallet deploy-loom --name my-vesting
+
+# Upload bytecode
+norn wallet upload-bytecode --loom-id <LOOM_ID> \
+  --bytecode vesting.wasm
+
+# Execute (borsh-encoded input)
+norn wallet execute-loom --loom-id <LOOM_ID> --input <HEX>
+
+# Query a schedule
+norn wallet query-loom --loom-id <LOOM_ID> --input <HEX>
+```

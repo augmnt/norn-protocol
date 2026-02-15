@@ -24,6 +24,22 @@ const sidebarSections = [
     ],
   },
   {
+    title: "Smart Contracts",
+    items: [
+      { href: "/docs/contracts/crowdfund", label: "Crowdfund" },
+      { href: "/docs/contracts/governance", label: "DAO Governance" },
+      { href: "/docs/contracts/escrow", label: "P2P Escrow" },
+      { href: "/docs/contracts/treasury", label: "Multisig Treasury" },
+      { href: "/docs/contracts/vesting", label: "Token Vesting" },
+      { href: "/docs/contracts/launchpad", label: "Token Launchpad" },
+      { href: "/docs/contracts/splitter", label: "Payment Splitter" },
+      { href: "/docs/contracts/staking", label: "Token Staking" },
+      { href: "/docs/contracts/swap", label: "OTC Swap" },
+      { href: "/docs/contracts/airdrop", label: "Token Airdrop" },
+      { href: "/docs/contracts/timelock", label: "Timelock" },
+    ],
+  },
+  {
     title: "SDKs",
     items: [
       { href: "/docs/sdk/contracts", label: "Contract SDK" },

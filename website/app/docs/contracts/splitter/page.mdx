@@ -1,0 +1,86 @@
+export const metadata = {
+  title: "Payment Splitter",
+};
+
+# Payment Splitter
+
+Route incoming payments to multiple recipients by percentage. Configure once with recipients and their shares, then anyone can split tokens through the contract.
+
+## Use Cases
+
+- Revenue sharing between team members
+- Royalty distribution for creators
+- Automated payment routing for organizations
+
+## Init Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `name` | `String` | Splitter name |
+| `recipients` | `Vec<Recipient>` | List of recipients with share percentages |
+
+Shares are expressed in basis points (100 bps = 1%). All shares must total exactly 10,000 bps (100%).
+
+## Execute Methods
+
+| Method | Parameters | Description |
+|--------|-----------|-------------|
+| `initialize` | `name`, `recipients` | Set up recipients and shares. Only callable once. Shares must total 10,000. |
+| `split` | `token_id: TokenId`, `amount: u128` | Split the specified amount among all recipients by their share. |
+
+## Query Methods
+
+| Method | Parameters | Returns | Description |
+|--------|-----------|---------|-------------|
+| `get_config` | -- | `SplitterConfig` | Full configuration with all recipients |
+
+## Key Types
+
+### Recipient
+
+```rust
+pub struct Recipient {
+    pub address: Address,
+    pub share_bps: u64,  // basis points (100 = 1%)
+}
+```
+
+### SplitterConfig
+
+```rust
+pub struct SplitterConfig {
+    pub name: String,
+    pub creator: Address,
+    pub recipients: Vec<Recipient>,
+    pub created_at: u64,
+}
+```
+
+## Example
+
+A 3-way split for a team:
+
+| Recipient | Share |
+|-----------|-------|
+| Alice | 5,000 bps (50%) |
+| Bob | 3,000 bps (30%) |
+| Charlie | 2,000 bps (20%) |
+
+When 1,000 NORN is split: Alice receives 500, Bob receives 300, Charlie receives 200.
+
+## CLI Usage
+
+```bash
+# Deploy
+norn wallet deploy-loom --name my-splitter
+
+# Upload bytecode
+norn wallet upload-bytecode --loom-id <LOOM_ID> \
+  --bytecode splitter.wasm
+
+# Execute (borsh-encoded input)
+norn wallet execute-loom --loom-id <LOOM_ID> --input <HEX>
+
+# Query config
+norn wallet query-loom --loom-id <LOOM_ID>
+```

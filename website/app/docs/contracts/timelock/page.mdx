@@ -1,0 +1,68 @@
+export const metadata = {
+  title: "Timelock",
+};
+
+# Timelock
+
+Deposit tokens with a future unlock date. Self-custody with a forced hold period -- tokens cannot be withdrawn until the specified time has passed.
+
+## Use Cases
+
+- Savings vaults with commitment periods
+- Token lock-ups for team members
+- Scheduled payments with guaranteed delivery
+- Personal commitment devices
+
+## How It Works
+
+1. **User** locks tokens with a specified unlock time
+2. Tokens are held by the contract until the unlock time
+3. After the unlock time, the **owner** can withdraw their tokens
+4. Each lock is independent with its own ID, token, amount, and unlock time
+
+## Execute Methods
+
+| Method | Parameters | Description |
+|--------|-----------|-------------|
+| `lock` | `token_id: TokenId`, `amount: u128`, `unlock_time: u64` | Lock tokens until the specified time. Returns lock ID. |
+| `withdraw` | `lock_id: u64` | Withdraw tokens after unlock time has passed. Owner only. |
+
+## Query Methods
+
+| Method | Parameters | Returns | Description |
+|--------|-----------|---------|-------------|
+| `get_lock` | `lock_id: u64` | `LockInfo` | Full lock details |
+| `get_lock_count` | -- | `u64` | Total number of locks created |
+
+## Key Types
+
+### LockInfo
+
+```rust
+pub struct LockInfo {
+    pub id: u64,
+    pub owner: Address,
+    pub token_id: TokenId,
+    pub amount: u128,
+    pub unlock_time: u64,
+    pub withdrawn: bool,
+    pub created_at: u64,
+}
+```
+
+## CLI Usage
+
+```bash
+# Deploy
+norn wallet deploy-loom --name my-timelock
+
+# Upload bytecode
+norn wallet upload-bytecode --loom-id <LOOM_ID> \
+  --bytecode timelock.wasm
+
+# Execute (borsh-encoded input)
+norn wallet execute-loom --loom-id <LOOM_ID> --input <HEX>
+
+# Query a lock
+norn wallet query-loom --loom-id <LOOM_ID> --input <HEX>
+```

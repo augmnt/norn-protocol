@@ -1,0 +1,99 @@
+export const metadata = {
+  title: "Multisig Treasury",
+};
+
+# Multisig Treasury
+
+Shared treasury requiring multiple approvals for outgoing transfers. Owners propose, approve, and reject spending proposals. Transfers execute automatically when the approval threshold is met.
+
+## Use Cases
+
+- DAO treasuries with multi-owner control
+- Team fund management with shared signing
+- Project treasuries with governance-controlled spending
+
+## Init Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `owners` | `Vec<Address>` | List of owner addresses |
+| `required_approvals` | `u64` | Number of approvals needed to execute a proposal |
+| `name` | `String` | Treasury name |
+
+## Execute Methods
+
+| Method | Parameters | Description |
+|--------|-----------|-------------|
+| `initialize` | `owners`, `required_approvals`, `name` | Set up the treasury. Only callable once. |
+| `propose` | `to`, `token_id`, `amount`, `description`, `deadline` | Owner proposes a transfer. Returns proposal ID. |
+| `approve` | `proposal_id: u64` | Owner approves a proposal. Auto-executes if threshold met. |
+| `reject` | `proposal_id: u64` | Owner rejects a proposal. |
+| `revoke_approval` | `proposal_id: u64` | Owner revokes their previous approval. |
+| `deposit` | `token_id: TokenId`, `amount: u128` | Anyone can deposit tokens into the treasury. |
+| `expire_proposal` | `proposal_id: u64` | Mark a proposal as expired after its deadline. |
+
+## Query Methods
+
+| Method | Parameters | Returns | Description |
+|--------|-----------|---------|-------------|
+| `get_config` | -- | `TreasuryConfig` | Treasury configuration (owners, threshold) |
+| `get_proposal` | `proposal_id: u64` | `Proposal` | Full proposal details |
+| `get_proposal_count` | -- | `u64` | Total number of proposals |
+
+## Key Types
+
+### ProposalStatus
+
+```rust
+pub enum ProposalStatus {
+    Proposed,  // Awaiting approvals
+    Executed,  // Threshold met, transfer completed
+    Rejected,  // Rejected by an owner
+    Expired,   // Deadline passed without execution
+}
+```
+
+### TreasuryConfig
+
+```rust
+pub struct TreasuryConfig {
+    pub name: String,
+    pub owners: Vec<Address>,
+    pub required_approvals: u64,
+    pub created_at: u64,
+}
+```
+
+### Proposal
+
+```rust
+pub struct Proposal {
+    pub id: u64,
+    pub proposer: Address,
+    pub to: Address,
+    pub token_id: TokenId,
+    pub amount: u128,
+    pub description: String,
+    pub status: ProposalStatus,
+    pub approval_count: u64,
+    pub created_at: u64,
+    pub deadline: u64,
+}
+```
+
+## CLI Usage
+
+```bash
+# Deploy
+norn wallet deploy-loom --name my-treasury
+
+# Upload bytecode
+norn wallet upload-bytecode --loom-id <LOOM_ID> \
+  --bytecode multisig-treasury.wasm
+
+# Execute (borsh-encoded input)
+norn wallet execute-loom --loom-id <LOOM_ID> --input <HEX>
+
+# Query config
+norn wallet query-loom --loom-id <LOOM_ID>
+```

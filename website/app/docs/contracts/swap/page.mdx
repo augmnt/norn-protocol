@@ -1,0 +1,81 @@
+export const metadata = {
+  title: "OTC Swap",
+};
+
+# OTC Swap
+
+Post offers to trade token A for token B at a fixed rate. Counterparties can browse open orders and fill them to complete the trade.
+
+## Use Cases
+
+- Over-the-counter token trading
+- Fixed-rate token exchanges
+- Peer-to-peer asset swaps
+
+## How It Works
+
+1. **Creator** posts an order specifying sell token/amount and buy token/amount
+2. The sell tokens are deposited into the contract
+3. **Counterparty** fills the order by sending the buy tokens
+4. Both sides receive their tokens atomically
+5. Creator can cancel unfilled orders to reclaim tokens
+
+## Execute Methods
+
+| Method | Parameters | Description |
+|--------|-----------|-------------|
+| `create_order` | `sell_token`, `sell_amount`, `buy_token`, `buy_amount` | Create a new swap order. Deposits sell tokens. Returns order ID. |
+| `fill_order` | `order_id: u64` | Fill an open order by sending the buy tokens. |
+| `cancel_order` | `order_id: u64` | Cancel an unfilled order. Returns sell tokens to creator. |
+
+## Query Methods
+
+| Method | Parameters | Returns | Description |
+|--------|-----------|---------|-------------|
+| `get_order` | `order_id: u64` | `SwapOrder` | Full order details |
+| `get_order_count` | -- | `u64` | Total number of orders created |
+
+## Key Types
+
+### OrderStatus
+
+```rust
+pub enum OrderStatus {
+    Open,       // Order is available to fill
+    Filled,     // Order has been completed
+    Cancelled,  // Order was cancelled by creator
+}
+```
+
+### SwapOrder
+
+```rust
+pub struct SwapOrder {
+    pub id: u64,
+    pub creator: Address,
+    pub sell_token: TokenId,
+    pub sell_amount: u128,
+    pub buy_token: TokenId,
+    pub buy_amount: u128,
+    pub status: OrderStatus,
+    pub filled_by: Address,
+    pub created_at: u64,
+}
+```
+
+## CLI Usage
+
+```bash
+# Deploy
+norn wallet deploy-loom --name my-swap
+
+# Upload bytecode
+norn wallet upload-bytecode --loom-id <LOOM_ID> \
+  --bytecode swap.wasm
+
+# Execute (borsh-encoded input)
+norn wallet execute-loom --loom-id <LOOM_ID> --input <HEX>
+
+# Query an order
+norn wallet query-loom --loom-id <LOOM_ID> --input <HEX>
+```

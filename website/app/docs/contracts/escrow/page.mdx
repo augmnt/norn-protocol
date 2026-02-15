@@ -1,0 +1,90 @@
+export const metadata = {
+  title: "P2P Escrow",
+};
+
+# P2P Escrow
+
+Create secure peer-to-peer deals with automatic escrow. Funds are held by the contract until both parties confirm delivery, with built-in dispute and expiry mechanisms.
+
+## Use Cases
+
+- Peer-to-peer trading with trustless settlement
+- Freelance payments with delivery confirmation
+- OTC deals with automatic escrow custody
+
+## How It Works
+
+1. **Buyer** creates a deal specifying seller, token, amount, and deadline
+2. **Buyer** funds the deal (tokens held by the contract)
+3. **Seller** marks goods/services as delivered
+4. **Buyer** confirms receipt, releasing funds to the seller
+5. If anything goes wrong, the buyer can dispute or funds auto-return after deadline
+
+## Execute Methods
+
+| Method | Parameters | Description |
+|--------|-----------|-------------|
+| `create_deal` | `seller`, `token_id`, `amount`, `description`, `deadline` | Buyer creates a new deal. Returns deal ID. |
+| `fund_deal` | `deal_id: u64` | Buyer deposits tokens into escrow. |
+| `mark_delivered` | `deal_id: u64` | Seller marks goods as delivered. |
+| `confirm_received` | `deal_id: u64` | Buyer confirms receipt. Releases funds to seller. |
+| `dispute` | `deal_id: u64` | Buyer flags a dispute on a funded deal. |
+| `cancel_deal` | `deal_id: u64` | Buyer cancels a deal before funding. |
+| `refund_expired` | `deal_id: u64` | Return funds to buyer after deadline passes. |
+
+## Query Methods
+
+| Method | Parameters | Returns | Description |
+|--------|-----------|---------|-------------|
+| `get_deal` | `deal_id: u64` | `Deal` | Full deal details |
+| `get_deal_count` | -- | `u64` | Total number of deals created |
+
+## Key Types
+
+### DealStatus
+
+```rust
+pub enum DealStatus {
+    Created,    // Deal created, not yet funded
+    Funded,     // Buyer deposited tokens
+    Delivered,  // Seller marked as delivered
+    Completed,  // Buyer confirmed, funds released
+    Disputed,   // Buyer raised a dispute
+    Cancelled,  // Deal cancelled before funding
+    Refunded,   // Funds returned after expiry
+}
+```
+
+### Deal
+
+```rust
+pub struct Deal {
+    pub id: u64,
+    pub buyer: Address,
+    pub seller: Address,
+    pub token_id: TokenId,
+    pub amount: u128,
+    pub description: String,
+    pub status: DealStatus,
+    pub created_at: u64,
+    pub funded_at: u64,
+    pub deadline: u64,
+}
+```
+
+## CLI Usage
+
+```bash
+# Deploy
+norn wallet deploy-loom --name my-escrow
+
+# Upload bytecode
+norn wallet upload-bytecode --loom-id <LOOM_ID> \
+  --bytecode escrow.wasm
+
+# Execute (borsh-encoded input)
+norn wallet execute-loom --loom-id <LOOM_ID> --input <HEX>
+
+# Query a deal
+norn wallet query-loom --loom-id <LOOM_ID> --input <HEX>
+```

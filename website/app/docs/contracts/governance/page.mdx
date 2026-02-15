@@ -1,0 +1,97 @@
+export const metadata = {
+  title: "DAO Governance",
+};
+
+# DAO Governance
+
+On-chain voting on proposals with quorum requirements. Members create proposals, vote for or against, and finalize outcomes after the voting period ends.
+
+## Use Cases
+
+- DAO decision-making with transparent vote tallies
+- Community governance for protocol parameters
+- Grant funding decisions with on-chain accountability
+
+## Init Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `name` | `String` | DAO name |
+| `voting_period` | `u64` | Duration of each proposal's voting window (seconds) |
+| `quorum` | `u64` | Minimum total votes required for a proposal to be valid |
+
+## Execute Methods
+
+| Method | Parameters | Description |
+|--------|-----------|-------------|
+| `initialize` | `name`, `voting_period`, `quorum` | Set up the DAO. Only callable once. |
+| `propose` | `title: String`, `description: String` | Create a new proposal. Returns proposal ID. |
+| `vote` | `proposal_id: u64`, `support: bool` | Vote for (`true`) or against (`false`) a proposal. One vote per address. |
+| `finalize` | `proposal_id: u64` | End voting on a proposal. Sets status to Passed, Rejected, or Expired. |
+
+## Query Methods
+
+| Method | Parameters | Returns | Description |
+|--------|-----------|---------|-------------|
+| `get_config` | -- | `GovConfig` | DAO configuration |
+| `get_proposal` | `proposal_id: u64` | `GovProposal` | Full proposal details |
+| `get_proposal_count` | -- | `u64` | Total number of proposals |
+| `get_vote` | `proposal_id: u64`, `voter: Address` | `u8` | Vote status: 0=not voted, 1=for, 2=against |
+
+## Key Types
+
+### ProposalStatus
+
+```rust
+pub enum ProposalStatus {
+    Active,    // Voting is open
+    Passed,    // Quorum met, more for-votes than against
+    Rejected,  // Quorum met, more against-votes than for
+    Expired,   // Voting period ended without quorum
+}
+```
+
+### GovConfig
+
+```rust
+pub struct GovConfig {
+    pub creator: Address,
+    pub name: String,
+    pub voting_period: u64,
+    pub quorum: u64,
+    pub created_at: u64,
+}
+```
+
+### GovProposal
+
+```rust
+pub struct GovProposal {
+    pub id: u64,
+    pub proposer: Address,
+    pub title: String,
+    pub description: String,
+    pub for_votes: u64,
+    pub against_votes: u64,
+    pub start_time: u64,
+    pub end_time: u64,
+    pub status: ProposalStatus,
+}
+```
+
+## CLI Usage
+
+```bash
+# Deploy
+norn wallet deploy-loom --name my-dao
+
+# Upload bytecode
+norn wallet upload-bytecode --loom-id <LOOM_ID> \
+  --bytecode governance.wasm
+
+# Execute (borsh-encoded input)
+norn wallet execute-loom --loom-id <LOOM_ID> --input <HEX>
+
+# Query config
+norn wallet query-loom --loom-id <LOOM_ID>
+```

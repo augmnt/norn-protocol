@@ -14,6 +14,7 @@ import {
   AtSign,
   FileCode,
   Blocks,
+  Compass,
   Droplets,
   Settings,
   MoreHorizontal,
@@ -36,6 +37,7 @@ const navItems: NavItem[] = [
   { href: "/names", label: "Names", icon: AtSign },
   { href: "/contracts", label: "Contracts", icon: FileCode },
   { href: "/apps", label: "Apps", icon: Blocks },
+  { href: "/discover", label: "Discover", icon: Compass },
   { href: "/faucet", label: "Faucet", icon: Droplets, testnetOnly: true },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
