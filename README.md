@@ -6,7 +6,7 @@
   <a href="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml"><img src="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-stable-orange.svg" alt="Rust"></a>
-  <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.18.3"><img src="https://img.shields.io/badge/version-0.18.3-green.svg" alt="Version"></a>
+  <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.19.1"><img src="https://img.shields.io/badge/version-0.19.1-green.svg" alt="Version"></a>
 </p>
 
 ---

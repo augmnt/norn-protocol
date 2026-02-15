@@ -5,6 +5,21 @@ All notable changes to the Norn Protocol will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.1] - 2026-02-15
+
+### Fixed
+
+- Real-time app updates — loom event refreshes now update data in place instead of showing a full-page loading spinner
+- Decoupled query loading from execute loading in `useLoomOps` so background data fetches don't flash the UI
+
+### Changed
+
+- Wallet visual redesign — removed unnecessary Card wrappers, flattened dashboard hero, cleaned up contracts page
+- Collapsible sidebar with icon-only mode and persistent state
+- Identicon colors aligned with norn brand palette (muted blue-gray)
+- Removed devnet banner from wallet layout
+- Loom deploy race condition fixed with block confirmation polling
+
 ## [0.19.0] - 2026-02-15
 
 ### Added

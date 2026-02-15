@@ -20,6 +20,7 @@
 | v0.16.x     | v0.17.0    | No             | No               | `--reset-state` (PROTOCOL_VERSION 8→9) |
 | v0.17.x     | v0.18.0    | Yes            | Yes              | Restart node (explorer, wallet extension, no protocol/schema bump) |
 | v0.18.x     | v0.19.0    | Yes            | Yes              | Restart node + state reset recommended (fee economics changed) |
+| v0.19.0     | v0.19.1    | Yes            | Yes              | No action required (wallet-only changes) |
 
 \* Within a minor version line, compatibility depends on whether PROTOCOL_VERSION or SCHEMA_VERSION was bumped. Check the release notes.
 
