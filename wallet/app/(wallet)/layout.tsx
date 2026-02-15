@@ -8,7 +8,7 @@ import { WalletHeader } from "@/components/layout/wallet-header";
 import { WalletNav } from "@/components/layout/wallet-nav";
 import { WalletFooter } from "@/components/layout/wallet-footer";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
-import { AlertTriangle } from "lucide-react";
+import { Info } from "lucide-react";
 
 export default function WalletLayout({
   children,
@@ -40,9 +40,9 @@ export default function WalletLayout({
     <div className="flex min-h-screen flex-col">
       <WalletHeader />
       {isTestnet && (
-        <div className="flex items-center justify-center gap-2 bg-amber-500/10 border-b border-amber-500/20 px-4 py-1.5">
-          <AlertTriangle className="h-3 w-3 text-amber-500" />
-          <p className="text-[11px] text-amber-500 font-medium">
+        <div className="flex items-center justify-center gap-2 bg-norn/5 border-b border-norn/10 px-4 py-1.5">
+          <Info className="h-3 w-3 text-norn" />
+          <p className="text-[11px] text-norn font-medium">
             You are on {network.name}. Tokens have no real value.
           </p>
         </div>

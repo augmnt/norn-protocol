@@ -139,71 +139,57 @@ export default function ContractsPage() {
         <TabsContent value="interact" className="space-y-4">
           {/* Saved Contracts */}
           {savedContracts.length > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                  <Bookmark className="h-3.5 w-3.5 text-muted-foreground" />
-                  Saved Contracts
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="space-y-1">
-                  {savedContracts.map((c) => (
-                    <div
-                      key={c.loomId}
-                      className="flex items-center justify-between py-2 px-2 -mx-2 rounded-md hover:bg-muted/50 transition-colors group cursor-pointer"
-                      onClick={() => setLoomId(c.loomId)}
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-sm font-medium truncate">{c.label}</span>
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {truncateHash(c.loomId, 6)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <a
-                          href={explorerContractUrl(c.loomId)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-muted-foreground hover:text-norn"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          Explorer
-                        </a>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-9 w-9 md:h-7 md:w-7 text-muted-foreground opacity-100 md:opacity-0 md:group-hover:opacity-100"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeContract(c.loomId);
-                            toast.success("Contract removed");
-                          }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5 md:h-3 md:w-3" />
-                        </Button>
-                      </div>
+            <div className="border-b border-border pb-4 mb-4">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Saved Contracts</p>
+              <div className="space-y-1">
+                {savedContracts.map((c) => (
+                  <div
+                    key={c.loomId}
+                    className="flex items-center justify-between py-2 px-2 -mx-2 rounded-md hover:bg-muted/50 transition-colors group cursor-pointer"
+                    onClick={() => setLoomId(c.loomId)}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-medium truncate">{c.label}</span>
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {truncateHash(c.loomId, 6)}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                    <div className="flex items-center gap-1">
+                      <a
+                        href={explorerContractUrl(c.loomId)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-muted-foreground hover:text-norn"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Explorer
+                      </a>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 md:h-7 md:w-7 text-muted-foreground opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeContract(c.loomId);
+                          toast.success("Contract removed");
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 md:h-3 md:w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Input Card */}
           <Card>
             <CardHeader className="pb-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary">
-                  <FileCode className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div>
-                  <CardTitle className="text-base">Contract Interaction</CardTitle>
-                  <CardDescription>
-                    Query state or execute transactions on a deployed Loom contract.
-                  </CardDescription>
-                </div>
-              </div>
+              <CardTitle className="text-base">Contract Interaction</CardTitle>
+              <CardDescription>
+                Query state or execute transactions on a deployed Loom contract.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -438,121 +424,104 @@ export default function ContractsPage() {
 
         {/* ─── Browse Tab ─── */}
         <TabsContent value="browse" className="space-y-4">
-          <Card>
-            <CardHeader className="pb-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary">
-                  <Layers className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div>
-                  <CardTitle className="text-base">Deployed Contracts</CardTitle>
-                  <CardDescription>
-                    Browse on-chain contracts. Click a row to interact.
-                  </CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="pt-0">
-              {loomsLoading ? (
-                <div className="space-y-3">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Skeleton key={i} className="h-12 w-full" />
-                  ))}
-                </div>
-              ) : loomsError ? (
-                <ErrorState
-                  message="Failed to load contracts"
-                  retry={() => loomsRefetch()}
-                />
-              ) : !looms || looms.length === 0 ? (
-                <EmptyState
-                  icon={FileCode}
-                  title="No contracts deployed yet"
-                />
-              ) : (
-                <>
-                  <DataTable<LoomInfo>
-                    columns={[
-                      {
-                        header: "Name",
-                        key: "name",
-                        render: (loom) => {
-                          const appType = loom.code_hash ? getAppTypeForCodeHash(loom.code_hash) : undefined;
-                          const knownApp = appType ? APP_NAMES.get(appType) : undefined;
-                          return (
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-sm truncate max-w-[140px]">
-                                {loom.name || "Unnamed"}
-                              </span>
-                              {knownApp && (
-                                <Badge variant="norn" className="text-[9px] px-1.5 py-0 shrink-0">
-                                  {knownApp}
-                                </Badge>
-                              )}
-                            </div>
-                          );
-                        },
-                      },
-                      {
-                        header: "Loom ID",
-                        key: "loom_id",
-                        hideOnMobile: true,
-                        render: (loom) => (
-                          <span className="font-mono text-xs text-muted-foreground">
-                            {truncateHash(loom.loom_id, 8)}
+          {loomsLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : loomsError ? (
+            <ErrorState
+              message="Failed to load contracts"
+              retry={() => loomsRefetch()}
+            />
+          ) : !looms || looms.length === 0 ? (
+            <EmptyState
+              icon={FileCode}
+              title="No contracts deployed yet"
+            />
+          ) : (
+            <>
+              <DataTable<LoomInfo>
+                columns={[
+                  {
+                    header: "Name",
+                    key: "name",
+                    render: (loom) => {
+                      const appType = loom.code_hash ? getAppTypeForCodeHash(loom.code_hash) : undefined;
+                      const knownApp = appType ? APP_NAMES.get(appType) : undefined;
+                      return (
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm truncate max-w-[140px]">
+                            {loom.name || "Unnamed"}
                           </span>
-                        ),
-                      },
-                      {
-                        header: "Status",
-                        key: "status",
-                        render: (loom) => (
-                          <div className="flex items-center gap-1.5">
-                            {loom.active ? (
-                              <CheckCircle className="h-3 w-3 text-emerald-500" />
-                            ) : (
-                              <XCircle className="h-3 w-3 text-muted-foreground" />
-                            )}
-                            <span className="text-xs">{loom.active ? "Active" : "Inactive"}</span>
-                          </div>
-                        ),
-                      },
-                      {
-                        header: "Bytecode",
-                        key: "bytecode",
-                        hideOnMobile: true,
-                        render: (loom) => (
-                          <Badge variant={loom.has_bytecode ? "secondary" : "outline"} className="text-[10px]">
-                            {loom.has_bytecode ? "Uploaded" : "None"}
-                          </Badge>
-                        ),
-                      },
-                      {
-                        header: "Deployed",
-                        key: "deployed",
-                        hideOnMobile: true,
-                        render: (loom) => (
-                          <span className="text-xs text-muted-foreground">
-                            {loom.deployed_at ? timeAgo(loom.deployed_at) : "–"}
-                          </span>
-                        ),
-                      },
-                    ]}
-                    data={looms}
-                    keyExtractor={(loom) => loom.loom_id}
-                    onRowClick={selectFromBrowse}
-                    emptyMessage="No contracts found"
-                  />
-                  <Pagination
-                    page={browsePage}
-                    hasNext={looms.length >= PAGE_SIZE}
-                    onPageChange={setBrowsePage}
-                    className="mt-4"
-                  />
-                </>
-              )}
-            </CardContent>
-          </Card>
+                          {knownApp && (
+                            <Badge variant="norn" className="text-[9px] px-1.5 py-0 shrink-0">
+                              {knownApp}
+                            </Badge>
+                          )}
+                        </div>
+                      );
+                    },
+                  },
+                  {
+                    header: "Loom ID",
+                    key: "loom_id",
+                    hideOnMobile: true,
+                    render: (loom) => (
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {truncateHash(loom.loom_id, 8)}
+                      </span>
+                    ),
+                  },
+                  {
+                    header: "Status",
+                    key: "status",
+                    render: (loom) => (
+                      <div className="flex items-center gap-1.5">
+                        {loom.active ? (
+                          <CheckCircle className="h-3 w-3 text-emerald-500" />
+                        ) : (
+                          <XCircle className="h-3 w-3 text-muted-foreground" />
+                        )}
+                        <span className="text-xs">{loom.active ? "Active" : "Inactive"}</span>
+                      </div>
+                    ),
+                  },
+                  {
+                    header: "Bytecode",
+                    key: "bytecode",
+                    hideOnMobile: true,
+                    render: (loom) => (
+                      <Badge variant={loom.has_bytecode ? "secondary" : "outline"} className="text-[10px]">
+                        {loom.has_bytecode ? "Uploaded" : "None"}
+                      </Badge>
+                    ),
+                  },
+                  {
+                    header: "Deployed",
+                    key: "deployed",
+                    hideOnMobile: true,
+                    render: (loom) => (
+                      <span className="text-xs text-muted-foreground">
+                        {loom.deployed_at ? timeAgo(loom.deployed_at) : "–"}
+                      </span>
+                    ),
+                  },
+                ]}
+                data={looms}
+                keyExtractor={(loom) => loom.loom_id}
+                onRowClick={selectFromBrowse}
+                emptyMessage="No contracts found"
+              />
+              <Pagination
+                page={browsePage}
+                hasNext={looms.length >= PAGE_SIZE}
+                onPageChange={setBrowsePage}
+                className="mt-4"
+              />
+            </>
+          )}
         </TabsContent>
       </Tabs>
     </PageContainer>

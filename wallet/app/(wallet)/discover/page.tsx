@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { PageContainer } from "@/components/ui/page-container";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -103,12 +104,12 @@ export default function DiscoverPage() {
 
           {hasMore && (
             <div className="mt-6 flex justify-center">
-              <button
+              <Button
+                variant="outline"
                 onClick={() => setVisibleCount((c) => c + LOAD_MORE_COUNT)}
-                className="rounded-md border px-4 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground hover:bg-accent/50"
               >
                 Load more
-              </button>
+              </Button>
             </div>
           )}
         </>

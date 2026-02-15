@@ -5,22 +5,18 @@ import { useWallet } from "@/hooks/use-wallet";
 import { useBalance } from "@/hooks/use-balance";
 import { useTokenBalances } from "@/hooks/use-token-balances";
 import { useTxHistory } from "@/hooks/use-tx-history";
-import { useHealth } from "@/hooks/use-health";
-import { useRealtimeStore } from "@/stores/realtime-store";
 import { PageContainer } from "@/components/ui/page-container";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AddressDisplay } from "@/components/ui/address-display";
 import { AmountDisplay } from "@/components/ui/amount-display";
 import { TimeAgo } from "@/components/ui/time-ago";
-import { LiveIndicator } from "@/components/ui/live-indicator";
 import { BalanceHistoryChart } from "@/components/charts/balance-history-chart";
 import { ActivityChart } from "@/components/charts/activity-chart";
 import { formatNorn, truncateAddress, truncateHash } from "@/lib/format";
 import { NATIVE_TOKEN_ID, QUERY_KEYS, STALE_TIMES } from "@/lib/constants";
-import { explorerAddressUrl, explorerBlockUrl, explorerTokenUrl, explorerTxUrl } from "@/lib/explorer";
+import { explorerAddressUrl, explorerTokenUrl, explorerTxUrl } from "@/lib/explorer";
 import { useQueries } from "@tanstack/react-query";
 import { rpcCall } from "@/lib/rpc";
 import { formatAmount } from "@/lib/format";
@@ -96,9 +92,6 @@ export default function DashboardPage() {
   const { data: balance, isLoading: balanceLoading } = useBalance(activeAddress ?? undefined);
   const { data: threadState } = useTokenBalances(activeAddress ?? undefined);
   const { data: history } = useTxHistory(activeAddress ?? undefined, 1);
-  const { data: health } = useHealth();
-  const connectionState = useRealtimeStore((s) => s.connectionState);
-  const latestBlock = useRealtimeStore((s) => s.latestBlock);
 
   const tokenBalances = threadState?.balances?.filter(
     (b) => b.token_id !== NATIVE_TOKEN_ID && BigInt(b.amount || "0") > 0n
@@ -132,54 +125,52 @@ export default function DashboardPage() {
   return (
     <PageContainer>
       {/* Hero Balance Section */}
-      <Card className="mb-6">
-        <CardContent className="pt-8 pb-8">
-          <div className="flex flex-col items-center text-center gap-1">
-            <p className="text-xs text-muted-foreground uppercase tracking-widest font-medium">
-              {activeAccount?.label ?? "Wallet"} Balance
-            </p>
-            {balanceLoading ? (
-              <Skeleton className="h-12 w-56 mt-2" />
-            ) : (
-              <button
-                className="group flex items-center gap-2 mt-1"
-                onClick={() => {
-                  navigator.clipboard.writeText(formatNorn(balance?.balance ?? "0"));
-                  toast.success("Balance copied");
-                }}
-                title="Click to copy balance"
-              >
-                <p className="text-4xl font-bold tabular-nums tracking-tight">
-                  {formatNorn(balance?.balance ?? "0")}
-                  <span className="text-base font-medium text-muted-foreground ml-2">NORN</span>
-                </p>
-                <Copy className="h-3.5 w-3.5 text-muted-foreground opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity" />
-              </button>
-            )}
-            {activeAddress && (
-              <div className="mt-2">
-                <AddressDisplay address={activeAddress} href={explorerAddressUrl(activeAddress)} />
-              </div>
-            )}
-
-            {/* Quick Actions */}
-            <div className="flex gap-3 mt-6">
-              <Button asChild className="rounded-full px-6">
-                <Link href="/send">
-                  <ArrowUpRight className="mr-1.5 h-3.5 w-3.5" />
-                  Send
-                </Link>
-              </Button>
-              <Button asChild variant="outline" className="rounded-full px-6">
-                <Link href="/receive">
-                  <QrCode className="mr-1.5 h-3.5 w-3.5" />
-                  Receive
-                </Link>
-              </Button>
+      <div className="mb-6 py-8">
+        <div className="flex flex-col items-center text-center gap-1">
+          <p className="text-xs text-muted-foreground uppercase tracking-widest font-medium">
+            {activeAccount?.label ?? "Wallet"} Balance
+          </p>
+          {balanceLoading ? (
+            <Skeleton className="h-12 w-56 mt-2" />
+          ) : (
+            <button
+              className="group flex items-center gap-2 mt-1"
+              onClick={() => {
+                navigator.clipboard.writeText(formatNorn(balance?.balance ?? "0"));
+                toast.success("Balance copied");
+              }}
+              title="Click to copy balance"
+            >
+              <p className="text-4xl font-bold tabular-nums tracking-tight">
+                {formatNorn(balance?.balance ?? "0")}
+                <span className="text-base font-medium text-muted-foreground ml-2">NORN</span>
+              </p>
+              <Copy className="h-3.5 w-3.5 text-muted-foreground opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity" />
+            </button>
+          )}
+          {activeAddress && (
+            <div className="mt-2">
+              <AddressDisplay address={activeAddress} href={explorerAddressUrl(activeAddress)} />
             </div>
+          )}
+
+          {/* Quick Actions */}
+          <div className="flex gap-3 mt-6">
+            <Button asChild className="rounded-full px-6">
+              <Link href="/send">
+                <ArrowUpRight className="mr-1.5 h-3.5 w-3.5" />
+                Send
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-full px-6">
+              <Link href="/receive">
+                <QrCode className="mr-1.5 h-3.5 w-3.5" />
+                Receive
+              </Link>
+            </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Charts */}
       <div className="grid gap-4 md:grid-cols-2 mb-4">
@@ -326,40 +317,6 @@ export default function DashboardPage() {
             )}
           </CardContent>
         </Card>
-      </div>
-
-      {/* Network Status Bar */}
-      <div className="mt-6 flex items-center justify-center gap-4 text-xs text-muted-foreground">
-        <LiveIndicator
-          active={connectionState === "connected"}
-          label={
-            connectionState === "connected"
-              ? "Connected"
-              : connectionState === "connecting"
-                ? "Connecting\u2026"
-                : "Disconnected"
-          }
-        />
-        <span className="text-border">|</span>
-        <span>
-          Block{" "}
-          <a
-            href={explorerBlockUrl(latestBlock?.height ?? health?.height ?? 0)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-mono tabular-nums hover:text-foreground transition-colors"
-          >
-            #{(latestBlock?.height ?? health?.height ?? 0).toLocaleString()}
-          </a>
-        </span>
-        {health && (
-          <>
-            <span className="text-border">|</span>
-            <Badge variant="secondary" className="text-xs h-5 px-1.5 font-normal">
-              {health.network}
-            </Badge>
-          </>
-        )}
       </div>
     </PageContainer>
   );

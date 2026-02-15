@@ -6,12 +6,25 @@ import { rpcCall } from "@/lib/rpc";
 import { useWallet } from "./use-wallet";
 import { useWalletStore } from "@/stores/wallet-store";
 import * as signer from "@/lib/secure-signer";
-import type { SubmitResult } from "@/types";
+import type { LoomInfo, SubmitResult } from "@/types";
+
+/** Poll until the loom appears in state (i.e. a block has included the deploy). */
+async function waitForLoom(loomId: string, maxWaitMs = 30_000): Promise<void> {
+  const start = Date.now();
+  const interval = 1_000;
+  while (Date.now() - start < maxWaitMs) {
+    const info = await rpcCall<LoomInfo | null>("norn_getLoomInfo", [loomId]);
+    if (info) return;
+    await new Promise((r) => setTimeout(r, interval));
+  }
+  throw new Error("Timed out waiting for loom to be confirmed on-chain");
+}
 
 /**
  * Hook for deploying a new loom instance:
  * 1. Sign & submit a LoomRegistration (costs 50 NORN)
- * 2. Upload WASM bytecode + optional init message
+ * 2. Wait for the deployment to be included in a block
+ * 3. Upload WASM bytecode + optional init message
  *
  * Returns the computed loom ID on success.
  */
@@ -58,7 +71,10 @@ export function useDeployLoom() {
         }
         const loomId = idMatch[1];
 
-        // Step 3: Upload bytecode + init
+        // Step 3: Wait for the loom to appear in state (block confirmation)
+        await waitForLoom(loomId);
+
+        // Step 4: Upload bytecode + init
         const bytecodeHex = Array.from(params.wasmBytes)
           .map((b) => b.toString(16).padStart(2, "0"))
           .join("");
