@@ -79,7 +79,7 @@ export function ActivityChart({ data }: ActivityChartProps) {
           <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <BarChart
               data={data}
-              margin={{ top: 4, right: 4, bottom: 0, left: -20 }}
+              margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
             >
               <defs>
                 <linearGradient
@@ -136,6 +136,7 @@ export function ActivityChart({ data }: ActivityChartProps) {
                 tickLine={false}
                 tick={{ fontSize: 10, fill: "hsl(240, 5%, 50%)" }}
                 allowDecimals={false}
+                width={32}
               />
               <Tooltip
                 content={<CustomTooltip />}

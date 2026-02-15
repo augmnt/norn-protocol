@@ -18,6 +18,13 @@ export interface BalancePoint {
   timestamp: number;
 }
 
+function compactNumber(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+  if (abs >= 1_000) return `${(value / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}K`;
+  return value.toFixed(value % 1 === 0 ? 0 : 2);
+}
+
 function CustomTooltip({
   active,
   payload,
@@ -27,9 +34,16 @@ function CustomTooltip({
 }) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
+  const date = new Date(d.timestamp);
+  const dateStr = date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
   return (
     <div className="rounded-lg border bg-popover px-3 py-2 text-xs shadow-md">
-      <p className="font-medium text-foreground">{d.label}</p>
+      <p className="font-medium text-foreground">{dateStr}</p>
       <p className="text-muted-foreground">
         Balance:{" "}
         <span className="font-mono text-foreground">
@@ -80,7 +94,7 @@ export function BalanceHistoryChart({ data }: BalanceHistoryChartProps) {
           <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <AreaChart
               data={data}
-              margin={{ top: 4, right: 4, bottom: 0, left: -20 }}
+              margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
             >
               <defs>
                 <linearGradient
@@ -118,7 +132,8 @@ export function BalanceHistoryChart({ data }: BalanceHistoryChartProps) {
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 10, fill: "hsl(240, 5%, 50%)" }}
-                allowDecimals={false}
+                tickFormatter={compactNumber}
+                width={48}
               />
               <Tooltip content={<CustomTooltip />} />
               <Area

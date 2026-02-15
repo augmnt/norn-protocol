@@ -27,6 +27,30 @@ import { toast } from "sonner";
 
 const NORN_DECIMALS = 12;
 
+/** Format a timestamp as a chart label based on the overall time span. */
+function chartLabel(ts: number, spanMs: number): string {
+  const d = new Date(ts);
+  if (spanMs < 24 * 60 * 60 * 1000) {
+    // < 1 day: show hours
+    return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+  if (spanMs < 7 * 24 * 60 * 60 * 1000) {
+    // < 1 week: show weekday + day
+    return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
+  }
+  // >= 1 week: show month + day
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+/** Key for grouping activity by time bucket (day or hour). */
+function activityBucketKey(ts: number, spanMs: number): string {
+  const d = new Date(ts * 1000);
+  if (spanMs < 24 * 60 * 60 * 1000) {
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}`;
+  }
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
 function buildChartData(
   history: TransactionHistoryEntry[],
   address: string,
@@ -56,29 +80,30 @@ function buildChartData(
 
   // Reverse back to chronological order
   snapshots.reverse();
-  const balancePoints = snapshots.map((s) => {
-    const d = new Date(s.timestamp);
-    return {
-      balance: Math.round(s.balance * 100) / 100,
-      label: `${d.getMonth() + 1}/${d.getDate()}`,
-      timestamp: s.timestamp,
-    };
-  });
+  const balSpanMs = snapshots[snapshots.length - 1].timestamp - snapshots[0].timestamp;
+  const balancePoints = snapshots.map((s) => ({
+    balance: Math.round(s.balance * 100) / 100,
+    label: chartLabel(s.timestamp, balSpanMs),
+    timestamp: s.timestamp,
+  }));
 
-  // Activity: group all txs by day (not just NORN)
-  const dayMap = new Map<string, { sent: number; received: number }>();
+  // Activity: group all txs by time bucket (not just NORN)
+  const actSpanMs = sorted.length >= 2
+    ? (sorted[sorted.length - 1].timestamp - sorted[0].timestamp) * 1000
+    : 0;
+  const bucketMap = new Map<string, { label: string; sent: number; received: number }>();
   for (const tx of sorted) {
-    const d = new Date(tx.timestamp * 1000);
-    const key = `${d.getMonth() + 1}/${d.getDate()}`;
-    const entry = dayMap.get(key) ?? { sent: 0, received: 0 };
+    const key = activityBucketKey(tx.timestamp, actSpanMs);
+    const entry = bucketMap.get(key) ?? {
+      label: chartLabel(tx.timestamp * 1000, actSpanMs),
+      sent: 0,
+      received: 0,
+    };
     if (tx.direction === "sent") entry.sent++;
     else entry.received++;
-    dayMap.set(key, entry);
+    bucketMap.set(key, entry);
   }
-  const activityPoints = Array.from(dayMap.entries()).map(([label, v]) => ({
-    label,
-    ...v,
-  }));
+  const activityPoints = Array.from(bucketMap.values());
 
   return { balancePoints, activityPoints };
 }
