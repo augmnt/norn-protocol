@@ -22,9 +22,11 @@ pub fn update_fee_state(fee_state: &mut FeeState, utilized: u64, capacity: u64) 
     if capacity == 0 {
         return;
     }
-    if 2 * utilized > capacity {
-        fee_state.fee_multiplier += fee_state.fee_multiplier / 8;
-    } else if 2 * utilized < capacity {
+    if utilized.saturating_mul(2) > capacity {
+        fee_state.fee_multiplier = fee_state
+            .fee_multiplier
+            .saturating_add(fee_state.fee_multiplier / 8);
+    } else if utilized.saturating_mul(2) < capacity {
         fee_state.fee_multiplier = fee_state
             .fee_multiplier
             .saturating_sub(fee_state.fee_multiplier / 8);

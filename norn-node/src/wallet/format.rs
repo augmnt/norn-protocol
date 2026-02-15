@@ -97,7 +97,9 @@ pub fn parse_token_amount(s: &str, decimals: u8) -> Result<Amount, WalletError> 
             let whole: u128 = parts[0]
                 .parse()
                 .map_err(|_| WalletError::InvalidAmount(s.clone()))?;
-            Ok(whole * divisor)
+            whole
+                .checked_mul(divisor)
+                .ok_or_else(|| WalletError::InvalidAmount(s.clone()))
         }
         2 => {
             let whole: u128 = if parts[0].is_empty() {
@@ -116,7 +118,10 @@ pub fn parse_token_amount(s: &str, decimals: u8) -> Result<Amount, WalletError> 
             let frac: u128 = padded
                 .parse()
                 .map_err(|_| WalletError::InvalidAmount(s.clone()))?;
-            Ok(whole * divisor + frac)
+            whole
+                .checked_mul(divisor)
+                .and_then(|v| v.checked_add(frac))
+                .ok_or_else(|| WalletError::InvalidAmount(s.clone()))
         }
         _ => Err(WalletError::InvalidAmount(s)),
     }

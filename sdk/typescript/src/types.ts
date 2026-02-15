@@ -275,16 +275,20 @@ export interface BlockTokenDefinitionInfo {
 /** A token mint within a block. */
 export interface BlockTokenMintInfo {
   token_id: HashHex;
+  symbol: string;
   to: AddressHex;
   amount: string;
+  human_readable: string;
   timestamp: number;
 }
 
 /** A token burn within a block. */
 export interface BlockTokenBurnInfo {
   token_id: HashHex;
+  symbol: string;
   burner: AddressHex;
   amount: string;
+  human_readable: string;
   timestamp: number;
 }
 
@@ -322,6 +326,7 @@ export interface TokenEvent {
   symbol: string;
   actor: AddressHex;
   amount?: string;
+  human_readable?: string;
   block_height: number;
 }
 

@@ -461,8 +461,8 @@ impl StateManager {
             return Err(NornError::InvalidAmount);
         }
 
-        // Debit sender (best-effort: warn if insufficient balance).
-        if let Some(sender_state) = self.thread_states.get(&from) {
+        // Debit sender — skip entire transfer if debit fails to prevent supply inflation.
+        let debit_ok = if let Some(sender_state) = self.thread_states.get(&from) {
             if sender_state.has_balance(&token_id, amount) {
                 let sender_state = self.thread_states.get_mut(&from).unwrap();
                 sender_state.debit(&token_id, amount);
@@ -476,22 +476,31 @@ impl StateManager {
 
                 // Update SMT for sender.
                 self.update_smt(&from, &token_id);
+                true
             } else {
                 tracing::warn!(
-                    "peer transfer: sender {} has insufficient balance for {} (available: {})",
+                    "peer transfer: sender {} has insufficient balance for {} (available: {}), skipping transfer",
                     hex::encode(from),
                     amount,
                     sender_state.balance(&token_id),
                 );
+                false
             }
         } else {
             tracing::warn!(
-                "peer transfer: sender {} not registered, skipping debit",
+                "peer transfer: sender {} not registered, skipping transfer",
                 hex::encode(from),
             );
+            false
+        };
+
+        if !debit_ok {
+            // Still track the knot_id for dedup even though we skipped the transfer.
+            self.known_knot_ids.insert(knot_id);
+            return Ok(());
         }
 
-        // Credit receiver.
+        // Credit receiver (only if debit succeeded).
         let receiver_state = self
             .thread_states
             .get_mut(&to)

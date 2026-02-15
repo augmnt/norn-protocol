@@ -133,7 +133,8 @@ impl Norn20 {
         N20_BALANCES.save(to, &new_bal)?;
 
         let supply = N20_TOTAL_SUPPLY.load_or(0);
-        N20_TOTAL_SUPPLY.save(&(supply + amount))?;
+        let new_supply = safe_add(supply, amount)?;
+        N20_TOTAL_SUPPLY.save(&new_supply)?;
 
         Ok(Response::new()
             .add_event(
@@ -179,8 +180,9 @@ impl Norn20 {
         ensure!(amount <= from_bal, ContractError::InsufficientFunds);
 
         let to_bal = N20_BALANCES.load_or(to, 0);
+        let new_to_bal = safe_add(to_bal, amount)?;
         N20_BALANCES.save(&sender, &(from_bal - amount))?;
-        N20_BALANCES.save(to, &(to_bal + amount))?;
+        N20_BALANCES.save(to, &new_to_bal)?;
 
         Ok(Response::new().add_event(
             Event::new("Transfer")
@@ -224,8 +226,9 @@ impl Norn20 {
         ensure!(amount <= from_bal, ContractError::InsufficientFunds);
 
         let to_bal = N20_BALANCES.load_or(to, 0);
+        let new_to_bal = safe_add(to_bal, amount)?;
         N20_BALANCES.save(from, &(from_bal - amount))?;
-        N20_BALANCES.save(to, &(to_bal + amount))?;
+        N20_BALANCES.save(to, &new_to_bal)?;
         N20_ALLOWANCES.save(&key, &(allowance - amount))?;
 
         Ok(Response::new().add_event(

@@ -49,7 +49,7 @@ const eventColumns = [
     className: "text-right",
     render: (e: TokenEvent) => (
       <span className="font-mono text-sm tabular-nums">
-        {e.amount ?? "—"}
+        {e.human_readable ?? e.amount ?? "—"}
       </span>
     ),
   },

@@ -32,23 +32,31 @@ export class Wallet {
   /** Create a wallet from a hex-encoded private key. */
   static fromPrivateKeyHex(hex: string): Wallet {
     const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
-    const bytes = new Uint8Array(clean.length / 2);
-    for (let i = 0; i < bytes.length; i++) {
+    if (clean.length !== 64) {
+      throw new Error(
+        `Private key hex must be 64 characters (32 bytes), got ${clean.length}`,
+      );
+    }
+    if (!/^[0-9a-fA-F]+$/.test(clean)) {
+      throw new Error("Private key hex contains invalid characters");
+    }
+    const bytes = new Uint8Array(32);
+    for (let i = 0; i < 32; i++) {
       bytes[i] = parseInt(clean.substring(i * 2, i * 2 + 2), 16);
     }
     return new Wallet(bytes);
   }
 
-  /** Generate a new random wallet. */
+  /** Generate a new random wallet using cryptographically secure randomness. */
   static generate(): Wallet {
     const privateKey = new Uint8Array(32);
-    if (typeof globalThis.crypto !== "undefined") {
+    if (typeof globalThis.crypto !== "undefined" && globalThis.crypto.getRandomValues) {
       globalThis.crypto.getRandomValues(privateKey);
     } else {
-      // Fallback for environments without Web Crypto.
-      for (let i = 0; i < 32; i++) {
-        privateKey[i] = Math.floor(Math.random() * 256);
-      }
+      throw new Error(
+        "Web Crypto API not available. Cannot generate secure private keys. " +
+        "Use Wallet.fromPrivateKey() with a key from a secure source instead."
+      );
     }
     return new Wallet(privateKey);
   }

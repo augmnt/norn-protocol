@@ -434,9 +434,12 @@ pub struct TokenEvent {
     pub symbol: String,
     /// Actor address as hex string (creator/minter/burner).
     pub actor: String,
-    /// Amount involved (for mint/burn), as string.
+    /// Amount involved (for mint/burn), as raw string.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amount: Option<String>,
+    /// Human-readable amount (for mint/burn), formatted with decimals.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub human_readable: Option<String>,
     /// Block height where this event occurred.
     pub block_height: u64,
 }
@@ -522,8 +525,10 @@ pub struct BlockTokenDefinitionInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockTokenMintInfo {
     pub token_id: String,
+    pub symbol: String,
     pub to: String,
     pub amount: String,
+    pub human_readable: String,
     pub timestamp: u64,
 }
 
@@ -531,8 +536,10 @@ pub struct BlockTokenMintInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockTokenBurnInfo {
     pub token_id: String,
+    pub symbol: String,
     pub burner: String,
     pub amount: String,
+    pub human_readable: String,
     pub timestamp: u64,
 }
 

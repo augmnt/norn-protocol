@@ -172,7 +172,15 @@ pub fn validate_token_mint(
 
     // 5. current_supply + amount <= max_supply (when max > 0).
     if meta.max_supply > 0 {
-        let new_supply = meta.current_supply.saturating_add(mint.amount);
+        let new_supply = meta
+            .current_supply
+            .checked_add(mint.amount)
+            .ok_or_else(|| WeaveError::InvalidTokenMint {
+                reason: format!(
+                    "supply overflow: {} + {} exceeds u128",
+                    meta.current_supply, mint.amount
+                ),
+            })?;
         if new_supply > meta.max_supply {
             return Err(WeaveError::InvalidTokenMint {
                 reason: format!(

@@ -1539,6 +1539,7 @@ impl NornRpcServer for NornRpcImpl {
                     symbol: token_def.symbol.clone(),
                     actor: format_address(&token_def.creator),
                     amount: None,
+                    human_readable: None,
                     block_height,
                 });
                 let _ = self.broadcasters.pending_tx.send(PendingTransactionEvent {
@@ -1589,6 +1590,7 @@ impl NornRpcServer for NornRpcImpl {
                     .get_token(&token_mint.token_id)
                     .map(|r| r.symbol.clone())
                     .unwrap_or_default();
+                let human = format_amount_for_token(token_mint.amount, &token_mint.token_id, &sm);
                 drop(sm);
                 let _ = self.broadcasters.token_tx.send(TokenEvent {
                     event_type: "minted".to_string(),
@@ -1596,6 +1598,7 @@ impl NornRpcServer for NornRpcImpl {
                     symbol,
                     actor: format_address(&token_mint.to),
                     amount: Some(token_mint.amount.to_string()),
+                    human_readable: Some(human),
                     block_height,
                 });
                 // Broadcast to P2P network.
@@ -1640,6 +1643,7 @@ impl NornRpcServer for NornRpcImpl {
                     .get_token(&token_burn.token_id)
                     .map(|r| r.symbol.clone())
                     .unwrap_or_default();
+                let human = format_amount_for_token(token_burn.amount, &token_burn.token_id, &sm);
                 drop(sm);
                 let _ = self.broadcasters.token_tx.send(TokenEvent {
                     event_type: "burned".to_string(),
@@ -1647,6 +1651,7 @@ impl NornRpcServer for NornRpcImpl {
                     symbol,
                     actor: format_address(&token_burn.burner),
                     amount: Some(token_burn.amount.to_string()),
+                    human_readable: Some(human),
                     block_height,
                 });
                 // Broadcast to P2P network.
@@ -1959,15 +1964,22 @@ impl NornRpcServer for NornRpcImpl {
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_secs();
-                for pt in &outcome.pending_transfers {
+                for (i, pt) in outcome.pending_transfers.iter().enumerate() {
                     sm.auto_register_if_needed(pt.from);
                     sm.auto_register_if_needed(pt.to);
+                    // Generate a unique synthetic knot_id per transfer to avoid dedup collisions.
+                    let synthetic_knot_id = norn_crypto::hash::blake3_hash_multi(&[
+                        b"loom_transfer",
+                        &loom_id,
+                        &(i as u64).to_le_bytes(),
+                        &now.to_le_bytes(),
+                    ]);
                     if let Err(e) = sm.apply_transfer(
                         pt.from,
                         pt.to,
                         pt.token_id,
                         pt.amount,
-                        [0u8; 32], // synthetic knot_id for loom transfers
+                        synthetic_knot_id,
                         None,
                         now,
                     ) {
@@ -2398,22 +2410,44 @@ impl NornRpcServer for NornRpcImpl {
         let token_mints = block
             .token_mints
             .iter()
-            .map(|tm| BlockTokenMintInfo {
-                token_id: hex::encode(tm.token_id),
-                to: format_address(&tm.to),
-                amount: tm.amount.to_string(),
-                timestamp: tm.timestamp,
+            .map(|tm| {
+                let symbol = if tm.token_id == NATIVE_TOKEN_ID {
+                    "NORN".to_string()
+                } else {
+                    sm.get_token(&tm.token_id)
+                        .map(|t| t.symbol.clone())
+                        .unwrap_or_else(|| hex::encode(&tm.token_id[..4]))
+                };
+                BlockTokenMintInfo {
+                    token_id: hex::encode(tm.token_id),
+                    symbol,
+                    to: format_address(&tm.to),
+                    amount: tm.amount.to_string(),
+                    human_readable: format_amount_for_token(tm.amount, &tm.token_id, &sm),
+                    timestamp: tm.timestamp,
+                }
             })
             .collect();
 
         let token_burns = block
             .token_burns
             .iter()
-            .map(|tb| BlockTokenBurnInfo {
-                token_id: hex::encode(tb.token_id),
-                burner: format_address(&tb.burner),
-                amount: tb.amount.to_string(),
-                timestamp: tb.timestamp,
+            .map(|tb| {
+                let symbol = if tb.token_id == NATIVE_TOKEN_ID {
+                    "NORN".to_string()
+                } else {
+                    sm.get_token(&tb.token_id)
+                        .map(|t| t.symbol.clone())
+                        .unwrap_or_else(|| hex::encode(&tb.token_id[..4]))
+                };
+                BlockTokenBurnInfo {
+                    token_id: hex::encode(tb.token_id),
+                    symbol,
+                    burner: format_address(&tb.burner),
+                    amount: tb.amount.to_string(),
+                    human_readable: format_amount_for_token(tb.amount, &tb.token_id, &sm),
+                    timestamp: tb.timestamp,
+                }
             })
             .collect();
 

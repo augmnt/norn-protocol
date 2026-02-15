@@ -75,11 +75,22 @@ export class BorshReader {
     this.data = data;
   }
 
+  private ensureBytes(n: number): void {
+    if (this.offset + n > this.data.length) {
+      throw new Error(
+        `Buffer underflow: need ${n} bytes at offset ${this.offset}, ` +
+        `but only ${this.data.length - this.offset} remaining`,
+      );
+    }
+  }
+
   readU8(): number {
+    this.ensureBytes(1);
     return this.data[this.offset++];
   }
 
   readU32(): number {
+    this.ensureBytes(4);
     const v =
       this.data[this.offset] |
       (this.data[this.offset + 1] << 8) |
@@ -90,6 +101,7 @@ export class BorshReader {
   }
 
   readU64(): bigint {
+    this.ensureBytes(8);
     let v = 0n;
     for (let i = 0; i < 8; i++) {
       v |= BigInt(this.data[this.offset + i]) << BigInt(i * 8);
@@ -99,6 +111,7 @@ export class BorshReader {
   }
 
   readU128(): bigint {
+    this.ensureBytes(16);
     let v = 0n;
     for (let i = 0; i < 16; i++) {
       v |= BigInt(this.data[this.offset + i]) << BigInt(i * 8);
@@ -108,6 +121,7 @@ export class BorshReader {
   }
 
   readFixedBytes(len: number): Uint8Array {
+    this.ensureBytes(len);
     const bytes = this.data.slice(this.offset, this.offset + len);
     this.offset += len;
     return bytes;

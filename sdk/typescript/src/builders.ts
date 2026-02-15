@@ -20,6 +20,9 @@ const NAME_REGISTRATION_FEE = BigInt(10) ** BigInt(NORN_DECIMALS);
 /** Token creation fee: 10 NORN. */
 const TOKEN_CREATION_FEE = BigInt(10) * BigInt(10) ** BigInt(NORN_DECIMALS);
 
+/** Maximum u128 value (2^128 - 1). */
+const MAX_U128 = (1n << 128n) - 1n;
+
 /** Parse a human amount (e.g., "1.5") to the raw u128 representation. */
 export function parseAmount(amount: string, decimals = NORN_DECIMALS): bigint {
   const parts = amount.split(".");
@@ -29,7 +32,14 @@ export function parseAmount(amount: string, decimals = NORN_DECIMALS): bigint {
     frac = frac.slice(0, decimals);
   }
   frac = frac.padEnd(decimals, "0");
-  return whole * BigInt(10) ** BigInt(decimals) + BigInt(frac);
+  const result = whole * BigInt(10) ** BigInt(decimals) + BigInt(frac);
+  if (result < 0n) {
+    throw new Error(`Amount cannot be negative: ${result}`);
+  }
+  if (result > MAX_U128) {
+    throw new Error(`Amount exceeds maximum u128 value`);
+  }
+  return result;
 }
 
 /** Format a raw u128 amount to human-readable (e.g., "1.5"). */

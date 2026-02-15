@@ -118,7 +118,7 @@ const tokenMintColumns = [
     key: "token_id",
     render: (t: BlockTokenMintInfo) => (
       <Link href={`/token/${t.token_id}`} className="text-norn hover:underline">
-        <HashDisplay hash={t.token_id} chars={6} copy={false} />
+        {t.symbol || <HashDisplay hash={t.token_id} chars={6} copy={false} />}
       </Link>
     ),
   },
@@ -132,7 +132,11 @@ const tokenMintColumns = [
     key: "amount",
     className: "text-right",
     render: (t: BlockTokenMintInfo) => (
-      <span className="font-mono text-sm">{t.amount}</span>
+      <AmountDisplay
+        amount={t.amount}
+        humanReadable={t.human_readable}
+        symbol={t.symbol || ""}
+      />
     ),
   },
 ];
@@ -143,7 +147,7 @@ const tokenBurnColumns = [
     key: "token_id",
     render: (t: BlockTokenBurnInfo) => (
       <Link href={`/token/${t.token_id}`} className="text-norn hover:underline">
-        <HashDisplay hash={t.token_id} chars={6} copy={false} />
+        {t.symbol || <HashDisplay hash={t.token_id} chars={6} copy={false} />}
       </Link>
     ),
   },
@@ -159,7 +163,11 @@ const tokenBurnColumns = [
     key: "amount",
     className: "text-right",
     render: (t: BlockTokenBurnInfo) => (
-      <span className="font-mono text-sm">{t.amount}</span>
+      <AmountDisplay
+        amount={t.amount}
+        humanReadable={t.human_readable}
+        symbol={t.symbol || ""}
+      />
     ),
   },
 ];
