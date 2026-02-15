@@ -10,6 +10,7 @@ const sidebarSections = [
     items: [
       { href: "/docs", label: "Overview" },
       { href: "/docs/quickstart", label: "Quick Start" },
+      { href: "/docs/run-a-node", label: "Run a Node" },
       { href: "/docs/architecture", label: "Architecture" },
     ],
   },

@@ -113,6 +113,18 @@ norn wallet loom-info <LOOM_ID>
 norn wallet list-looms
 ```
 
+## Validator Rewards
+
+```bash
+# View pending epoch fees and projected validator reward distribution
+norn wallet rewards
+
+# JSON output
+norn wallet rewards --json
+```
+
+The `rewards` command shows the current epoch fees being accumulated, blocks remaining until the next distribution, and a per-validator breakdown of projected rewards based on stake weight.
+
 ## Configuration
 
 ```bash

@@ -1,0 +1,219 @@
+export const metadata = {
+  title: "Run a Node",
+};
+
+# Run a Node
+
+Run your own Norn node, hold your thread state locally, and earn validator rewards from every transaction on the network.
+
+## Why Run a Node?
+
+Running a Norn node makes you a direct participant in the protocol. Here is what you get:
+
+- **Earn validator rewards** -- Every transaction pays a commitment fee. Those fees are distributed to validators at each epoch boundary, proportional to stake. No inflation, no token printing -- rewards come purely from real network usage.
+- **Hold your own state** -- Your Thread (personal state chain) lives on your machine. You do not depend on anyone else to verify your balances or history.
+- **Secure the network** -- More validators means stronger consensus. Your node validates transactions, propagates blocks, and watches for misbehavior.
+
+## Quick Setup
+
+Get a node running with a single command:
+
+```bash
+curl -sSf https://raw.githubusercontent.com/augmnt/norn-protocol/main/scripts/setup-node.sh | bash
+```
+
+This script will:
+
+1. Install Rust via `rustup` (if not already installed)
+2. Build `norn` from source
+3. Create a wallet for you
+4. Start the node and connect to the devnet
+
+Once it completes, your node is live and syncing blocks.
+
+## Manual Setup
+
+If you prefer full control over each step, follow the manual process below.
+
+### 1. Install Norn
+
+From Git (latest release):
+
+```bash
+cargo install --git https://github.com/augmnt/norn-protocol norn-node
+```
+
+Or clone and build from source:
+
+```bash
+git clone https://github.com/augmnt/norn-protocol
+cd norn-protocol
+cargo install --path norn-node
+```
+
+Verify the installation:
+
+```bash
+norn --version
+```
+
+### 2. Create a Validator Wallet
+
+```bash
+norn wallet create --name validator
+```
+
+This creates an encrypted keystore in `~/.norn/wallets/`. You will be prompted to set a password. Keep your password safe -- it protects your private key.
+
+### 3. Start the Node
+
+```bash
+norn run --dev
+```
+
+Your node will:
+
+- Connect to `seed.norn.network` as a peer (automatic)
+- Sync all existing blocks from the network
+- Store thread and chain state locally (SQLite, persistent)
+- Begin validating transactions and participating in consensus
+
+### 4. Get Funded (Devnet Only)
+
+```bash
+norn wallet faucet
+```
+
+The devnet faucet sends you NORN so you can start transacting and staking immediately. There is a 60-second cooldown between requests.
+
+### 5. Check Your Rewards
+
+```bash
+norn wallet rewards
+```
+
+This shows your current epoch earnings, blocks until the next distribution, and your projected reward based on stake weight.
+
+## Validator Rewards
+
+Norn has **zero inflation**. There are no block rewards minted out of thin air. Instead, validators earn from real network activity:
+
+1. **Every transaction pays a commitment fee.** Transfers, name registrations, token operations, loom deployments -- all of them contribute fees.
+2. **Fees accumulate in an epoch pool.** Each epoch spans 1,000 blocks (roughly 50 minutes at 3-second block times).
+3. **At each epoch boundary, the pool is distributed.** Validators receive a share proportional to their stake weight.
+4. **More network usage = higher rewards.** As adoption grows, so does the fee pool.
+
+### Checking Rewards
+
+```bash
+# View pending fees and projected distribution
+norn wallet rewards
+
+# JSON output for scripting
+norn wallet rewards --json
+
+# View the current validator set and stake weights
+norn wallet validators
+```
+
+## Running as a Service
+
+For production deployments, run `norn` as a systemd service so it starts automatically and restarts on failure.
+
+Create the service file at `/etc/systemd/system/norn-node.service`:
+
+```ini
+[Unit]
+Description=Norn Protocol Node
+After=network.target
+
+[Service]
+Type=simple
+User=norn
+ExecStart=/usr/local/bin/norn run --dev --storage sqlite --data-dir /var/lib/norn/data
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then enable and start it:
+
+```bash
+# Create a dedicated user
+sudo useradd --system --home /var/lib/norn --shell /usr/sbin/nologin norn
+sudo mkdir -p /var/lib/norn/data
+sudo chown norn:norn /var/lib/norn/data
+
+# Enable the service
+sudo systemctl daemon-reload
+sudo systemctl enable norn-node
+sudo systemctl start norn-node
+
+# Check status
+sudo systemctl status norn-node
+
+# Follow logs
+sudo journalctl -u norn-node -f
+```
+
+## Network Modes
+
+| Mode | Chain ID | Faucet | Use Case |
+|------|----------|--------|----------|
+| `dev` | `norn-dev` | Enabled (60s cooldown) | Local development, solo validator |
+| `testnet` | `norn-testnet-1` | Enabled (1hr cooldown) | Public testing, multi-node |
+| `mainnet` | `norn-mainnet` | Disabled | Production deployment |
+
+### Common Flags
+
+| Flag | Description |
+|------|-------------|
+| `--dev` | Dev mode: faucet, solo validator, SQLite storage, auto-bootstrap to devnet seed |
+| `--no-bootstrap` | Run as the seed node (no outbound peers) |
+| `--storage <TYPE>` | Override storage: `sqlite` (default for --dev), `memory`, `rocksdb` |
+| `--boot-node <MULTIADDR>` | Add a custom bootstrap peer |
+| `--rpc-addr <ADDR:PORT>` | Bind RPC server (default `127.0.0.1:9741`) |
+| `--data-dir <PATH>` | Data directory (default `~/.norn/data`) |
+| `--reset-state` | Wipe data directory before starting |
+
+## Monitoring
+
+### Node Status
+
+```bash
+norn wallet node-info
+```
+
+This returns your node's sync state, connected peers, current block height, and chain ID.
+
+### Prometheus Metrics
+
+Norn exposes Prometheus-compatible metrics at the `/metrics` endpoint on your RPC port:
+
+```
+http://localhost:9741/metrics
+```
+
+You can scrape this endpoint with Prometheus and visualize with Grafana. Key metrics include:
+
+- `norn_block_height` -- Current block height
+- `norn_peer_count` -- Number of connected peers
+- `norn_tx_pool_size` -- Pending transaction pool size
+- `norn_epoch_fees` -- Accumulated fees in the current epoch
+
+### Health Check
+
+For load balancers and uptime monitors, use the RPC health endpoint:
+
+```bash
+curl http://localhost:9741/health
+```
+
+## Next Steps
+
+- [Wallet CLI](/docs/wallet) -- Full reference for all 45 wallet commands
+- [Architecture](/docs/architecture) -- Understand Threads, Knots, and the Weave
+- [Quick Start](/docs/quickstart) -- Installation and devnet quickstart
+- [NornNames](/docs/names) -- Register a human-readable name for your validator

@@ -16,6 +16,10 @@
 | v0.12.x     | v0.13.0    | Yes            | Yes              | Restart node (SDK + runtime internal changes, no protocol/schema bump) |
 | v0.13.x     | v0.14.0    | Yes            | Yes              | Restart node (SDK-only changes, no protocol/schema bump) |
 | v0.14.x     | v0.15.0    | Yes            | Yes              | Restart node (SDK-only changes, no protocol/schema bump) |
+| v0.15.x     | v0.16.0    | No             | No               | `--reset-state` (PROTOCOL_VERSION 6→8, SCHEMA_VERSION 6→7) |
+| v0.16.x     | v0.17.0    | No             | No               | `--reset-state` (PROTOCOL_VERSION 8→9) |
+| v0.17.x     | v0.18.0    | Yes            | Yes              | Restart node (explorer, wallet extension, no protocol/schema bump) |
+| v0.18.x     | v0.19.0    | Yes            | Yes              | Restart node + state reset recommended (fee economics changed) |
 
 \* Within a minor version line, compatibility depends on whether PROTOCOL_VERSION or SCHEMA_VERSION was bumped. Check the release notes.
 
@@ -97,8 +101,8 @@ The protocol uses three version constants to detect incompatibilities:
 
 | Constant | Location | Current | Purpose |
 |----------|----------|---------|---------|
-| `PROTOCOL_VERSION` | `norn-relay/src/protocol.rs` | 6 | P2P wire format version. Mismatch = messages rejected. |
-| `SCHEMA_VERSION` | `norn-node/src/state_store.rs` | 6 | Borsh state schema version. Mismatch = node refuses to start (suggests `--reset-state`). |
+| `PROTOCOL_VERSION` | `norn-relay/src/protocol.rs` | 9 | P2P wire format version. Mismatch = messages rejected. |
+| `SCHEMA_VERSION` | `norn-node/src/state_store.rs` | 7 | Borsh state schema version. Mismatch = node refuses to start (suggests `--reset-state`). |
 | `GENESIS_CONFIG_VERSION` | `norn-types/src/genesis.rs` | 1 | Genesis config format version. Included in genesis hash computation. |
 
 ## Multi-Node P2P Requirements
@@ -658,3 +662,136 @@ Ok(Response::with_action("mint_tokens").merge(stdlib_resp))
 ### Scaffolding
 
 `norn wallet new-loom` now generates v0.15.0 templates with all SDK v6 features.
+
+## Changelog: v0.16.0 (Multi-Validator Consensus, Staking & Slashing)
+
+### Upgrading from v0.15.x to v0.16.0
+
+This is a **breaking upgrade**. PROTOCOL_VERSION changed from 6 to 8, and SCHEMA_VERSION changed from 6 to 7.
+
+1. **Stop the node.**
+
+2. **Build the new version:**
+   ```bash
+   cargo install --path norn-node
+   ```
+
+3. **Start with `--reset-state`:**
+   ```bash
+   norn run --dev --reset-state
+   ```
+
+4. **All peers must be running v0.16.0.** New staking-related `NornMessage` variants (discriminant 20) are not supported by older nodes.
+
+### New Features
+
+- **Multi-validator consensus** — HotStuff BFT now supports multiple validators with leader rotation
+- **Staking system** — `stake`, `unstake` commands with bonding period enforcement
+- **Slashing** — Validators that produce conflicting blocks have their stake slashed
+- **State proofs** — Merkle proof generation and verification for account balances
+- **Dynamic validator set** — Validators can join and leave the active set based on stake
+- **Epoch system** — 1000-block epochs for fee accumulation and validator set rotation
+
+### New Wallet Commands
+
+Three new wallet subcommands: `stake`, `unstake`, `staking-info`.
+
+---
+
+## Changelog: v0.17.0 (WebSocket Subscriptions, Cross-Contract Calls, TypeScript SDK)
+
+### Upgrading from v0.16.x to v0.17.0
+
+This is a **breaking upgrade**. PROTOCOL_VERSION changed from 8 to 9.
+
+1. **Stop the node.**
+
+2. **Build the new version:**
+   ```bash
+   cargo install --path norn-node
+   ```
+
+3. **Start with `--reset-state`:**
+   ```bash
+   norn run --dev --reset-state
+   ```
+
+### New Features
+
+- **WebSocket subscriptions** — Real-time event streaming for blocks, transfers, tokens, looms, and pending transactions via `norn_subscribe*` RPC methods
+- **Cross-contract calls** — Looms can call other looms via `norn_call_contract` host function with `CallStack` re-entrancy protection and `MAX_CALL_DEPTH = 8`
+- **TypeScript SDK** — `@norn-protocol/sdk` package with `NornClient`, `NornWallet`, `NornSubscriber`, address utilities, and full RPC type coverage (51 tests)
+- **RPC broadcasters** — `RpcBroadcasters` struct groups 5 broadcast channels for real-time event distribution
+
+### New RPC Endpoints
+
+- `norn_subscribeBlocks` / `norn_unsubscribeBlocks`
+- `norn_subscribeTransfers` / `norn_unsubscribeTransfers`
+- `norn_subscribeTokens` / `norn_unsubscribeTokens`
+- `norn_subscribeLooms` / `norn_unsubscribeLooms`
+- `norn_subscribePendingTransactions` / `norn_unsubscribePendingTransactions`
+
+---
+
+## Changelog: v0.18.0 (Block Explorer, Web Wallet, Token Management)
+
+### Upgrading from v0.17.x to v0.18.0
+
+**No `--reset-state` required.** PROTOCOL_VERSION and SCHEMA_VERSION are unchanged. Simply pull, build, and restart.
+
+```bash
+git pull && cargo build --release
+# Restart your node
+```
+
+### New Features
+
+- **Block explorer** (`explorer/`) — Next.js 15 + shadcn/ui dashboard with real-time block/transaction/token/contract views, address pages, network stats, and WebSocket live updates
+- **Web wallet** (`wallet/`) — PWA with mobile-first design, encrypted keystore in IndexedDB, passkey recovery, auto-lock, NornNames, token management, and 11 integrated smart contract apps (governance, escrow, vesting, treasury, timelock, swap, splitter, crowdfund, staking, launchpad, airdrop)
+- **Wallet extension** — Chrome extension for signing transactions from web apps
+- **Synthetic transfer records** — `log_synthetic_transfer()` creates TransferRecords for non-transfer operations (genesis, fees, mints, burns) for complete transaction history
+- **`norn_getBlockTransactions`** — RPC method returning detailed block contents (transfers, token ops, names, looms)
+- **Address labels** — Known addresses (genesis, faucet) get human-readable labels in RPC responses
+- **Website** (`website/`) — Marketing site at norn.network with documentation, architecture guides, and tokenomics
+
+### Notable Fixes (v0.18.1 — v0.18.4)
+
+- Faucet credit propagation through blocks to all nodes
+- Token symbol display in RPC responses and explorer
+- Change-password command for wallet CLI
+- Improved Merkle tree implementation
+- Block production timing metrics
+
+---
+
+## Changelog: v0.19.0 (Validator Rewards, Wallet UX, Contracts Page)
+
+### Upgrading from v0.18.x to v0.19.0
+
+**State reset recommended.** While PROTOCOL_VERSION and SCHEMA_VERSION are unchanged, the fee economics changed: fees are now redistributed to validators instead of being burned. Existing state will have inconsistent supply accounting.
+
+```bash
+cargo install --path norn-node
+norn run --dev --reset-state
+```
+
+### New Features
+
+- **Validator reward distribution** — Commitment fees collected each epoch (1000 blocks) are now distributed to validators proportional to their stake, replacing the previous fee-burn model
+- **`norn wallet rewards`** — New CLI command showing pending epoch fees, blocks until next distribution, and per-validator projected rewards
+- **`norn_getValidatorRewards`** — New RPC endpoint returning epoch reward information
+- **Wallet UX polish** — `FormButton` component with `disabledReason` hints, `FieldError` inline validation, improved disabled button styling (`opacity-30`, `cursor-not-allowed`)
+- **Contracts page** — Browse/Interact tabs with deployed contract discovery, input validation, structured result display with events and logs
+- **Node setup script** — `scripts/setup-node.sh` one-command installer for new node operators
+
+### Economic Changes
+
+- `debit_fee()` no longer reduces `total_supply_cache` — fees are transferred to validators, not burned
+- `compute_reward_distribution()` in `norn-weave/src/fees.rs` — proportional distribution with dust remainder to highest-staked validator
+- Epoch boundary trigger in `WeaveEngine` — rewards computed and applied every 1000 blocks
+
+### Wallet UX Changes (All 20 Form Pages)
+
+- Submit buttons show contextual hints when disabled (e.g., "Enter a governance name")
+- Address inputs show inline validation errors for invalid hex
+- Invalid inputs get red border highlighting

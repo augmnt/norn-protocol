@@ -366,7 +366,7 @@ The genesis allocation distributes the supply across seven categories, each desi
 
 1. **NornNames burn.** Each name registration permanently burns 1 NORN, creating deflationary pressure proportional to network adoption.
 2. **Token creation burn.** Each NT-1 token creation permanently burns 10 NORN, creating a meaningful cost for token issuance and further reducing supply.
-3. **Future fee burning.** A planned EIP-1559-style mechanism will burn a portion of commitment fees, further reducing supply as network usage grows.
+3. **Validator fee redistribution.** Commitment fees collected each epoch are redistributed to validators proportional to their stake, rewarding network participants while maintaining deflationary pressure from name and token burns above.
 
 Because there is no block reward inflation and the supply cap is enforced at the protocol level, NORN's supply can only decrease over time through burn mechanisms. This makes the token model structurally deflationary.
 
