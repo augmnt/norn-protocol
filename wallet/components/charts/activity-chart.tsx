@@ -48,7 +48,7 @@ interface ActivityChartProps {
 }
 
 export function ActivityChart({ data }: ActivityChartProps) {
-  if (data.length < 2) {
+  if (data.length === 0) {
     return (
       <Card>
         <CardHeader className="pb-2">

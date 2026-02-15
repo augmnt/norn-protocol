@@ -55,7 +55,7 @@ function buildChartData(
     const isSent = tx.from.toLowerCase() === addr;
     // Undo the transaction to get prior balance
     bal = isSent ? bal + amt : bal - amt;
-    snapshots.push({ balance: Math.max(0, bal), timestamp: tx.timestamp });
+    snapshots.push({ balance: Math.max(0, bal), timestamp: tx.timestamp * 1000 });
   }
 
   // Reverse back to chronological order
@@ -72,7 +72,7 @@ function buildChartData(
   // Activity: group by day
   const dayMap = new Map<string, { sent: number; received: number }>();
   for (const tx of sorted) {
-    const d = new Date(tx.timestamp);
+    const d = new Date(tx.timestamp * 1000);
     const key = `${d.getMonth() + 1}/${d.getDate()}`;
     const entry = dayMap.get(key) ?? { sent: 0, received: 0 };
     if (tx.from.toLowerCase() === addr) entry.sent++;
