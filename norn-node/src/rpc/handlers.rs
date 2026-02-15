@@ -385,6 +385,7 @@ impl NornRpcServer for NornRpcImpl {
         // Try the StateManager archive (in-memory + SQLite fallback).
         let sm = self.state_manager.read().await;
         if let Some(block) = sm.get_block_by_height(height) {
+            let production_us = sm.get_block_production_us(block.height);
             return Ok(Some(BlockInfo {
                 height: block.height,
                 hash: hex::encode(block.hash),
@@ -403,7 +404,7 @@ impl NornRpcServer for NornRpcImpl {
                 loom_deploy_count: block.loom_deploys.len(),
                 stake_operation_count: block.stake_operations.len(),
                 state_root: hex::encode(block.state_root),
-                production_us: None,
+                production_us,
             }));
         }
 
@@ -413,7 +414,10 @@ impl NornRpcServer for NornRpcImpl {
     async fn get_latest_block(&self) -> Result<Option<BlockInfo>, ErrorObjectOwned> {
         let engine = self.weave_engine.read().await;
 
-        if let Some(block) = engine.last_block() {
+        if let Some(block) = engine.last_block().cloned() {
+            drop(engine);
+            let sm = self.state_manager.read().await;
+            let production_us = sm.get_block_production_us(block.height);
             Ok(Some(BlockInfo {
                 height: block.height,
                 hash: hex::encode(block.hash),
@@ -432,7 +436,7 @@ impl NornRpcServer for NornRpcImpl {
                 loom_deploy_count: block.loom_deploys.len(),
                 stake_operation_count: block.stake_operations.len(),
                 state_root: hex::encode(block.state_root),
-                production_us: None,
+                production_us,
             }))
         } else {
             let height = engine.weave_state().height;
@@ -441,6 +445,7 @@ impl NornRpcServer for NornRpcImpl {
             // Try the StateManager archive (in-memory + SQLite fallback).
             let sm = self.state_manager.read().await;
             if let Some(block) = sm.get_block_by_height(height) {
+                let production_us = sm.get_block_production_us(block.height);
                 return Ok(Some(BlockInfo {
                     height: block.height,
                     hash: hex::encode(block.hash),
@@ -459,7 +464,7 @@ impl NornRpcServer for NornRpcImpl {
                     loom_deploy_count: block.loom_deploys.len(),
                     stake_operation_count: block.stake_operations.len(),
                     state_root: hex::encode(block.state_root),
-                    production_us: None,
+                    production_us,
                 }));
             }
 

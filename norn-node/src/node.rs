@@ -507,7 +507,7 @@ impl Node {
             let mut sm = state_manager.write().await;
             if sm.get_block(0).is_none() {
                 let (genesis_block, _) = crate::genesis::create_genesis_block(gc)?;
-                sm.archive_block(genesis_block);
+                sm.archive_block(genesis_block, None);
                 tracing::debug!("archived genesis block at height 0");
             }
         }
@@ -743,7 +743,7 @@ impl Node {
                                     commit.knot_count,
                                 );
                             }
-                            sm.archive_block(block.clone());
+                            sm.archive_block(block.clone(), None);
                         }
                         let mut engine = self.weave_engine.write().await;
                         engine.set_timestamp(current_timestamp());
@@ -982,7 +982,7 @@ impl Node {
                                         commit.knot_count,
                                     );
                                 }
-                                sm.archive_block(*block.clone());
+                                sm.archive_block(*block.clone(), None);
                             }
                             // Forward to WeaveEngine.
                             let mut engine = self.weave_engine.write().await;
@@ -1163,7 +1163,7 @@ impl Node {
                                             commit.knot_count,
                                         );
                                     }
-                                    sm.archive_block(block.clone());
+                                    sm.archive_block(block.clone(), None);
                                 }
                                 let mut engine = self.weave_engine.write().await;
                                 engine.set_timestamp(current_timestamp());
@@ -1348,7 +1348,7 @@ impl Node {
                                         );
                                         sm.debit_fee(commit.thread_id, fee_per);
                                     }
-                                    sm.archive_block(block.clone());
+                                    sm.archive_block(block.clone(), Some(production_us));
                                 }
 
                                 // Broadcast block to P2P network.
@@ -1454,7 +1454,7 @@ impl Node {
                                             );
                                             sm.debit_fee(commit.thread_id, fee_per);
                                         }
-                                        sm.archive_block(block.clone());
+                                        sm.archive_block(block.clone(), None);
                                     }
 
                                     // Notify WebSocket subscribers.

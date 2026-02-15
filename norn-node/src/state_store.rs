@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use borsh::BorshDeserialize;
@@ -22,6 +23,7 @@ const TOKEN_PREFIX: &[u8] = b"state:token:";
 const LOOM_PREFIX: &[u8] = b"state:loom:";
 const LOOM_BYTECODE_PREFIX: &[u8] = b"state:loom_bytecode:";
 const LOOM_STATE_PREFIX: &[u8] = b"state:loom_state:";
+const BLOCK_TIMING_PREFIX: &[u8] = b"state:block_timing:";
 const SCHEMA_VERSION_KEY: &[u8] = b"meta:schema_version";
 
 /// Current schema version. Bump this whenever a breaking change is made to any
@@ -304,6 +306,39 @@ impl StateStore {
         Ok(results)
     }
 
+    // ── Block production timing ──────────────────────────────────────────
+
+    pub fn save_block_timing(&self, height: u64, production_us: u64) -> Result<(), StorageError> {
+        let key = self.block_timing_key(height);
+        self.store.put(&key, &production_us.to_be_bytes())
+    }
+
+    #[allow(dead_code)]
+    pub fn load_block_timing(&self, height: u64) -> Result<Option<u64>, StorageError> {
+        let key = self.block_timing_key(height);
+        match self.store.get(&key)? {
+            Some(value) if value.len() == 8 => {
+                let us = u64::from_be_bytes(value.try_into().unwrap());
+                Ok(Some(us))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    pub fn load_all_block_timings(&self) -> Result<HashMap<u64, u64>, StorageError> {
+        let pairs = self.store.prefix_scan(BLOCK_TIMING_PREFIX)?;
+        let mut timings = HashMap::with_capacity(pairs.len());
+        for (key, value) in pairs {
+            if value.len() == 8 && key.len() == BLOCK_TIMING_PREFIX.len() + 8 {
+                let height_bytes: [u8; 8] = key[BLOCK_TIMING_PREFIX.len()..].try_into().unwrap();
+                let height = u64::from_be_bytes(height_bytes);
+                let us = u64::from_be_bytes(value.try_into().unwrap());
+                timings.insert(height, us);
+            }
+        }
+        Ok(timings)
+    }
+
     // ── Tokens ──────────────────────────────────────────────────────────
 
     pub fn save_token(&self, token_id: &TokenId, record: &TokenRecord) -> Result<(), StorageError> {
@@ -439,6 +474,13 @@ impl StateStore {
             sm.seed_loom(loom_id, record);
         }
 
+        // Seed block production timings from persisted data.
+        let timings = self.load_all_block_timings().unwrap_or_default();
+        let timing_count = timings.len();
+        if timing_count > 0 {
+            sm.seed_block_timings(timings);
+        }
+
         if state_count > 0
             || transfer_count > 0
             || name_count > 0
@@ -453,6 +495,7 @@ impl StateStore {
                 blocks = block_count,
                 tokens = token_count,
                 looms = loom_count,
+                timings = timing_count,
                 "state rebuilt from disk"
             );
         }
@@ -500,6 +543,13 @@ impl StateStore {
     fn block_key(&self, height: u64) -> Vec<u8> {
         let mut key = Vec::with_capacity(BLOCK_PREFIX.len() + 8);
         key.extend_from_slice(BLOCK_PREFIX);
+        key.extend_from_slice(&height.to_be_bytes());
+        key
+    }
+
+    fn block_timing_key(&self, height: u64) -> Vec<u8> {
+        let mut key = Vec::with_capacity(BLOCK_TIMING_PREFIX.len() + 8);
+        key.extend_from_slice(BLOCK_TIMING_PREFIX);
         key.extend_from_slice(&height.to_be_bytes());
         key
     }

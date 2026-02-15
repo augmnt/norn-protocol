@@ -99,6 +99,8 @@ pub struct StateManager {
     loom_registry: HashMap<LoomId, LoomRecord>,
     /// Sparse Merkle tree for computing cumulative state roots.
     state_smt: SparseMerkleTree,
+    /// Block production timing (height → microseconds). Persisted alongside blocks.
+    block_production_times: HashMap<u64, u64>,
 }
 
 impl Default for StateManager {
@@ -123,6 +125,7 @@ impl StateManager {
             symbol_index: HashMap::new(),
             loom_registry: HashMap::new(),
             state_smt: SparseMerkleTree::new(),
+            block_production_times: HashMap::new(),
         }
     }
 
@@ -170,6 +173,7 @@ impl StateManager {
             symbol_index: HashMap::new(),
             loom_registry: HashMap::new(),
             state_smt,
+            block_production_times: HashMap::new(),
         }
     }
 
@@ -716,13 +720,23 @@ impl StateManager {
 
     /// Archive a produced block. Evicts oldest blocks from memory when the
     /// archive exceeds `MAX_BLOCK_ARCHIVE` (older blocks remain in SQLite).
-    pub fn archive_block(&mut self, block: WeaveBlock) {
+    pub fn archive_block(&mut self, block: WeaveBlock, production_us: Option<u64>) {
         let block_height = block.height;
 
         // Persist block.
         if let Some(ref store) = self.state_store {
             if let Err(e) = store.save_block(&block) {
                 tracing::warn!("Failed to persist block {}: {}", block.height, e);
+            }
+        }
+
+        // Persist block production timing if available.
+        if let Some(us) = production_us {
+            self.block_production_times.insert(block_height, us);
+            if let Some(ref store) = self.state_store {
+                if let Err(e) = store.save_block_timing(block_height, us) {
+                    tracing::warn!("Failed to persist block timing for {}: {}", block_height, e);
+                }
             }
         }
 
@@ -791,6 +805,16 @@ impl StateManager {
             }
         }
         None
+    }
+
+    /// Get persisted block production time for a given height (microseconds).
+    pub fn get_block_production_us(&self, height: u64) -> Option<u64> {
+        self.block_production_times.get(&height).copied()
+    }
+
+    /// Seed block production timings (used during state rebuild).
+    pub fn seed_block_timings(&mut self, timings: HashMap<u64, u64>) {
+        self.block_production_times = timings;
     }
 
     /// Get the latest block height.
@@ -1721,7 +1745,7 @@ mod tests {
             proposer: [0u8; 32],
             validator_signatures: vec![],
         };
-        sm.archive_block(block);
+        sm.archive_block(block, None);
         assert!(sm.get_block(1).is_some());
         assert!(sm.get_block(2).is_none());
         assert_eq!(sm.latest_block_height(), 1);
