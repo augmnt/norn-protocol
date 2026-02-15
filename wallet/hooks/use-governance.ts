@@ -14,7 +14,7 @@ import {
   decodeGovConfig,
   decodeGovProposal,
   decodeU64,
-  decodeBool,
+  decodeVoteStatus,
 } from "@/lib/borsh-governance";
 import type { GovConfig, GovProposal } from "@/lib/borsh-governance";
 import { strip0x } from "@/lib/format";
@@ -96,7 +96,7 @@ export function useGovernance(loomId: string) {
           encodeGetVote(proposalId, strip0x(voter))
         );
         if (!result?.output_hex) return null;
-        return decodeBool(result.output_hex);
+        return decodeVoteStatus(result.output_hex);
       } catch {
         return null;
       }

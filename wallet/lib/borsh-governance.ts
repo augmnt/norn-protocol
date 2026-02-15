@@ -266,3 +266,10 @@ export function decodeBool(hex: string): boolean {
   const data = hexToBytes(hex);
   return data[0] !== 0;
 }
+
+/** Decode a vote status: 0 = not voted (null), 1 = voted for (true), 2 = voted against (false). */
+export function decodeVoteStatus(hex: string): boolean | null {
+  const data = hexToBytes(hex);
+  if (data[0] === 0) return null;
+  return data[0] === 1;
+}
