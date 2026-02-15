@@ -1,8 +1,0 @@
-target/
-norn-*/src/
-norn-*/tests/
-examples/
-docs/
-wallet/
-website/
-*.pdf
