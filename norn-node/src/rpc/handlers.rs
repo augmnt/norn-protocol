@@ -749,16 +749,14 @@ impl NornRpcServer for NornRpcImpl {
                     });
                 }
 
-                sm.auto_register_if_needed(faucet_address);
                 sm.auto_register_if_needed(address);
-                if let Err(e) = sm.apply_peer_transfer(
-                    faucet_address,
+
+                // Faucet is a mint operation: credit directly (don't use apply_peer_transfer
+                // which would try to debit the zero address and silently fail).
+                if let Err(e) = sm.credit(
                     address,
                     norn_types::primitives::NATIVE_TOKEN_ID,
                     faucet_amount,
-                    knot_id,
-                    Some(b"faucet".to_vec()),
-                    now,
                 ) {
                     return Err(ErrorObjectOwned::owned(
                         -32000,
@@ -766,6 +764,16 @@ impl NornRpcServer for NornRpcImpl {
                         None::<()>,
                     ));
                 }
+
+                // Log a synthetic transfer record for transaction history.
+                sm.log_synthetic_transfer(
+                    faucet_address,
+                    address,
+                    norn_types::primitives::NATIVE_TOKEN_ID,
+                    faucet_amount,
+                    Some("faucet"),
+                    now,
+                );
             }
 
             // Queue BlockTransfer for inclusion in the next block.
