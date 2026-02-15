@@ -22,6 +22,7 @@ import { FieldError } from "@/components/ui/field-error";
 import { explorerContractUrl } from "@/lib/explorer";
 import { truncateHash, timeAgo } from "@/lib/format";
 import { APPS } from "@/lib/apps-config";
+import { getAppTypeForCodeHash } from "@/lib/code-hash-registry";
 import { PAGE_SIZE } from "@/lib/constants";
 import {
   FileCode, Search, Play, Terminal, AlertCircle, X, Bookmark, BookmarkPlus,
@@ -40,10 +41,8 @@ function isValidHex(value: string): boolean {
   return /^([a-fA-F0-9]{2})*$/.test(value);
 }
 
-/** Map of known loom IDs to app names. */
-const KNOWN_LOOMS = new Map(
-  APPS.map((app) => [app.loomId.toLowerCase(), app.name])
-);
+/** Map of app type IDs to app names. */
+const APP_NAMES = new Map(APPS.map((app) => [app.id, app.name]));
 
 export default function ContractsPage() {
   const { queryLoom, executeLoom, loading, error } = useLoomOps();
@@ -478,7 +477,8 @@ export default function ContractsPage() {
                         header: "Name",
                         key: "name",
                         render: (loom) => {
-                          const knownApp = KNOWN_LOOMS.get(loom.loom_id.toLowerCase());
+                          const appType = loom.code_hash ? getAppTypeForCodeHash(loom.code_hash) : undefined;
+                          const knownApp = appType ? APP_NAMES.get(appType) : undefined;
                           return (
                             <div className="flex items-center gap-2">
                               <span className="font-medium text-sm truncate max-w-[140px]">

@@ -160,6 +160,7 @@ export interface LoomInfo {
   deployed_at: number;
   has_bytecode: boolean;
   participant_count: number;
+  code_hash?: string;
 }
 
 /** Event attribute. */

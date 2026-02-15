@@ -263,6 +263,9 @@ pub struct LoomInfo {
     /// Whether bytecode has been uploaded.
     #[serde(default)]
     pub has_bytecode: bool,
+    /// Blake3 hash of the deployed WASM bytecode, as hex string.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code_hash: Option<String>,
     /// Number of active participants.
     #[serde(default)]
     pub participant_count: usize,

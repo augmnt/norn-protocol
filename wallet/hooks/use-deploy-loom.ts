@@ -1,0 +1,97 @@
+"use client";
+
+import { useState, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { rpcCall } from "@/lib/rpc";
+import { useWallet } from "./use-wallet";
+import { useWalletStore } from "@/stores/wallet-store";
+import * as signer from "@/lib/secure-signer";
+import type { SubmitResult } from "@/types";
+
+/**
+ * Hook for deploying a new loom instance:
+ * 1. Sign & submit a LoomRegistration (costs 50 NORN)
+ * 2. Upload WASM bytecode + optional init message
+ *
+ * Returns the computed loom ID on success.
+ */
+export function useDeployLoom() {
+  const { meta, activeAccountIndex } = useWallet();
+  const queryClient = useQueryClient();
+  const [deploying, setDeploying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const deploy = useCallback(
+    async (params: {
+      name: string;
+      wasmBytes: Uint8Array;
+      initMsgHex?: string;
+    }): Promise<string> => {
+      if (!meta) throw new Error("No wallet");
+      setDeploying(true);
+      setError(null);
+
+      try {
+        const pw = useWalletStore.getState().sessionPassword ?? undefined;
+
+        // Step 1: Build and sign the loom registration
+        const registrationHex = await signer.signLoomRegistration(
+          meta,
+          params.name,
+          activeAccountIndex,
+          pw
+        );
+
+        // Step 2: Submit the deployment
+        const deployResult = await rpcCall<SubmitResult>("norn_deployLoom", [
+          registrationHex,
+        ]);
+        if (!deployResult.success) {
+          throw new Error(deployResult.reason || "Loom deployment failed");
+        }
+
+        // Extract the loom ID from the response message
+        // Format: "loom deployed (id: <hex>, will be included in next block)"
+        const idMatch = deployResult.reason?.match(/id:\s*([0-9a-f]{64})/i);
+        if (!idMatch) {
+          throw new Error("Could not extract loom ID from deployment response");
+        }
+        const loomId = idMatch[1];
+
+        // Step 3: Upload bytecode + init
+        const bytecodeHex = Array.from(params.wasmBytes)
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+
+        const uploadParams: unknown[] = [loomId, bytecodeHex];
+        if (params.initMsgHex) {
+          uploadParams.push(params.initMsgHex);
+        }
+
+        const uploadResult = await rpcCall<SubmitResult>(
+          "norn_uploadLoomBytecode",
+          uploadParams
+        );
+        if (!uploadResult.success) {
+          throw new Error(uploadResult.reason || "Bytecode upload failed");
+        }
+
+        // Invalidate loom-related queries
+        queryClient.invalidateQueries({ queryKey: ["appInstances"] });
+        queryClient.invalidateQueries({ queryKey: ["loomsList"] });
+        queryClient.invalidateQueries({ queryKey: ["balance"] });
+
+        return loomId;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Deployment failed";
+        setError(msg);
+        throw e;
+      } finally {
+        setDeploying(false);
+      }
+    },
+    [meta, activeAccountIndex, queryClient]
+  );
+
+  return { deploy, deploying, error };
+}

@@ -1836,6 +1836,9 @@ impl NornRpcServer for NornRpcImpl {
             active: record.active,
             deployed_at: record.deployed_at,
             has_bytecode: loom_mgr.has_bytecode(&loom_id),
+            code_hash: loom_mgr
+                .get_bytecode(&loom_id)
+                .map(|b| hex::encode(b.wasm_hash)),
             participant_count: loom_mgr.participant_count(&loom_id),
         }))
     }
@@ -1859,6 +1862,9 @@ impl NornRpcServer for NornRpcImpl {
                 active: record.active,
                 deployed_at: record.deployed_at,
                 has_bytecode: loom_mgr.has_bytecode(loom_id),
+                code_hash: loom_mgr
+                    .get_bytecode(loom_id)
+                    .map(|b| hex::encode(b.wasm_hash)),
                 participant_count: loom_mgr.participant_count(loom_id),
             })
             .collect();

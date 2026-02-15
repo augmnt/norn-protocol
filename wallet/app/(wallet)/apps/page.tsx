@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { APPS } from "@/lib/apps-config";
 import {
   ShieldCheck,
@@ -48,19 +47,8 @@ export default function AppsPage() {
             <Link key={app.id} href={app.href}>
               <Card className="group h-full transition-colors hover:border-norn/40">
                 <CardContent className="p-6">
-                  <div className="flex items-start justify-between">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-norn/10">
-                      <Icon className="h-5 w-5 text-norn" />
-                    </div>
-                    {app.loomId ? (
-                      <Badge variant="norn" className="text-[10px]">
-                        Live
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="text-[10px]">
-                        Coming Soon
-                      </Badge>
-                    )}
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-norn/10">
+                    <Icon className="h-5 w-5 text-norn" />
                   </div>
                   <h3 className="mt-4 text-sm font-semibold">{app.name}</h3>
                   <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">

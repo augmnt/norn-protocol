@@ -20,6 +20,7 @@ export {
   tokenDefinitionSigningData,
   tokenMintSigningData,
   tokenBurnSigningData,
+  loomDeploySigningData,
 } from "./borsh.js";
 
 export { NornClient } from "./client.js";
@@ -41,6 +42,7 @@ export {
   buildTokenDefinition,
   buildTokenMint,
   buildTokenBurn,
+  buildLoomRegistration,
   parseAmount,
   formatAmount,
 } from "./builders.js";

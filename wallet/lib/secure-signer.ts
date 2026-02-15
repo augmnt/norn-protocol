@@ -7,6 +7,7 @@ import {
   buildTokenDefinition,
   buildTokenMint,
   buildTokenBurn,
+  buildLoomRegistration,
   parseAmount,
 } from "@norn-protocol/sdk";
 import { zeroBytes } from "./passkey-crypto";
@@ -146,6 +147,21 @@ export async function signTokenBurn(
       tokenId: params.tokenId,
       amount: parseAmount(params.amount, params.decimals ?? 12),
     });
+  } finally {
+    cleanupWallet(wallet);
+  }
+}
+
+/** Sign a loom registration. Returns hex-encoded borsh bytes. */
+export async function signLoomRegistration(
+  meta: StoredWalletMeta,
+  name: string,
+  accountIndex = 0,
+  password?: string
+): Promise<string> {
+  const wallet = await getWallet(meta, accountIndex, password);
+  try {
+    return buildLoomRegistration(wallet, { name });
   } finally {
     cleanupWallet(wallet);
   }

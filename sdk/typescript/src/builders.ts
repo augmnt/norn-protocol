@@ -4,6 +4,7 @@ import {
   tokenDefinitionSigningData,
   tokenMintSigningData,
   tokenBurnSigningData,
+  loomDeploySigningData,
 } from "./borsh.js";
 import { blake3Hash, toHex, fromHex } from "./crypto.js";
 import type { Wallet } from "./wallet.js";
@@ -297,6 +298,58 @@ export function buildTokenBurn(
   w.writeU128(params.amount);
   w.writeU64(timestamp);
   w.writeFixedBytes(signature); // 64 bytes
+
+  return toHex(w.toBytes());
+}
+
+/** Loom deploy fee: 50 NORN. */
+const LOOM_DEPLOY_FEE = BigInt(50) * BigInt(10) ** BigInt(NORN_DECIMALS);
+
+/**
+ * Build and sign a loom registration (deployment) transaction.
+ *
+ * Returns hex-encoded borsh bytes ready to submit via `deployLoom`.
+ *
+ * Borsh layout matches Rust LoomRegistration struct:
+ *   config: LoomConfig { loom_id: [u8;32], name: String, max_participants: u64,
+ *     min_participants: u64, accepted_tokens: Vec<[u8;32]>, config_data: Vec<u8> }
+ *   operator: [u8;32], timestamp: u64, signature: [u8;64]
+ */
+export function buildLoomRegistration(
+  wallet: Wallet,
+  params: {
+    name: string;
+  },
+): string {
+  const timestamp = now();
+
+  // Compute signing data: name_bytes + operator + timestamp
+  const sigData = loomDeploySigningData({
+    name: params.name,
+    operator: wallet.publicKey,
+    timestamp,
+  });
+  const signature = wallet.sign(sigData);
+
+  // Serialize full LoomRegistration struct in borsh format
+  const w = new BorshWriter();
+
+  // LoomConfig struct:
+  w.writeFixedBytes(new Uint8Array(32)); // loom_id: [u8;32] — placeholder (computed by consensus)
+  w.writeString(params.name); // name: String
+  // IMPORTANT: Borsh for Rust usize is serialized as u64 on 64-bit
+  w.writeU64(1000n); // max_participants: usize (borsh serializes as u64)
+  w.writeU64(1n); // min_participants: usize (borsh serializes as u64)
+  // accepted_tokens: Vec<[u8;32]> — 1 entry: native token
+  w.writeU32(1);
+  w.writeFixedBytes(new Uint8Array(32)); // NATIVE_TOKEN_ID (32 zero bytes)
+  // config_data: Vec<u8> — empty
+  w.writeU32(0);
+
+  // LoomRegistration fields:
+  w.writeFixedBytes(wallet.publicKey); // operator: [u8;32]
+  w.writeU64(timestamp); // timestamp: u64
+  w.writeFixedBytes(signature); // signature: [u8;64]
 
   return toHex(w.toBytes());
 }

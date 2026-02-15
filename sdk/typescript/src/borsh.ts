@@ -232,3 +232,17 @@ export function tokenBurnSigningData(params: {
   w.writeU64(params.timestamp);
   return w.toBytes();
 }
+
+/** Signing data for a loom deployment (matches Rust loom_deploy_signing_data). */
+export function loomDeploySigningData(params: {
+  name: string;
+  operator: Uint8Array;
+  timestamp: bigint;
+}): Uint8Array {
+  const w = new BorshWriter();
+  // Rust uses raw name bytes (no borsh length prefix) for signing data
+  w.writeFixedBytes(new TextEncoder().encode(params.name));
+  w.writeFixedBytes(params.operator); // 32 bytes
+  w.writeU64(params.timestamp);
+  return w.toBytes();
+}
