@@ -2,12 +2,12 @@
 
 import { useMemo } from "react";
 
-// Curated palette that works well on dark backgrounds
+// Muted blue-gray palette aligned with norn brand color (hsl 210, 12%, 49%)
 const COLORS = [
-  "#6366f1", "#8b5cf6", "#a78bfa", "#c084fc",
-  "#e879f9", "#f472b6", "#fb7185", "#f87171",
-  "#fb923c", "#fbbf24", "#a3e635", "#4ade80",
-  "#34d399", "#2dd4bf", "#22d3ee", "#38bdf8",
+  "#6b7b8d", "#7b8a9a", "#8a98a7", "#5d6d7e",
+  "#7089a1", "#6a8299", "#5c7a92", "#4e6f87",
+  "#809baf", "#8fa6b8", "#7993a8", "#6c869b",
+  "#92a5b5", "#a1b2c0", "#6e8190", "#5a6f80",
 ];
 
 function hashBytes(address: string): number[] {

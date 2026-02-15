@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useNetwork } from "@/hooks/use-network";
+import { useSettingsStore } from "@/stores/settings-store";
 import {
   LayoutDashboard,
   ArrowUpRight,
@@ -19,6 +20,8 @@ import {
   Settings,
   MoreHorizontal,
   X,
+  PanelLeftClose,
+  PanelLeft,
 } from "lucide-react";
 
 interface NavItem {
@@ -49,6 +52,8 @@ export function WalletNav() {
   const pathname = usePathname();
   const { isTestnet } = useNetwork();
   const [moreOpen, setMoreOpen] = useState(false);
+  const collapsed = useSettingsStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useSettingsStore((s) => s.toggleSidebar);
 
   const filteredItems = navItems.filter(
     (item) => !item.testnetOnly || isTestnet
@@ -66,25 +71,54 @@ export function WalletNav() {
   return (
     <>
       {/* Desktop sidebar */}
-      <nav className="hidden md:flex w-52 flex-col border-r p-3 gap-0.5">
+      <nav
+        className={cn(
+          "hidden md:flex flex-col border-r p-3 gap-0.5 transition-all duration-200",
+          collapsed ? "w-14" : "w-52"
+        )}
+      >
         {filteredItems.map((item) => {
           const active = pathname === item.href;
           return (
             <Link
               key={item.href}
               href={item.href}
+              title={collapsed ? item.label : undefined}
               className={cn(
-                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+                "flex items-center rounded-md transition-colors",
+                collapsed ? "justify-center px-0 py-2" : "gap-2.5 px-3 py-2",
                 active
                   ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50",
+                "text-sm"
               )}
             >
-              <item.icon className="h-4 w-4" />
-              {item.label}
+              <item.icon className="h-4 w-4 shrink-0" />
+              {!collapsed && item.label}
             </Link>
           );
         })}
+
+        {/* Collapse toggle at bottom */}
+        <div className="mt-auto pt-2 border-t border-border">
+          <button
+            onClick={toggleSidebar}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className={cn(
+              "flex items-center rounded-md py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors w-full",
+              collapsed ? "justify-center px-0" : "gap-2.5 px-3"
+            )}
+          >
+            {collapsed ? (
+              <PanelLeft className="h-4 w-4 shrink-0" />
+            ) : (
+              <>
+                <PanelLeftClose className="h-4 w-4 shrink-0" />
+                Collapse
+              </>
+            )}
+          </button>
+        </div>
       </nav>
 
       {/* Mobile: More menu overlay */}
