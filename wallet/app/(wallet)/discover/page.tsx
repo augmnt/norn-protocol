@@ -1,46 +1,133 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { PageContainer } from "@/components/ui/page-container";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FeedCard } from "@/components/feed-card";
 import { useDiscoverFeed } from "@/hooks/use-discover-feed";
+import { useWallet } from "@/hooks/use-wallet";
 import { APPS } from "@/lib/apps-config";
 import { cn } from "@/lib/utils";
-import { Compass, Loader2 } from "lucide-react";
+import {
+  Blocks,
+  Search,
+  ShieldCheck,
+  Vault,
+  Hourglass,
+  Rocket,
+  GitFork,
+  HandCoins,
+  Vote,
+  Landmark,
+  ArrowLeftRight,
+  Gift,
+  Clock,
+  ArrowRight,
+  type LucideIcon,
+} from "lucide-react";
+
+const ICON_MAP: Record<string, LucideIcon> = {
+  ShieldCheck,
+  Vault,
+  Hourglass,
+  Rocket,
+  GitFork,
+  HandCoins,
+  Vote,
+  Landmark,
+  ArrowLeftRight,
+  Gift,
+  Clock,
+};
 
 const INITIAL_COUNT = 12;
 const LOAD_MORE_COUNT = 12;
 
-const APP_TYPE_FILTERS = [
-  { id: "all", label: "All" },
-  ...APPS.map((app) => ({ id: app.id, label: app.name })),
-];
-
 export default function DiscoverPage() {
   const [filter, setFilter] = useState("all");
+  const [search, setSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(INITIAL_COUNT);
+  const { activeAccount } = useWallet();
 
-  const {
-    data: items,
-    isLoading,
-    error,
-  } = useDiscoverFeed(filter === "all" ? undefined : filter);
+  const { data: allItems, isLoading, error } = useDiscoverFeed();
 
-  const visibleItems = items?.slice(0, visibleCount);
-  const hasMore = items ? visibleCount < items.length : false;
+  // Instance counts per app type
+  const instanceCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of allItems ?? []) {
+      counts.set(item.appType, (counts.get(item.appType) ?? 0) + 1);
+    }
+    return counts;
+  }, [allItems]);
+
+  // Filtered + searched items
+  const filteredItems = useMemo(() => {
+    if (!allItems) return [];
+    let items = allItems;
+
+    if (filter === "mine") {
+      const pubKey = activeAccount?.publicKeyHex?.toLowerCase();
+      if (pubKey) {
+        items = items.filter((i) => i.operator.toLowerCase() === pubKey);
+      } else {
+        return [];
+      }
+    } else if (filter !== "all") {
+      items = items.filter((i) => i.appType === filter);
+    }
+
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      items = items.filter(
+        (i) =>
+          (i.summary?.title ?? i.name).toLowerCase().includes(q) ||
+          i.loomId.toLowerCase().includes(q) ||
+          i.operator.toLowerCase().includes(q)
+      );
+    }
+
+    return items;
+  }, [allItems, filter, search, activeAccount]);
+
+  const visibleItems = filteredItems.slice(0, visibleCount);
+  const hasMore = visibleCount < filteredItems.length;
+
+  // Show catalog when "All" with no search
+  const showCatalog = filter === "all" && !search.trim();
+
+  const filterChips = [
+    { id: "all", label: "All" },
+    { id: "mine", label: "Mine" },
+    ...APPS.map((app) => ({ id: app.id, label: app.name })),
+  ];
 
   return (
     <PageContainer
-      title="Discover"
-      description="Explore deployed contracts and on-chain activity"
+      title="Apps"
+      description="Deployed contracts and on-chain activity"
     >
+      {/* Search bar */}
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <input
+          type="text"
+          placeholder="Search by name, loom ID, or creator..."
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setVisibleCount(INITIAL_COUNT);
+          }}
+          className="w-full rounded-lg border border-border bg-background pl-10 pr-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+        />
+      </div>
+
       {/* Filter chips */}
       <div className="mb-6 flex flex-wrap gap-2">
-        {APP_TYPE_FILTERS.map((f) => (
+        {filterChips.map((f) => (
           <button
             key={f.id}
             onClick={() => {
@@ -84,21 +171,68 @@ export default function DiscoverPage() {
             </p>
           </CardContent>
         </Card>
-      ) : !visibleItems || visibleItems.length === 0 ? (
+      ) : showCatalog ? (
+        /* App Catalog Grid */
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {APPS.map((app) => {
+            const Icon = ICON_MAP[app.icon] ?? Blocks;
+            const count = instanceCounts.get(app.id) ?? 0;
+            return (
+              <button
+                key={app.id}
+                onClick={() => {
+                  setFilter(app.id);
+                  setVisibleCount(INITIAL_COUNT);
+                }}
+                className="text-left"
+              >
+                <Card className="group h-full transition-colors hover:border-norn/40">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-norn/10">
+                        <Icon className="h-5 w-5 text-norn" />
+                      </div>
+                      {count > 0 && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          {count} {count === 1 ? "instance" : "instances"}
+                        </Badge>
+                      )}
+                    </div>
+                    <h3 className="mt-4 text-sm font-semibold">{app.name}</h3>
+                    <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                      {app.description}
+                    </p>
+                    <div className="mt-4 flex items-center gap-1 text-xs text-norn opacity-0 transition-opacity group-hover:opacity-100">
+                      View instances
+                      <ArrowRight className="h-3 w-3" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </button>
+            );
+          })}
+        </div>
+      ) : visibleItems.length === 0 ? (
         <EmptyState
-          icon={Compass}
+          icon={Blocks}
           title="No contracts found"
           description={
-            filter === "all"
-              ? "No deployed contract instances yet."
-              : `No ${APP_TYPE_FILTERS.find((f) => f.id === filter)?.label ?? filter} instances found.`
+            filter === "mine"
+              ? "You haven't deployed any contracts yet."
+              : search.trim()
+                ? `No results for "${search.trim()}".`
+                : `No ${filterChips.find((f) => f.id === filter)?.label ?? filter} instances found.`
           }
         />
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {visibleItems.map((item) => (
-              <FeedCard key={item.loomId} item={item} />
+              <FeedCard
+                key={item.loomId}
+                item={item}
+                currentPubKey={activeAccount?.publicKeyHex}
+              />
             ))}
           </div>
 

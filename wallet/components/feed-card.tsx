@@ -37,10 +37,11 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Clock,
 };
 
-export function FeedCard({ item }: { item: FeedItem }) {
+export function FeedCard({ item, currentPubKey }: { item: FeedItem; currentPubKey?: string }) {
   const appConfig = APPS.find((a) => a.id === item.appType);
   const Icon = appConfig ? ICON_MAP[appConfig.icon] ?? Boxes : Boxes;
   const summary = item.summary;
+  const isYours = currentPubKey && item.operator.toLowerCase() === currentPubKey.toLowerCase();
 
   return (
     <Link href={`/apps/${item.appType}/${item.loomId}`}>
@@ -52,6 +53,11 @@ export function FeedCard({ item }: { item: FeedItem }) {
               <Icon className="h-5 w-5 text-norn" />
             </div>
             <div className="flex items-center gap-1.5">
+              {isYours && (
+                <Badge variant="norn" className="text-[10px]">
+                  Yours
+                </Badge>
+              )}
               {summary?.status && (
                 <Badge
                   variant={summary.statusVariant ?? "secondary"}
@@ -105,11 +111,14 @@ export function FeedCard({ item }: { item: FeedItem }) {
             </div>
           )}
 
-          {/* Footer: loom ID + deployed time */}
+          {/* Footer: loom ID + creator + deployed time */}
           <div className="mt-4 flex items-center justify-between">
             <div className="space-y-0.5">
               <p className="text-[10px] text-muted-foreground font-mono">
                 {truncateHash(item.loomId, 8)}
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                by <span className="font-mono">{truncateHash(item.operator, 6)}</span>
               </p>
               {item.deployedAt > 0 && (
                 <p className="text-[10px] text-muted-foreground">

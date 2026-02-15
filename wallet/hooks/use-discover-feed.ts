@@ -12,6 +12,7 @@ export interface FeedItem {
   loomId: string;
   appType: string;
   name: string;
+  operator: string;
   deployedAt: number;
   active: boolean;
   participantCount: number;
@@ -62,6 +63,7 @@ async function fetchFeed(appTypeFilter?: string): Promise<FeedItem[]> {
         loomId: loom.loom_id,
         appType,
         name: loom.name,
+        operator: loom.operator,
         deployedAt: loom.deployed_at,
         active: loom.active,
         participantCount: loom.participant_count,

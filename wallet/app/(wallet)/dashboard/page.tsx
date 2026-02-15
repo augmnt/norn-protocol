@@ -17,9 +17,9 @@ import { ActivityChart } from "@/components/charts/activity-chart";
 import { formatNorn, truncateAddress, truncateHash } from "@/lib/format";
 import { NATIVE_TOKEN_ID, QUERY_KEYS, STALE_TIMES } from "@/lib/constants";
 import { explorerAddressUrl, explorerTokenUrl, explorerTxUrl } from "@/lib/explorer";
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { rpcCall } from "@/lib/rpc";
-import { formatAmount } from "@/lib/format";
+import { formatAmount, strip0x } from "@/lib/format";
 import Link from "next/link";
 import { ArrowUpRight, QrCode, Coins, ArrowRightLeft, Copy } from "lucide-react";
 import type { TokenInfo, TransactionHistoryEntry } from "@/types";
@@ -32,19 +32,11 @@ function buildChartData(
   address: string,
   currentBalance: string
 ) {
-  const addr = address.toLowerCase();
-  // Sort oldest first
-  const sorted = [...history]
-    .filter((tx, i, arr) => arr.findIndex((t) => t.knot_id === tx.knot_id) === i)
-    .sort((a, b) => a.timestamp - b.timestamp);
+  // Sort oldest first — no knot_id dedup (a single knot can produce multiple records)
+  const sorted = [...history].sort((a, b) => a.timestamp - b.timestamp);
 
-  // Walk backwards from current balance to reconstruct balance at each tx
-  let bal =
-    Number(currentBalance) / 10 ** NORN_DECIMALS;
-  const balancePoints: { balance: number; label: string; timestamp: number }[] =
-    [];
-
-  // Build from newest to oldest to reconstruct history
+  // Walk backwards from current balance to reconstruct balance at each NORN tx
+  let bal = Number(currentBalance) / 10 ** NORN_DECIMALS;
   const reversed = [...sorted].reverse();
   const snapshots: { balance: number; timestamp: number }[] = [
     { balance: bal, timestamp: Date.now() },
@@ -52,30 +44,34 @@ function buildChartData(
   for (const tx of reversed) {
     if (tx.token_id !== NATIVE_TOKEN_ID) continue;
     const amt = Number(tx.amount) / 10 ** NORN_DECIMALS;
-    const isSent = tx.from.toLowerCase() === addr;
-    // Undo the transaction to get prior balance
-    bal = isSent ? bal + amt : bal - amt;
+    // Use the direction field instead of manual address comparison
+    bal = tx.direction === "sent" ? bal + amt : bal - amt;
     snapshots.push({ balance: Math.max(0, bal), timestamp: tx.timestamp * 1000 });
+  }
+
+  // If only 1 snapshot (no NORN txs), synthesize a point 7 days ago with same balance
+  if (snapshots.length === 1) {
+    snapshots.push({ balance: bal, timestamp: Date.now() - 7 * 24 * 60 * 60 * 1000 });
   }
 
   // Reverse back to chronological order
   snapshots.reverse();
-  for (const s of snapshots) {
+  const balancePoints = snapshots.map((s) => {
     const d = new Date(s.timestamp);
-    balancePoints.push({
+    return {
       balance: Math.round(s.balance * 100) / 100,
       label: `${d.getMonth() + 1}/${d.getDate()}`,
       timestamp: s.timestamp,
-    });
-  }
+    };
+  });
 
-  // Activity: group by day
+  // Activity: group all txs by day (not just NORN)
   const dayMap = new Map<string, { sent: number; received: number }>();
   for (const tx of sorted) {
     const d = new Date(tx.timestamp * 1000);
     const key = `${d.getMonth() + 1}/${d.getDate()}`;
     const entry = dayMap.get(key) ?? { sent: 0, received: 0 };
-    if (tx.from.toLowerCase() === addr) entry.sent++;
+    if (tx.direction === "sent") entry.sent++;
     else entry.received++;
     dayMap.set(key, entry);
   }
@@ -92,6 +88,20 @@ export default function DashboardPage() {
   const { data: balance, isLoading: balanceLoading } = useBalance(activeAddress ?? undefined);
   const { data: threadState } = useTokenBalances(activeAddress ?? undefined);
   const { data: history } = useTxHistory(activeAddress ?? undefined, 1);
+
+  // Fetch more history for charts (200 entries vs 20 for recent txs)
+  const { data: chartHistory } = useQuery({
+    queryKey: ["chartHistory", activeAddress],
+    queryFn: () =>
+      rpcCall<TransactionHistoryEntry[]>("norn_getTransactionHistory", [
+        strip0x(activeAddress!),
+        200,
+        0,
+      ]),
+    staleTime: STALE_TIMES.dynamic,
+    refetchInterval: 30_000,
+    enabled: !!activeAddress,
+  });
 
   const tokenBalances = threadState?.balances?.filter(
     (b) => b.token_id !== NATIVE_TOKEN_ID && BigInt(b.amount || "0") > 0n
@@ -116,10 +126,10 @@ export default function DashboardPage() {
 
   const { balancePoints, activityPoints } = useMemo(
     () =>
-      history && activeAddress && balance
-        ? buildChartData(history, activeAddress, balance.balance ?? "0")
+      chartHistory && activeAddress && balance
+        ? buildChartData(chartHistory, activeAddress, balance.balance ?? "0")
         : { balancePoints: [], activityPoints: [] },
-    [history, activeAddress, balance]
+    [chartHistory, activeAddress, balance]
   );
 
   return (
