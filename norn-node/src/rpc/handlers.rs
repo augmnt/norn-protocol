@@ -18,8 +18,8 @@ use super::types::{
     CommitmentProofInfo, EventInfo, ExecutionResult, FeeEstimateInfo, HealthInfo,
     LoomExecutionEvent, LoomInfo, NameInfo, NameResolution, PendingTransactionEvent, QueryResult,
     StakingInfo, StateProofInfo, SubmitResult, ThreadInfo, ThreadStateInfo, TokenEvent, TokenInfo,
-    TransactionHistoryEntry, TransferEvent, ValidatorInfo, ValidatorSetInfo, ValidatorStakeInfo,
-    WeaveStateInfo,
+    TransactionHistoryEntry, TransferEvent, ValidatorInfo, ValidatorRewardInfo,
+    ValidatorRewardsInfo, ValidatorSetInfo, ValidatorStakeInfo, WeaveStateInfo,
 };
 use crate::metrics::NodeMetrics;
 use crate::rpc::server::RpcBroadcasters;
@@ -287,6 +287,10 @@ pub trait NornRpc {
     /// Submit an unstake operation (hex-encoded borsh StakeOperation).
     #[method(name = "norn_unstake")]
     async fn unstake(&self, operation_hex: String) -> Result<SubmitResult, ErrorObjectOwned>;
+
+    /// Get validator reward distribution info.
+    #[method(name = "norn_getValidatorRewards")]
+    async fn get_validator_rewards(&self) -> Result<ValidatorRewardsInfo, ErrorObjectOwned>;
 
     /// Get staking info (all validators or specific).
     #[method(name = "norn_getStakingInfo")]
@@ -2200,6 +2204,47 @@ impl NornRpcServer for NornRpcImpl {
     async fn unstake(&self, operation_hex: String) -> Result<SubmitResult, ErrorObjectOwned> {
         // Unstake uses the same code path as stake — both are StakeOperation variants.
         self.stake(operation_hex).await
+    }
+
+    async fn get_validator_rewards(&self) -> Result<ValidatorRewardsInfo, ErrorObjectOwned> {
+        let engine = self.weave_engine.read().await;
+        let vs = engine.validator_set();
+        let fee_state = &engine.weave_state().fee_state;
+        let current_height = engine.weave_state().height;
+
+        let epoch_fees = fee_state.epoch_fees;
+        let blocks_per_epoch = norn_types::constants::BLOCKS_PER_EPOCH;
+        let blocks_until = if current_height == 0 {
+            blocks_per_epoch
+        } else {
+            blocks_per_epoch - (current_height % blocks_per_epoch)
+        };
+        let current_epoch = current_height / blocks_per_epoch;
+
+        let projected = norn_weave::fees::compute_reward_distribution(&vs, epoch_fees);
+
+        // Format using native token decimals (NORN_DECIMALS = 12).
+        let projected_rewards: Vec<ValidatorRewardInfo> = projected
+            .iter()
+            .map(|(addr, amount)| {
+                let v = vs.validators.iter().find(|v| v.address == *addr);
+                ValidatorRewardInfo {
+                    address: format_address(addr),
+                    pubkey: v.map(|v| hex::encode(v.pubkey)).unwrap_or_default(),
+                    stake: v
+                        .map(|v| format_token_amount(v.stake, NORN_DECIMALS as u8))
+                        .unwrap_or_default(),
+                    projected_reward: format_token_amount(*amount, NORN_DECIMALS as u8),
+                }
+            })
+            .collect();
+
+        Ok(ValidatorRewardsInfo {
+            pending_epoch_fees: format_token_amount(epoch_fees, NORN_DECIMALS as u8),
+            current_epoch,
+            blocks_until_distribution: blocks_until,
+            projected_rewards,
+        })
     }
 
     async fn get_staking_info(

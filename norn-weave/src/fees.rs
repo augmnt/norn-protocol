@@ -1,5 +1,5 @@
-use norn_types::primitives::Amount;
-use norn_types::weave::FeeState;
+use norn_types::primitives::{Address, Amount};
+use norn_types::weave::{FeeState, ValidatorSet};
 
 /// Compute the fee for a given number of commitments.
 ///
@@ -30,6 +30,48 @@ pub fn update_fee_state(fee_state: &mut FeeState, utilized: u64, capacity: u64) 
             .saturating_sub(fee_state.fee_multiplier / 8);
     }
     fee_state.fee_multiplier = fee_state.fee_multiplier.clamp(100, 10000);
+}
+
+/// Compute the reward distribution for validators based on their stake proportions.
+///
+/// Each validator receives `total_rewards * validator.stake / total_stake`.
+/// Any dust remainder (from integer division) is assigned to the first validator
+/// (highest-staked, since ValidatorSet is sorted descending by stake).
+///
+/// Returns an empty vec if there are no active validators, zero total stake, or zero rewards.
+pub fn compute_reward_distribution(
+    validator_set: &ValidatorSet,
+    total_rewards: Amount,
+) -> Vec<(Address, Amount)> {
+    if total_rewards == 0 || validator_set.total_stake == 0 || validator_set.validators.is_empty() {
+        return vec![];
+    }
+
+    let total_stake = validator_set.total_stake;
+    let mut distributed: Amount = 0;
+    let mut rewards: Vec<(Address, Amount)> = validator_set
+        .validators
+        .iter()
+        .filter(|v| v.active)
+        .map(|v| {
+            let share = total_rewards
+                .saturating_mul(v.stake)
+                .checked_div(total_stake)
+                .unwrap_or(0);
+            distributed = distributed.saturating_add(share);
+            (v.address, share)
+        })
+        .collect();
+
+    // Assign dust remainder to first validator (highest stake).
+    if !rewards.is_empty() {
+        let dust = total_rewards.saturating_sub(distributed);
+        if dust > 0 {
+            rewards[0].1 = rewards[0].1.saturating_add(dust);
+        }
+    }
+
+    rewards
 }
 
 #[cfg(test)]
@@ -111,5 +153,84 @@ mod tests {
         let mut fs = make_fee_state(100, 1000);
         update_fee_state(&mut fs, 0, 0); // zero capacity => no change
         assert_eq!(fs.fee_multiplier, 1000);
+    }
+
+    // ─── Reward Distribution Tests ─────────────────────────────────────
+
+    use norn_types::weave::{Validator, ValidatorSet};
+
+    fn make_validator(addr_byte: u8, stake: Amount) -> Validator {
+        let mut address = [0u8; 20];
+        address[19] = addr_byte;
+        Validator {
+            pubkey: [addr_byte; 32],
+            address,
+            stake,
+            active: true,
+        }
+    }
+
+    fn make_vs(validators: Vec<Validator>) -> ValidatorSet {
+        let total_stake: Amount = validators.iter().map(|v| v.stake).sum();
+        ValidatorSet {
+            validators,
+            total_stake,
+            epoch: 0,
+        }
+    }
+
+    #[test]
+    fn test_reward_distribution_proportional() {
+        // Two validators: 75% and 25% stake
+        let vs = make_vs(vec![make_validator(1, 750), make_validator(2, 250)]);
+        let rewards = compute_reward_distribution(&vs, 1000);
+        assert_eq!(rewards.len(), 2);
+        assert_eq!(rewards[0].1, 750); // 1000 * 750 / 1000
+        assert_eq!(rewards[1].1, 250); // 1000 * 250 / 1000
+    }
+
+    #[test]
+    fn test_reward_distribution_single_validator() {
+        let vs = make_vs(vec![make_validator(1, 500)]);
+        let rewards = compute_reward_distribution(&vs, 999);
+        assert_eq!(rewards.len(), 1);
+        assert_eq!(rewards[0].1, 999); // gets everything
+    }
+
+    #[test]
+    fn test_reward_distribution_zero_fees() {
+        let vs = make_vs(vec![make_validator(1, 500)]);
+        let rewards = compute_reward_distribution(&vs, 0);
+        assert!(rewards.is_empty());
+    }
+
+    #[test]
+    fn test_reward_distribution_no_validators() {
+        let vs = ValidatorSet {
+            validators: vec![],
+            total_stake: 0,
+            epoch: 0,
+        };
+        let rewards = compute_reward_distribution(&vs, 1000);
+        assert!(rewards.is_empty());
+    }
+
+    #[test]
+    fn test_reward_distribution_dust_remainder() {
+        // Three validators with equal stake: 1000 / 3 = 333 each, remainder = 1
+        let vs = make_vs(vec![
+            make_validator(1, 100),
+            make_validator(2, 100),
+            make_validator(3, 100),
+        ]);
+        let rewards = compute_reward_distribution(&vs, 1000);
+        assert_eq!(rewards.len(), 3);
+        // First validator gets dust: 333 + 1 = 334
+        assert_eq!(rewards[0].1, 334);
+        assert_eq!(rewards[1].1, 333);
+        assert_eq!(rewards[2].1, 333);
+        // Total should equal input
+        let total: Amount = rewards.iter().map(|r| r.1).sum();
+        assert_eq!(total, 1000);
     }
 }

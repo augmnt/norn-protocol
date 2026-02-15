@@ -12,6 +12,8 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FormButton } from "@/components/ui/form-button";
+import { FieldError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { VESTING_LOOM_ID } from "@/lib/apps-config";
@@ -41,6 +43,18 @@ export default function CreateSchedulePage() {
     parseFloat(durationDays) > 0 &&
     parseFloat(cliffDays) >= 0 &&
     parseFloat(cliffDays) <= parseFloat(durationDays);
+
+  const disabledReason = !beneficiary
+    ? "Enter a beneficiary address"
+    : !isValidAddress(beneficiary)
+      ? "Invalid beneficiary address"
+      : parseFloat(amount) <= 0
+        ? "Enter an amount"
+        : parseFloat(durationDays) <= 0
+          ? "Duration must be greater than 0"
+          : parseFloat(cliffDays) > parseFloat(durationDays)
+            ? "Cliff cannot exceed duration"
+            : undefined;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -113,7 +127,14 @@ export default function CreateSchedulePage() {
                 value={beneficiary}
                 onChange={(e) => setBeneficiary(e.target.value)}
                 placeholder="0x..."
-                className="font-mono text-sm"
+                className={cn(
+                  "font-mono text-sm",
+                  beneficiary && !isValidAddress(beneficiary) && "border-destructive"
+                )}
+              />
+              <FieldError
+                message="Invalid address format"
+                show={!!beneficiary && !isValidAddress(beneficiary)}
               />
             </div>
 
@@ -217,9 +238,10 @@ export default function CreateSchedulePage() {
               </div>
             </div>
 
-            <Button
+            <FormButton
               onClick={handleSubmit}
               disabled={!canSubmit || loading}
+              disabledReason={disabledReason}
               className="w-full"
             >
               {loading ? (
@@ -228,7 +250,7 @@ export default function CreateSchedulePage() {
                 <Hourglass className="mr-2 h-3.5 w-3.5" />
               )}
               Create Schedule
-            </Button>
+            </FormButton>
           </CardContent>
         </Card>
       </div>

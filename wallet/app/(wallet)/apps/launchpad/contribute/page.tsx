@@ -12,6 +12,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FormButton } from "@/components/ui/form-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LAUNCHPAD_LOOM_ID } from "@/lib/apps-config";
@@ -26,6 +27,10 @@ export default function LaunchpadContributePage() {
   const [amount, setAmount] = useState("");
 
   const canSubmit = parseFloat(amount) > 0;
+
+  const disabledReason = parseFloat(amount) <= 0
+    ? "Enter an amount"
+    : undefined;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -86,9 +91,10 @@ export default function LaunchpadContributePage() {
               />
             </div>
 
-            <Button
+            <FormButton
               onClick={handleSubmit}
               disabled={!canSubmit || loading}
+              disabledReason={disabledReason}
               className="w-full"
             >
               {loading ? (
@@ -97,7 +103,7 @@ export default function LaunchpadContributePage() {
                 <Coins className="mr-2 h-3.5 w-3.5" />
               )}
               Contribute
-            </Button>
+            </FormButton>
           </CardContent>
         </Card>
       </div>

@@ -11,6 +11,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FormButton } from "@/components/ui/form-button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -56,6 +57,22 @@ function InitializeForm({
     parseFloat(startDelayHours) >= 0 &&
     parseFloat(durationHours) > 0 &&
     parseFloat(totalTokens) > 0;
+
+  const disabledReason = !tokenId
+    ? "Enter a token ID"
+    : !/^[a-fA-F0-9]{64}$/.test(tokenId)
+      ? "Token ID must be 64 hex characters"
+      : parseFloat(price) <= 0
+        ? "Price must be greater than 0"
+        : parseFloat(hardCap) <= 0
+          ? "Hard cap must be greater than 0"
+          : parseFloat(maxPerWallet) <= 0
+            ? "Max per wallet must be greater than 0"
+            : parseFloat(totalTokens) <= 0
+              ? "Total tokens must be greater than 0"
+              : parseFloat(durationHours) <= 0
+                ? "Duration must be greater than 0"
+                : undefined;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -211,9 +228,10 @@ function InitializeForm({
           </div>
         </div>
 
-        <Button
+        <FormButton
           onClick={handleSubmit}
           disabled={!canSubmit || loading}
+          disabledReason={disabledReason}
           className="w-full"
         >
           {loading ? (
@@ -222,7 +240,7 @@ function InitializeForm({
             <Rocket className="mr-2 h-3.5 w-3.5" />
           )}
           Initialize Launchpad
-        </Button>
+        </FormButton>
       </CardContent>
     </Card>
   );

@@ -11,7 +11,7 @@ use norn_types::weave::{
 use crate::error::WeaveError;
 
 /// Contents drained from the mempool for inclusion in a block.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct BlockContents {
     pub commitments: Vec<CommitmentUpdate>,
     pub registrations: Vec<Registration>,

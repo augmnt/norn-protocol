@@ -239,5 +239,8 @@ pub async fn run(command: WalletCommand) -> Result<(), WalletError> {
         WalletCommand::StakingInfo { validator, rpc_url } => {
             commands::staking_info::run(validator.as_deref(), rpc_url.as_deref()).await
         }
+        WalletCommand::Rewards { json, rpc_url } => {
+            commands::rewards::run(json, rpc_url.as_deref()).await
+        }
     }
 }

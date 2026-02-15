@@ -12,6 +12,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FormButton } from "@/components/ui/form-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SPLITTER_LOOM_ID } from "@/lib/apps-config";
@@ -48,6 +49,10 @@ export default function SplitPaymentPage() {
   }, [fetchConfig]);
 
   const canSubmit = parseFloat(amount) > 0;
+
+  const disabledReason = parseFloat(amount) <= 0
+    ? "Enter an amount"
+    : undefined;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -120,9 +125,10 @@ export default function SplitPaymentPage() {
               />
             </div>
 
-            <Button
+            <FormButton
               onClick={handleSubmit}
               disabled={!canSubmit || loading}
+              disabledReason={disabledReason}
               className="w-full"
             >
               {loading ? (
@@ -131,7 +137,7 @@ export default function SplitPaymentPage() {
                 <GitFork className="mr-2 h-3.5 w-3.5" />
               )}
               Split Payment
-            </Button>
+            </FormButton>
           </CardContent>
         </Card>
 

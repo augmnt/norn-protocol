@@ -6,12 +6,15 @@ import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FormButton } from "@/components/ui/form-button";
+import { FieldError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ESCROW_LOOM_ID } from "@/lib/apps-config";
 import { useEscrow } from "@/hooks/use-escrow";
 import { isValidAddress } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { ArrowLeft, ShieldCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -32,6 +35,18 @@ export default function CreateDealPage() {
     parseFloat(amount) > 0 &&
     description.trim().length > 0 &&
     parseFloat(deadlineHours) > 0;
+
+  const disabledReason = !seller
+    ? "Enter a seller address"
+    : !isValidAddress(seller)
+      ? "Invalid seller address"
+      : parseFloat(amount) <= 0
+        ? "Enter an amount"
+        : !description.trim()
+          ? "Enter a description"
+          : parseFloat(deadlineHours) <= 0
+            ? "Deadline must be greater than 0"
+            : undefined;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -85,7 +100,14 @@ export default function CreateDealPage() {
                 value={seller}
                 onChange={(e) => setSeller(e.target.value)}
                 placeholder="0x..."
-                className="font-mono text-sm"
+                className={cn(
+                  "font-mono text-sm",
+                  seller && !isValidAddress(seller) && "border-destructive"
+                )}
+              />
+              <FieldError
+                message="Invalid address format"
+                show={!!seller && !isValidAddress(seller)}
               />
             </div>
 
@@ -151,9 +173,10 @@ export default function CreateDealPage() {
               </p>
             </div>
 
-            <Button
+            <FormButton
               onClick={handleSubmit}
               disabled={!canSubmit || loading}
+              disabledReason={disabledReason}
               className="w-full"
             >
               {loading ? (
@@ -162,7 +185,7 @@ export default function CreateDealPage() {
                 <ShieldCheck className="mr-2 h-3.5 w-3.5" />
               )}
               Create Deal
-            </Button>
+            </FormButton>
           </CardContent>
         </Card>
       </div>

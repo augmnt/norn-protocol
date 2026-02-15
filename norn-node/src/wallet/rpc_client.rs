@@ -5,8 +5,8 @@ use jsonrpsee::rpc_params;
 
 use crate::rpc::types::{
     BlockInfo, ExecutionResult, FeeEstimateInfo, HealthInfo, LoomInfo, NameInfo, NameResolution,
-    QueryResult, StakingInfo, SubmitResult, TokenInfo, TransactionHistoryEntry, ValidatorSetInfo,
-    WeaveStateInfo,
+    QueryResult, StakingInfo, SubmitResult, TokenInfo, TransactionHistoryEntry,
+    ValidatorRewardsInfo, ValidatorSetInfo, WeaveStateInfo,
 };
 
 use super::error::WalletError;
@@ -515,6 +515,18 @@ impl RpcClient {
                 "norn_getStakingInfo",
                 rpc_params![pubkey_hex.map(|s| s.to_string())],
             )
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Get validator rewards info.
+    pub async fn get_validator_rewards(&self) -> Result<ValidatorRewardsInfo, WalletError> {
+        let pb = Self::spinner("Fetching validator rewards...");
+        let result: ValidatorRewardsInfo = self
+            .client
+            .request("norn_getValidatorRewards", rpc_params![])
             .await
             .map_err(|e| Self::map_rpc_error(&e))?;
         pb.finish_and_clear();

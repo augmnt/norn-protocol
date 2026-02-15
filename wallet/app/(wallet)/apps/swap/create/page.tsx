@@ -12,6 +12,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FormButton } from "@/components/ui/form-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SWAP_LOOM_ID } from "@/lib/apps-config";
@@ -35,6 +36,16 @@ export default function CreateOrderPage() {
     buyToken.length === 64 &&
     parseFloat(sellAmount) > 0 &&
     parseFloat(buyAmount) > 0;
+
+  const disabledReason = sellToken.length !== 64
+    ? "Sell token ID must be 64 characters"
+    : parseFloat(sellAmount) <= 0
+      ? "Enter a sell amount"
+      : buyToken.length !== 64
+        ? "Buy token ID must be 64 characters"
+        : parseFloat(buyAmount) <= 0
+          ? "Enter a buy amount"
+          : undefined;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -140,9 +151,10 @@ export default function CreateOrderPage() {
               />
             </div>
 
-            <Button
+            <FormButton
               onClick={handleSubmit}
               disabled={!canSubmit || loading}
+              disabledReason={disabledReason}
               className="w-full"
             >
               {loading ? (
@@ -151,7 +163,7 @@ export default function CreateOrderPage() {
                 <ArrowLeftRight className="mr-2 h-3.5 w-3.5" />
               )}
               Create Order
-            </Button>
+            </FormButton>
           </CardContent>
         </Card>
       </div>

@@ -358,6 +358,32 @@ pub struct ValidatorStakeInfo {
     pub active: bool,
 }
 
+/// Validator reward distribution info.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidatorRewardsInfo {
+    /// Pending epoch fees (human-readable).
+    pub pending_epoch_fees: String,
+    /// Current epoch number.
+    pub current_epoch: u64,
+    /// Blocks until next distribution.
+    pub blocks_until_distribution: u64,
+    /// Projected per-validator rewards for current epoch fees.
+    pub projected_rewards: Vec<ValidatorRewardInfo>,
+}
+
+/// Per-validator reward projection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidatorRewardInfo {
+    /// Validator address as hex string.
+    pub address: String,
+    /// Public key as hex string.
+    pub pubkey: String,
+    /// Staked amount (human-readable).
+    pub stake: String,
+    /// Projected reward (human-readable).
+    pub projected_reward: String,
+}
+
 /// State proof for a balance.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StateProofInfo {

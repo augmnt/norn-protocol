@@ -11,6 +11,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FormButton } from "@/components/ui/form-button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,6 +49,12 @@ function InitializeForm({
     tokenId.length === 64 &&
     parseInt(rewardRate) > 0 &&
     parseInt(minLockPeriodSeconds) >= 0;
+
+  const disabledReason = tokenId.length !== 64
+    ? "Token ID must be 64 characters"
+    : parseInt(rewardRate) <= 0
+      ? "Reward rate must be greater than 0"
+      : undefined;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -123,9 +130,10 @@ function InitializeForm({
           </div>
         </div>
 
-        <Button
+        <FormButton
           onClick={handleSubmit}
           disabled={!canSubmit || loading}
+          disabledReason={disabledReason}
           className="w-full"
         >
           {loading ? (
@@ -134,7 +142,7 @@ function InitializeForm({
             <Landmark className="mr-2 h-3.5 w-3.5" />
           )}
           Initialize Staking Vault
-        </Button>
+        </FormButton>
       </CardContent>
     </Card>
   );

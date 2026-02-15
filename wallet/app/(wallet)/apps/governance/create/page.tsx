@@ -12,6 +12,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FormButton } from "@/components/ui/form-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -29,6 +30,12 @@ export default function CreateProposalPage() {
 
   const canSubmit =
     title.trim().length > 0 && description.trim().length > 0;
+
+  const disabledReason = !title.trim()
+    ? "Enter a proposal title"
+    : !description.trim()
+      ? "Enter a description"
+      : undefined;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -105,9 +112,10 @@ export default function CreateProposalPage() {
               </p>
             </div>
 
-            <Button
+            <FormButton
               onClick={handleSubmit}
               disabled={!canSubmit || loading}
+              disabledReason={disabledReason}
               className="w-full"
             >
               {loading ? (
@@ -116,7 +124,7 @@ export default function CreateProposalPage() {
                 <Vote className="mr-2 h-3.5 w-3.5" />
               )}
               Create Proposal
-            </Button>
+            </FormButton>
           </CardContent>
         </Card>
       </div>

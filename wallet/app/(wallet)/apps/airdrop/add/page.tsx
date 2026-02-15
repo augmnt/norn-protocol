@@ -12,6 +12,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FormButton } from "@/components/ui/form-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AIRDROP_LOOM_ID } from "@/lib/apps-config";
@@ -37,6 +38,10 @@ export default function AddRecipientsPage() {
     (r) => isValidAddress(r.address) && parseFloat(r.amount) > 0
   );
   const canSubmit = validRecipients.length > 0;
+
+  const disabledReason = validRecipients.length === 0
+    ? "Add at least one valid recipient"
+    : undefined;
 
   const addRow = () =>
     setRecipients([...recipients, { address: "", amount: "" }]);
@@ -145,9 +150,10 @@ export default function AddRecipientsPage() {
               </Button>
             </div>
 
-            <Button
+            <FormButton
               onClick={handleSubmit}
               disabled={!canSubmit || loading}
+              disabledReason={disabledReason}
               className="w-full"
             >
               {loading ? (
@@ -157,7 +163,7 @@ export default function AddRecipientsPage() {
               )}
               Add {validRecipients.length} Recipient
               {validRecipients.length !== 1 ? "s" : ""}
-            </Button>
+            </FormButton>
           </CardContent>
         </Card>
       </div>

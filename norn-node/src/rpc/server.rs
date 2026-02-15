@@ -143,6 +143,7 @@ mod auth_middleware {
         "norn_listLooms",
         "norn_queryLoom",
         "norn_getStakingInfo",
+        "norn_getValidatorRewards",
         "norn_getStateRoot",
         "norn_getStateProof",
         "norn_getBlockTransactions",

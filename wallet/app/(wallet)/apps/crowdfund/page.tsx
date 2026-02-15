@@ -11,6 +11,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FormButton } from "@/components/ui/form-button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -65,6 +66,16 @@ function InitializeForm({
     description.trim().length > 0 &&
     parseFloat(goal) > 0 &&
     parseFloat(deadlineHours) > 0;
+
+  const disabledReason = !title.trim()
+    ? "Enter a campaign title"
+    : !description.trim()
+      ? "Enter a description"
+      : parseFloat(goal) <= 0
+        ? "Goal must be greater than 0"
+        : parseFloat(deadlineHours) <= 0
+          ? "Deadline must be greater than 0"
+          : undefined;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -177,9 +188,10 @@ function InitializeForm({
           </p>
         </div>
 
-        <Button
+        <FormButton
           onClick={handleSubmit}
           disabled={!canSubmit || loading}
+          disabledReason={disabledReason}
           className="w-full"
         >
           {loading ? (
@@ -188,7 +200,7 @@ function InitializeForm({
             <HandCoins className="mr-2 h-3.5 w-3.5" />
           )}
           Create Campaign
-        </Button>
+        </FormButton>
       </CardContent>
     </Card>
   );

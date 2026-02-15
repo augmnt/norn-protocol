@@ -30,6 +30,7 @@ pub mod register;
 pub mod register_name;
 pub mod rename;
 pub mod resolve;
+pub mod rewards;
 pub mod sign_message;
 pub mod stake;
 pub mod staking_info;

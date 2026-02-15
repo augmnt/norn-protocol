@@ -583,8 +583,8 @@ impl StateManager {
         }
         state.debit(&NATIVE_TOKEN_ID, fee);
 
-        // Fee is burned (not credited to anyone), so decrement total supply.
-        self.total_supply_cache = self.total_supply_cache.saturating_sub(fee);
+        // Fees are collected for redistribution to validators at epoch boundaries.
+        // Supply is conserved — do not decrement total_supply_cache.
 
         // Update state hash in meta.
         if let Some(meta) = self.thread_meta.get_mut(&address) {

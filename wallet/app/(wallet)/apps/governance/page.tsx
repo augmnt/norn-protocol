@@ -11,6 +11,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FormButton } from "@/components/ui/form-button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -120,6 +121,14 @@ function InitializeForm({
     parseFloat(votingPeriodHours) > 0 &&
     parseInt(quorum) >= 1;
 
+  const disabledReason = !name.trim()
+    ? "Enter a governance name"
+    : parseFloat(votingPeriodHours) <= 0
+      ? "Voting period must be greater than 0"
+      : parseInt(quorum) < 1
+        ? "Quorum must be at least 1"
+        : undefined;
+
   const handleSubmit = async () => {
     if (!canSubmit) return;
     try {
@@ -197,9 +206,10 @@ function InitializeForm({
           </div>
         </div>
 
-        <Button
+        <FormButton
           onClick={handleSubmit}
           disabled={!canSubmit || loading}
+          disabledReason={disabledReason}
           className="w-full"
         >
           {loading ? (
@@ -208,7 +218,7 @@ function InitializeForm({
             <Vote className="mr-2 h-3.5 w-3.5" />
           )}
           Initialize Governance
-        </Button>
+        </FormButton>
       </CardContent>
     </Card>
   );

@@ -12,12 +12,15 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FormButton } from "@/components/ui/form-button";
+import { FieldError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { TREASURY_LOOM_ID } from "@/lib/apps-config";
 import { useTreasury } from "@/hooks/use-treasury";
 import { isValidAddress } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { ArrowLeft, Vault, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -38,6 +41,18 @@ export default function CreateProposalPage() {
     parseFloat(amount) > 0 &&
     description.trim().length > 0 &&
     parseFloat(deadlineHours) > 0;
+
+  const disabledReason = !to
+    ? "Enter a recipient address"
+    : !isValidAddress(to)
+      ? "Invalid recipient address"
+      : parseFloat(amount) <= 0
+        ? "Enter an amount"
+        : !description.trim()
+          ? "Enter a description"
+          : parseFloat(deadlineHours) <= 0
+            ? "Deadline must be greater than 0"
+            : undefined;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -92,7 +107,14 @@ export default function CreateProposalPage() {
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
                 placeholder="0x..."
-                className="font-mono text-sm"
+                className={cn(
+                  "font-mono text-sm",
+                  to && !isValidAddress(to) && "border-destructive"
+                )}
+              />
+              <FieldError
+                message="Invalid address format"
+                show={!!to && !isValidAddress(to)}
               />
             </div>
 
@@ -156,9 +178,10 @@ export default function CreateProposalPage() {
               </p>
             </div>
 
-            <Button
+            <FormButton
               onClick={handleSubmit}
               disabled={!canSubmit || loading}
+              disabledReason={disabledReason}
               className="w-full"
             >
               {loading ? (
@@ -167,7 +190,7 @@ export default function CreateProposalPage() {
                 <Vault className="mr-2 h-3.5 w-3.5" />
               )}
               Create Proposal
-            </Button>
+            </FormButton>
           </CardContent>
         </Card>
       </div>

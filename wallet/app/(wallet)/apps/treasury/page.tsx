@@ -11,6 +11,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FormButton } from "@/components/ui/form-button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -119,6 +120,16 @@ function InitializeForm({
     parseInt(threshold) >= 1 &&
     parseInt(threshold) <= parsedOwners.length;
 
+  const disabledReason = !name.trim()
+    ? "Enter a treasury name"
+    : parsedOwners.length < 2
+      ? "Add at least 2 valid owner addresses"
+      : parseInt(threshold) < 1
+        ? "Threshold must be at least 1"
+        : parseInt(threshold) > parsedOwners.length
+          ? "Threshold cannot exceed owner count"
+          : undefined;
+
   const handleSubmit = async () => {
     if (!canSubmit) return;
     try {
@@ -192,9 +203,10 @@ function InitializeForm({
           </p>
         </div>
 
-        <Button
+        <FormButton
           onClick={handleSubmit}
           disabled={!canSubmit || loading}
+          disabledReason={disabledReason}
           className="w-full"
         >
           {loading ? (
@@ -203,7 +215,7 @@ function InitializeForm({
             <Vault className="mr-2 h-3.5 w-3.5" />
           )}
           Initialize Treasury
-        </Button>
+        </FormButton>
       </CardContent>
     </Card>
   );

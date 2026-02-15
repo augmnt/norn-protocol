@@ -12,6 +12,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FormButton } from "@/components/ui/form-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TIMELOCK_LOOM_ID } from "@/lib/apps-config";
@@ -33,6 +34,14 @@ export default function CreateLockPage() {
     tokenId.length === 64 &&
     parseFloat(amount) > 0 &&
     parseFloat(unlockDays) > 0;
+
+  const disabledReason = tokenId.length !== 64
+    ? "Token ID must be 64 characters"
+    : parseFloat(amount) <= 0
+      ? "Enter an amount"
+      : parseFloat(unlockDays) <= 0
+        ? "Lock duration must be greater than 0"
+        : undefined;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -127,9 +136,10 @@ export default function CreateLockPage() {
               </p>
             </div>
 
-            <Button
+            <FormButton
               onClick={handleSubmit}
               disabled={!canSubmit || loading}
+              disabledReason={disabledReason}
               className="w-full"
             >
               {loading ? (
@@ -138,7 +148,7 @@ export default function CreateLockPage() {
                 <Clock className="mr-2 h-3.5 w-3.5" />
               )}
               Lock Tokens
-            </Button>
+            </FormButton>
           </CardContent>
         </Card>
       </div>

@@ -509,4 +509,13 @@ pub enum WalletCommand {
         #[arg(long)]
         rpc_url: Option<String>,
     },
+    /// View pending validator rewards and projected distribution
+    Rewards {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
 }

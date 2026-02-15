@@ -1351,6 +1351,33 @@ impl Node {
                                     sm.archive_block(block.clone(), Some(production_us));
                                 }
 
+                                // Distribute epoch rewards to validators.
+                                if let Some(rewards) = engine.take_pending_rewards() {
+                                    let mut sm = self.state_manager.write().await;
+                                    let now = block.timestamp;
+                                    for (addr, amount) in &rewards {
+                                        sm.auto_register_if_needed(*addr);
+                                        if let Err(e) = sm.credit(*addr, norn_types::primitives::NATIVE_TOKEN_ID, *amount) {
+                                            tracing::warn!(
+                                                "failed to credit epoch reward to {}: {}",
+                                                hex::encode(addr), e
+                                            );
+                                        }
+                                        sm.log_synthetic_transfer(
+                                            [0u8; 20],
+                                            *addr,
+                                            norn_types::primitives::NATIVE_TOKEN_ID,
+                                            *amount,
+                                            Some("Validator epoch reward"),
+                                            now,
+                                        );
+                                    }
+                                    tracing::info!(
+                                        validators = rewards.len(),
+                                        "epoch rewards distributed (solo mode)"
+                                    );
+                                }
+
                                 // Broadcast block to P2P network.
                                 if let Some(ref handle) = self.relay_handle {
                                     let h = handle.clone();
@@ -1455,6 +1482,36 @@ impl Node {
                                             sm.debit_fee(commit.thread_id, fee_per);
                                         }
                                         sm.archive_block(block.clone(), None);
+                                    }
+
+                                    // Distribute epoch rewards to validators (consensus path).
+                                    {
+                                        let mut engine = self.weave_engine.write().await;
+                                        if let Some(rewards) = engine.take_pending_rewards() {
+                                            let mut sm = self.state_manager.write().await;
+                                            let now = block.timestamp;
+                                            for (addr, amount) in &rewards {
+                                                sm.auto_register_if_needed(*addr);
+                                                if let Err(e) = sm.credit(*addr, norn_types::primitives::NATIVE_TOKEN_ID, *amount) {
+                                                    tracing::warn!(
+                                                        "failed to credit epoch reward to {}: {}",
+                                                        hex::encode(addr), e
+                                                    );
+                                                }
+                                                sm.log_synthetic_transfer(
+                                                    [0u8; 20],
+                                                    *addr,
+                                                    norn_types::primitives::NATIVE_TOKEN_ID,
+                                                    *amount,
+                                                    Some("Validator epoch reward"),
+                                                    now,
+                                                );
+                                            }
+                                            tracing::info!(
+                                                validators = rewards.len(),
+                                                "epoch rewards distributed (consensus)"
+                                            );
+                                        }
                                     }
 
                                     // Notify WebSocket subscribers.

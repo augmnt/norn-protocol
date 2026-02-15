@@ -37,6 +37,8 @@ pub struct WeaveEngine {
     known_symbols: HashSet<String>,
     /// Known loom IDs for duplicate detection.
     known_looms: HashSet<LoomId>,
+    /// Pending validator rewards to be distributed by the node.
+    pending_rewards: Option<Vec<(Address, Amount)>>,
     /// Last committed block (for RPC queries).
     last_block: Option<WeaveBlock>,
     /// Current timestamp, set by the node before each tick.
@@ -70,6 +72,7 @@ impl WeaveEngine {
             known_tokens: HashMap::new(),
             known_symbols: HashSet::new(),
             known_looms: HashSet::new(),
+            pending_rewards: None,
             last_block: None,
             current_timestamp: 0,
             pending_blocks: HashMap::new(),
@@ -478,6 +481,29 @@ impl WeaveEngine {
             MAX_COMMITMENTS_PER_BLOCK as u64,
         );
 
+        // Check for epoch boundary — distribute accumulated fees to validators.
+        let height = block.height;
+        if height > 0
+            && height.is_multiple_of(norn_types::constants::BLOCKS_PER_EPOCH)
+            && self.weave_state.fee_state.epoch_fees > 0
+        {
+            let vs = self.staking.active_validators();
+            let rewards = crate::fees::compute_reward_distribution(
+                &vs,
+                self.weave_state.fee_state.epoch_fees,
+            );
+            if !rewards.is_empty() {
+                tracing::info!(
+                    height,
+                    epoch_fees = self.weave_state.fee_state.epoch_fees,
+                    validators = rewards.len(),
+                    "distributing epoch rewards to validators"
+                );
+                self.pending_rewards = Some(rewards);
+            }
+            self.weave_state.fee_state.epoch_fees = 0;
+        }
+
         self.last_block = Some(block.clone());
     }
 
@@ -635,6 +661,12 @@ impl WeaveEngine {
     /// Get the current active validator set.
     pub fn validator_set(&self) -> ValidatorSet {
         self.staking.active_validators()
+    }
+
+    /// Take pending validator rewards (if any) after an epoch boundary.
+    /// Returns `None` if no rewards are pending.
+    pub fn take_pending_rewards(&mut self) -> Option<Vec<(Address, Amount)>> {
+        self.pending_rewards.take()
     }
 
     /// Get the current fee estimate for a single commitment.
@@ -828,6 +860,132 @@ mod tests {
             reconstructed.public_key(),
             "consensus keypair must use the same key as the validator"
         );
+    }
+
+    #[test]
+    fn test_epoch_boundary_triggers_rewards() {
+        let kp = Keypair::generate();
+        let seed = keypair_seed(&kp);
+        let pubkey = kp.public_key();
+        let addr = pubkey_to_address(&pubkey);
+        let vs = make_validator_set_from_keypair(&kp);
+        let mut state = make_weave_state();
+        // Set height just before epoch boundary
+        state.height = norn_types::constants::BLOCKS_PER_EPOCH - 1;
+        state.fee_state.epoch_fees = 5000;
+        let mut engine = WeaveEngine::new(kp, vs, state);
+
+        // Seed staking so active_validators() returns something.
+        engine.seed_staking(
+            &[Validator {
+                pubkey,
+                address: addr,
+                stake: 1000,
+                active: true,
+            }],
+            1000,
+            100,
+        );
+
+        // Build a minimal block at the epoch boundary height.
+        // build_block sets height = prev_height + 1, so pass BLOCKS_PER_EPOCH - 1.
+        let block_kp = Keypair::from_seed(&seed);
+        let block = crate::block::build_block(
+            [0u8; 32],
+            norn_types::constants::BLOCKS_PER_EPOCH - 1,
+            crate::mempool::BlockContents::default(),
+            &block_kp,
+            1000,
+            [0u8; 32],
+        );
+        assert_eq!(block.height, norn_types::constants::BLOCKS_PER_EPOCH);
+        engine.apply_block_to_state(&block);
+
+        // Rewards should be pending.
+        let rewards = engine.take_pending_rewards();
+        assert!(rewards.is_some());
+        let rewards = rewards.unwrap();
+        assert_eq!(rewards.len(), 1);
+        assert_eq!(rewards[0].1, 5000); // All fees go to single validator
+    }
+
+    #[test]
+    fn test_epoch_boundary_resets_fees() {
+        let kp = Keypair::generate();
+        let seed = keypair_seed(&kp);
+        let pubkey = kp.public_key();
+        let addr = pubkey_to_address(&pubkey);
+        let vs = make_validator_set_from_keypair(&kp);
+        let mut state = make_weave_state();
+        state.height = norn_types::constants::BLOCKS_PER_EPOCH - 1;
+        state.fee_state.epoch_fees = 3000;
+        let mut engine = WeaveEngine::new(kp, vs, state);
+
+        engine.seed_staking(
+            &[Validator {
+                pubkey,
+                address: addr,
+                stake: 1000,
+                active: true,
+            }],
+            1000,
+            100,
+        );
+
+        let block_kp = Keypair::from_seed(&seed);
+        let block = crate::block::build_block(
+            [0u8; 32],
+            norn_types::constants::BLOCKS_PER_EPOCH - 1,
+            crate::mempool::BlockContents::default(),
+            &block_kp,
+            1000,
+            [0u8; 32],
+        );
+        assert_eq!(block.height, norn_types::constants::BLOCKS_PER_EPOCH);
+        engine.apply_block_to_state(&block);
+
+        // Epoch fees should be reset to zero.
+        assert_eq!(engine.weave_state().fee_state.epoch_fees, 0);
+    }
+
+    #[test]
+    fn test_no_rewards_before_epoch_boundary() {
+        let kp = Keypair::generate();
+        let seed = keypair_seed(&kp);
+        let pubkey = kp.public_key();
+        let addr = pubkey_to_address(&pubkey);
+        let vs = make_validator_set_from_keypair(&kp);
+        let mut state = make_weave_state();
+        state.height = 499; // Not at epoch boundary (500 != BLOCKS_PER_EPOCH=1000)
+        state.fee_state.epoch_fees = 5000;
+        let mut engine = WeaveEngine::new(kp, vs, state);
+
+        engine.seed_staking(
+            &[Validator {
+                pubkey,
+                address: addr,
+                stake: 1000,
+                active: true,
+            }],
+            1000,
+            100,
+        );
+
+        let block_kp = Keypair::from_seed(&seed);
+        let block = crate::block::build_block(
+            [0u8; 32],
+            500,
+            crate::mempool::BlockContents::default(),
+            &block_kp,
+            1000,
+            [0u8; 32],
+        );
+        engine.apply_block_to_state(&block);
+
+        // No rewards at non-boundary.
+        assert!(engine.take_pending_rewards().is_none());
+        // Epoch fees should still be accumulated (not reset).
+        assert!(engine.weave_state().fee_state.epoch_fees >= 5000);
     }
 
     #[test]

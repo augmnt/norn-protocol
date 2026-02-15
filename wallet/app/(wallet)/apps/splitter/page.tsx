@@ -11,6 +11,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FormButton } from "@/components/ui/form-button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -57,6 +58,14 @@ function InitializeForm({
     name.trim().length > 0 &&
     validRecipients.length >= 2 &&
     Math.abs(totalPct - 100) < 0.01;
+
+  const disabledReason = !name.trim()
+    ? "Enter a splitter name"
+    : validRecipients.length < 2
+      ? "Add at least 2 valid recipients"
+      : Math.abs(totalPct - 100) >= 0.01
+        ? "Percentages must total 100%"
+        : undefined;
 
   const addRecipient = () =>
     setRecipients([...recipients, { address: "", percentage: "" }]);
@@ -172,9 +181,10 @@ function InitializeForm({
           )}
         </div>
 
-        <Button
+        <FormButton
           onClick={handleSubmit}
           disabled={!canSubmit || loading}
+          disabledReason={disabledReason}
           className="w-full"
         >
           {loading ? (
@@ -183,7 +193,7 @@ function InitializeForm({
             <GitFork className="mr-2 h-3.5 w-3.5" />
           )}
           Initialize Splitter
-        </Button>
+        </FormButton>
       </CardContent>
     </Card>
   );
