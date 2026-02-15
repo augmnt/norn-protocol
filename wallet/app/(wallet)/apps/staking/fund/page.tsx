@@ -60,7 +60,7 @@ export default function FundRewardsPage() {
         <Card>
           <CardHeader className="pb-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-norn/10">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-norn/10">
                 <Coins className="h-4 w-4 text-norn" />
               </div>
               <div>
