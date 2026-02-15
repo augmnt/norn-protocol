@@ -45,6 +45,9 @@ export function useLoomOps() {
           inputHex,
           strip0x(activeAddress),
         ]);
+        if (!result.success) {
+          throw new Error(result.reason || "Execution failed");
+        }
         queryClient.invalidateQueries({ queryKey: ["balance", activeAddress] });
         queryClient.invalidateQueries({ queryKey: ["threadState", activeAddress] });
         queryClient.invalidateQueries({ queryKey: ["txHistory", activeAddress] });

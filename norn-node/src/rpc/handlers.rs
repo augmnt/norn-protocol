@@ -1936,6 +1936,11 @@ impl NornRpcServer for NornRpcImpl {
         };
 
         let mut loom_mgr = self.loom_manager.write().await;
+
+        // Auto-join the sender as a participant if not already one.
+        // Loom contracts are permissionless — anyone can interact.
+        let _ = loom_mgr.join(&loom_id, [0u8; 32], sender, timestamp);
+
         match loom_mgr.execute(&loom_id, &input, sender, block_height, timestamp) {
             Ok(outcome) => {
                 // Persist updated state.
