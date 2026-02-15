@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
@@ -39,13 +39,18 @@ export default function LockDetailPage() {
 
   const [lock, setLock] = useState<LockInfo | null>(null);
   const [fetching, setFetching] = useState(true);
+  const hasLoadedRef = useRef(false);
   const [now, setNow] = useState(Math.floor(Date.now() / 1000));
 
   const fetchData = useCallback(async () => {
-    setFetching(true);
-    const l = await getLock(lockId);
-    setLock(l);
-    setFetching(false);
+    if (!hasLoadedRef.current) setFetching(true);
+    try {
+      const l = await getLock(lockId);
+      setLock(l);
+    } finally {
+      hasLoadedRef.current = true;
+      setFetching(false);
+    }
   }, [getLock, lockId]);
 
   useEffect(() => {

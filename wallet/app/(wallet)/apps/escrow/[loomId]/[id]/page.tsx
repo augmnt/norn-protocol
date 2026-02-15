@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
@@ -115,12 +115,17 @@ export default function DealDetailPage() {
 
   const [deal, setDeal] = useState<Deal | null>(null);
   const [fetching, setFetching] = useState(true);
+  const hasLoadedRef = useRef(false);
 
   const fetchDeal = useCallback(async () => {
-    setFetching(true);
-    const d = await getDeal(dealId);
-    setDeal(d);
-    setFetching(false);
+    if (!hasLoadedRef.current) setFetching(true);
+    try {
+      const d = await getDeal(dealId);
+      setDeal(d);
+    } finally {
+      hasLoadedRef.current = true;
+      setFetching(false);
+    }
   }, [getDeal, dealId]);
 
   useEffect(() => {

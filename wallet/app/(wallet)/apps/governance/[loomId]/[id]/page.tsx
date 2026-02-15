@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
@@ -44,9 +44,10 @@ export default function ProposalDetailPage() {
   const [proposal, setProposal] = useState<GovProposal | null>(null);
   const [hasVoted, setHasVoted] = useState<boolean | null>(null);
   const [fetching, setFetching] = useState(true);
+  const hasLoadedRef = useRef(false);
 
   const fetchData = useCallback(async () => {
-    setFetching(true);
+    if (!hasLoadedRef.current) setFetching(true);
     try {
       const p = await getProposal(proposalId);
       setProposal(p);
@@ -58,6 +59,7 @@ export default function ProposalDetailPage() {
     } catch {
       // ignore
     } finally {
+      hasLoadedRef.current = true;
       setFetching(false);
     }
   }, [getProposal, getVote, proposalId, activeAddress]);

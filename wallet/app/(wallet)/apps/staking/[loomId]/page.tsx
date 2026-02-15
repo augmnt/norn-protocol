@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
@@ -170,13 +170,14 @@ export default function StakingDashboardPage() {
   const [totalStaked, setTotalStaked] = useState<bigint>(0n);
   const [rewardPool, setRewardPool] = useState<bigint>(0n);
   const [fetching, setFetching] = useState(false);
+  const hasLoadedRef = useRef(false);
 
   const [stakeAmount, setStakeAmount] = useState("");
   const [unstakeAmount, setUnstakeAmount] = useState("");
 
   const fetchData = useCallback(async () => {
     if (!loomId) return;
-    setFetching(true);
+    if (!hasLoadedRef.current) setFetching(true);
     try {
       const [cfg, ts, rp] = await Promise.all([
         getConfig(),
@@ -198,6 +199,7 @@ export default function StakingDashboardPage() {
     } catch {
       // ignore
     } finally {
+      hasLoadedRef.current = true;
       setFetching(false);
     }
   }, [

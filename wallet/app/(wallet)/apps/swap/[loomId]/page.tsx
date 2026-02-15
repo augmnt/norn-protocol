@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
@@ -87,10 +87,11 @@ export default function SwapDashboardPage() {
   const { getOrder, getOrderCount, loading } = useSwap(loomId);
   const [orders, setOrders] = useState<SwapOrder[]>([]);
   const [fetching, setFetching] = useState(false);
+  const hasLoadedRef = useRef(false);
 
   const fetchOrders = useCallback(async () => {
     if (!loomId) return;
-    setFetching(true);
+    if (!hasLoadedRef.current) setFetching(true);
     try {
       const count = await getOrderCount();
       const fetched: SwapOrder[] = [];
@@ -103,6 +104,7 @@ export default function SwapDashboardPage() {
     } catch {
       // ignore
     } finally {
+      hasLoadedRef.current = true;
       setFetching(false);
     }
   }, [getOrder, getOrderCount, loomId]);

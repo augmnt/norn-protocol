@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
@@ -39,12 +39,17 @@ export default function OrderDetailPage() {
 
   const [order, setOrder] = useState<SwapOrder | null>(null);
   const [fetching, setFetching] = useState(true);
+  const hasLoadedRef = useRef(false);
 
   const fetchData = useCallback(async () => {
-    setFetching(true);
-    const o = await getOrder(orderId);
-    setOrder(o);
-    setFetching(false);
+    if (!hasLoadedRef.current) setFetching(true);
+    try {
+      const o = await getOrder(orderId);
+      setOrder(o);
+    } finally {
+      hasLoadedRef.current = true;
+      setFetching(false);
+    }
   }, [getOrder, orderId]);
 
   useEffect(() => {

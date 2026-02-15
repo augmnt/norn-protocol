@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
@@ -75,10 +75,11 @@ export default function EscrowDashboardPage() {
   const { getDeal, getDealCount, loading } = useEscrow(loomId);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [fetching, setFetching] = useState(false);
+  const hasLoadedRef = useRef(false);
 
   const fetchDeals = useCallback(async () => {
     if (!loomId) return;
-    setFetching(true);
+    if (!hasLoadedRef.current) setFetching(true);
     try {
       const count = await getDealCount();
       const fetched: Deal[] = [];
@@ -91,6 +92,7 @@ export default function EscrowDashboardPage() {
     } catch {
       // ignore
     } finally {
+      hasLoadedRef.current = true;
       setFetching(false);
     }
   }, [getDeal, getDealCount, loomId]);

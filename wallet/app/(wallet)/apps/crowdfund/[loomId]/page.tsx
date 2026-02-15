@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
@@ -223,10 +223,11 @@ export default function CrowdfundDashboardPage() {
   const [contributorCount, setContributorCount] = useState<bigint>(0n);
   const [myContribution, setMyContribution] = useState<bigint>(0n);
   const [fetching, setFetching] = useState(false);
+  const hasLoadedRef = useRef(false);
 
   const fetchData = useCallback(async () => {
     if (!loomId) return;
-    setFetching(true);
+    if (!hasLoadedRef.current) setFetching(true);
     try {
       const [cfg, raised, count] = await Promise.all([
         getConfig(),
@@ -244,6 +245,7 @@ export default function CrowdfundDashboardPage() {
     } catch {
       // ignore
     } finally {
+      hasLoadedRef.current = true;
       setFetching(false);
     }
   }, [

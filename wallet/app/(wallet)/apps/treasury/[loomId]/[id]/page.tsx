@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
@@ -51,16 +51,21 @@ export default function ProposalDetailPage() {
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [config, setConfig] = useState<TreasuryConfig | null>(null);
   const [fetching, setFetching] = useState(true);
+  const hasLoadedRef = useRef(false);
 
   const fetchData = useCallback(async () => {
-    setFetching(true);
-    const [p, cfg] = await Promise.all([
-      getProposal(proposalId),
-      getConfig(),
-    ]);
-    setProposal(p);
-    setConfig(cfg);
-    setFetching(false);
+    if (!hasLoadedRef.current) setFetching(true);
+    try {
+      const [p, cfg] = await Promise.all([
+        getProposal(proposalId),
+        getConfig(),
+      ]);
+      setProposal(p);
+      setConfig(cfg);
+    } finally {
+      hasLoadedRef.current = true;
+      setFetching(false);
+    }
   }, [getProposal, getConfig, proposalId]);
 
   useEffect(() => {

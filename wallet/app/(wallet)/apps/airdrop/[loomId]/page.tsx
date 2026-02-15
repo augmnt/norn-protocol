@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
@@ -146,10 +146,11 @@ export default function AirdropDashboardPage() {
   const [myAllocation, setMyAllocation] = useState<bigint>(0n);
   const [myClaimed, setMyClaimed] = useState(false);
   const [fetching, setFetching] = useState(false);
+  const hasLoadedRef = useRef(false);
 
   const fetchData = useCallback(async () => {
     if (!loomId) return;
-    setFetching(true);
+    if (!hasLoadedRef.current) setFetching(true);
     try {
       const cfg = await getConfig();
       setConfig(cfg);
@@ -165,6 +166,7 @@ export default function AirdropDashboardPage() {
     } catch {
       // ignore
     } finally {
+      hasLoadedRef.current = true;
       setFetching(false);
     }
   }, [getConfig, getAllocation, isClaimed, activeAddress, loomId]);

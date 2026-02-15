@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
@@ -233,10 +233,11 @@ export default function GovernanceDashboardPage() {
   const [config, setConfig] = useState<GovConfig | null>(null);
   const [proposals, setProposals] = useState<GovProposal[]>([]);
   const [fetching, setFetching] = useState(false);
+  const hasLoadedRef = useRef(false);
 
   const fetchData = useCallback(async () => {
     if (!loomId) return;
-    setFetching(true);
+    if (!hasLoadedRef.current) setFetching(true);
     try {
       const [cfg, count] = await Promise.all([
         getConfig(),
@@ -254,6 +255,7 @@ export default function GovernanceDashboardPage() {
     } catch {
       // ignore
     } finally {
+      hasLoadedRef.current = true;
       setFetching(false);
     }
   }, [getConfig, getProposal, getProposalCount, loomId]);

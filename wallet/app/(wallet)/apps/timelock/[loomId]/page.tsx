@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
@@ -83,10 +83,11 @@ export default function TimelockDashboardPage() {
   const { getLock, getLockCount, loading } = useTimelock(loomId);
   const [locks, setLocks] = useState<LockInfo[]>([]);
   const [fetching, setFetching] = useState(false);
+  const hasLoadedRef = useRef(false);
 
   const fetchLocks = useCallback(async () => {
     if (!loomId) return;
-    setFetching(true);
+    if (!hasLoadedRef.current) setFetching(true);
     try {
       const count = await getLockCount();
       const fetched: LockInfo[] = [];
@@ -99,6 +100,7 @@ export default function TimelockDashboardPage() {
     } catch {
       // ignore
     } finally {
+      hasLoadedRef.current = true;
       setFetching(false);
     }
   }, [getLock, getLockCount, loomId]);

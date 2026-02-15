@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
@@ -32,16 +32,21 @@ export default function ScheduleDetailPage() {
   const [schedule, setSchedule] = useState<VestingSchedule | null>(null);
   const [claimable, setClaimable] = useState<bigint>(0n);
   const [fetching, setFetching] = useState(true);
+  const hasLoadedRef = useRef(false);
 
   const fetchData = useCallback(async () => {
-    setFetching(true);
-    const [s, c] = await Promise.all([
-      getSchedule(scheduleId),
-      getClaimable(scheduleId),
-    ]);
-    setSchedule(s);
-    setClaimable(c);
-    setFetching(false);
+    if (!hasLoadedRef.current) setFetching(true);
+    try {
+      const [s, c] = await Promise.all([
+        getSchedule(scheduleId),
+        getClaimable(scheduleId),
+      ]);
+      setSchedule(s);
+      setClaimable(c);
+    } finally {
+      hasLoadedRef.current = true;
+      setFetching(false);
+    }
   }, [getSchedule, getClaimable, scheduleId]);
 
   useEffect(() => {

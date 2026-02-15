@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
@@ -103,10 +103,11 @@ export default function VestingDashboardPage() {
     useVesting(loomId);
   const [schedules, setSchedules] = useState<VestingSchedule[]>([]);
   const [fetching, setFetching] = useState(false);
+  const hasLoadedRef = useRef(false);
 
   const fetchSchedules = useCallback(async () => {
     if (!loomId) return;
-    setFetching(true);
+    if (!hasLoadedRef.current) setFetching(true);
     try {
       const count = await getScheduleCount();
       const fetched: VestingSchedule[] = [];
@@ -119,6 +120,7 @@ export default function VestingDashboardPage() {
     } catch {
       // ignore
     } finally {
+      hasLoadedRef.current = true;
       setFetching(false);
     }
   }, [getSchedule, getScheduleCount, loomId]);
