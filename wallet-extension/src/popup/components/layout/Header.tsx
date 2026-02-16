@@ -40,10 +40,11 @@ export function Header() {
         )}
       </div>
 
-      <div className="flex flex-1 items-center justify-center">
-        <span className="text-sm font-semibold tracking-wider text-norn">
-          NORN
+      <div className="flex flex-1 items-center justify-center gap-1.5">
+        <span className="font-mono text-sm font-bold tracking-[-0.02em] text-foreground">
+          norn
         </span>
+        <span className="text-[10px] text-muted-foreground">wallet</span>
       </div>
 
       <div className="w-9">

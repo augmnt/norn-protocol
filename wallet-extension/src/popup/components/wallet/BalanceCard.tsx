@@ -21,7 +21,7 @@ export function BalanceCard({ balance, isLive, className }: BalanceCardProps) {
       <div className="font-mono text-3xl font-bold tabular-nums animate-count-up">
         {formatNorn(balance)}
       </div>
-      <span className="text-sm text-muted-foreground">NORN</span>
+      <span className="text-sm font-mono text-muted-foreground">NORN</span>
     </div>
   );
 }
