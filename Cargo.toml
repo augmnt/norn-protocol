@@ -30,6 +30,7 @@ exclude = [
     "examples/swap",
     "examples/airdrop",
     "examples/timelock",
+    "examples/amm-pool",
 ]
 
 [workspace.package]

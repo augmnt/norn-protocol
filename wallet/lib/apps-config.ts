@@ -95,4 +95,12 @@ export const APPS: AppConfig[] = [
     href: "/apps/timelock",
     icon: "Clock",
   },
+  {
+    id: "amm-pool",
+    name: "AMM Pool",
+    description:
+      "Automated market maker for instant token swaps. Create liquidity pools with NORN pairs and earn fees from trades.",
+    href: "/apps/amm-pool",
+    icon: "Waves",
+  },
 ];

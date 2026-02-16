@@ -13,6 +13,7 @@ export const CODE_HASH_REGISTRY: Record<string, string> = {
   "02e3a671cbc3dac425be8fe4dab2eeb54ad5d719a8b8a5c67fbba48b3900f031": "swap",
   "5a5a0f81f85f4108f72865962e92d2d3022121a54097462f31e415b2d8c1cd12": "airdrop",
   "a22882287038dd7ff2e69f952a90d4ff8a438fdc3720d7e44312c0bab0af4688": "timelock",
+  "a4e5adf0d00e41502757a81b6793cf9c4828b330851b3ddc4ac9010ce8710998": "amm-pool",
 };
 
 export function getAppTypeForCodeHash(hash: string): string | undefined {

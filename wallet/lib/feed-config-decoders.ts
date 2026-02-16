@@ -61,6 +61,12 @@ import {
   encodeGetScheduleCount,
   decodeU64 as decodeVestingU64,
 } from "./borsh-vesting";
+import {
+  encodeGetPoolCount as encodeAmmGetPoolCount,
+  encodeGetConfig as encodeAmmGetConfig,
+  decodeU64 as decodeAmmU64,
+  decodeAmmConfig,
+} from "./borsh-amm";
 
 export interface FeedSummary {
   /** Primary label for the card (title, name, or app type name) */
@@ -299,6 +305,26 @@ export const FEED_DECODERS: Record<string, FeedConfigDecoder> = {
         subtitle: `${count.toString()} schedule${count !== 1n ? "s" : ""}`,
         stats: [
           { label: "Schedules", value: count.toString() },
+        ],
+      };
+    },
+  },
+
+  "amm-pool": {
+    async fetchSummary(loomId, queryLoom) {
+      const [countRes, cfgRes] = await Promise.all([
+        queryLoom(loomId, encodeAmmGetPoolCount()),
+        queryLoom(loomId, encodeAmmGetConfig()),
+      ]);
+      const count = countRes?.output_hex ? decodeAmmU64(countRes.output_hex) : 0n;
+      const feeBps = cfgRes?.output_hex ? decodeAmmConfig(cfgRes.output_hex).feeBps : 30;
+      const feeStr = (feeBps / 100).toFixed(feeBps % 100 === 0 ? 0 : 1) + "%";
+      return {
+        title: "AMM Pool",
+        subtitle: `${count.toString()} pool${count !== 1n ? "s" : ""}`,
+        stats: [
+          { label: "Pools", value: count.toString() },
+          { label: "Fee", value: feeStr },
         ],
       };
     },

@@ -18,6 +18,7 @@ import {
   ArrowLeftRight,
   Gift,
   Clock,
+  Waves,
   Boxes,
   type LucideIcon,
 } from "lucide-react";
@@ -35,6 +36,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   ArrowLeftRight,
   Gift,
   Clock,
+  Waves,
 };
 
 export function FeedCard({ item, currentPubKey }: { item: FeedItem; currentPubKey?: string }) {
