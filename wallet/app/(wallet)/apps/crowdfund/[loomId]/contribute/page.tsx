@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import {
   Card,
@@ -12,12 +11,12 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { FormButton } from "@/components/ui/form-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCrowdfund } from "@/hooks/use-crowdfund";
-import { ArrowLeft, HandCoins, Loader2 } from "lucide-react";
+import { HandCoins, Loader2 } from "lucide-react";
+import { truncateHash } from "@/lib/format";
 import { toast } from "sonner";
 
 export default function CrowdfundContributePage() {
@@ -51,14 +50,7 @@ export default function CrowdfundContributePage() {
   return (
     <PageContainer
       title="Contribute to Campaign"
-      action={
-        <Link href={`/apps/crowdfund/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={[{label: "Apps", href: "/discover"}, {label: "Crowdfund", href: "/apps/crowdfund"}, {label: truncateHash(loomId, 8), href: `/apps/crowdfund/${loomId}`}, {label: "Contribute"}]}
     >
       <div className="max-w-lg">
         <Card>

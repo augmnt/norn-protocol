@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import {
   Card,
@@ -12,14 +11,14 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { FormButton } from "@/components/ui/form-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useGovernance } from "@/hooks/use-governance";
-import { ArrowLeft, Vote, Loader2 } from "lucide-react";
+import { Vote, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { truncateHash } from "@/lib/format";
 
 export default function CreateProposalPage() {
   const router = useRouter();
@@ -55,14 +54,12 @@ export default function CreateProposalPage() {
   return (
     <PageContainer
       title="Create Proposal"
-      action={
-        <Link href={`/apps/governance/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={[
+        { label: "Apps", href: "/discover" },
+        { label: "DAO Governance", href: "/apps/governance" },
+        { label: truncateHash(loomId, 8), href: `/apps/governance/${loomId}` },
+        { label: "Create Proposal" },
+      ]}
     >
       <div className="max-w-lg">
         <Card>

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import {
   Card,
@@ -16,8 +15,8 @@ import { FormButton } from "@/components/ui/form-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAirdrop } from "@/hooks/use-airdrop";
-import { isValidAddress } from "@/lib/format";
-import { ArrowLeft, Gift, Loader2, Plus, X } from "lucide-react";
+import { isValidAddress, truncateHash } from "@/lib/format";
+import { Gift, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 interface RecipientRow {
@@ -84,14 +83,12 @@ export default function AddRecipientsPage() {
   return (
     <PageContainer
       title="Add Recipients"
-      action={
-        <Link href={`/apps/airdrop/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={[
+        { label: "Apps", href: "/discover" },
+        { label: "Airdrop", href: "/apps/airdrop" },
+        { label: truncateHash(loomId, 8), href: `/apps/airdrop/${loomId}` },
+        { label: "Add Recipients" },
+      ]}
     >
       <div className="max-w-lg">
         <Card>

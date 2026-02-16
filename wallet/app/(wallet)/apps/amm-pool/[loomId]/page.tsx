@@ -9,12 +9,11 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useAmm } from "@/hooks/use-amm";
 import { useLoomRefresh } from "@/hooks/use-loom-refresh";
-import { formatAmount, truncateAddress } from "@/lib/format";
+import { formatAmount, truncateAddress, truncateHash } from "@/lib/format";
 import type { AmmPool } from "@/lib/borsh-amm";
 import {
   Plus,
   Waves,
-  ArrowLeft,
   ArrowLeftRight,
   Droplets,
   Loader2,
@@ -120,21 +119,14 @@ export default function AmmPoolDashboardPage() {
     <PageContainer
       title="AMM Pool"
       description="Automated market maker with constant-product liquidity pools"
+      breadcrumb={[{label: "Apps", href: "/discover"}, {label: "AMM Pool", href: "/apps/amm-pool"}, {label: truncateHash(loomId, 8)}]}
       action={
-        <div className="flex items-center gap-2">
-          <Link href="/apps/amm-pool">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-              Apps
-            </Button>
-          </Link>
-          <Link href={`/apps/amm-pool/${loomId}/create`}>
-            <Button size="sm">
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              Create Pool
-            </Button>
-          </Link>
-        </div>
+        <Link href={`/apps/amm-pool/${loomId}/create`}>
+          <Button size="sm">
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Create Pool
+          </Button>
+        </Link>
       }
     >
       <div className="space-y-3">

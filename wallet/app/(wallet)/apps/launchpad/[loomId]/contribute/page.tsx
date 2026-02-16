@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import {
   Card,
@@ -11,12 +10,12 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { FormButton } from "@/components/ui/form-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useLaunchpad } from "@/hooks/use-launchpad";
-import { ArrowLeft, Coins, Loader2 } from "lucide-react";
+import { truncateHash } from "@/lib/format";
+import { Coins, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function LaunchpadContributePage() {
@@ -50,14 +49,7 @@ export default function LaunchpadContributePage() {
   return (
     <PageContainer
       title="Contribute to Launchpad"
-      action={
-        <Link href={`/apps/launchpad/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={[{label: "Apps", href: "/discover"}, {label: "Token Launchpad", href: "/apps/launchpad"}, {label: truncateHash(loomId, 8), href: `/apps/launchpad/${loomId}`}, {label: "Contribute"}]}
     >
       <div className="max-w-lg">
         <Card>

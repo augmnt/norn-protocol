@@ -23,6 +23,7 @@ import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
 import {
   truncateAddress,
+  truncateHash,
   formatAmount,
   formatTimestamp,
   isValidAddress,
@@ -30,7 +31,6 @@ import {
 import {
   Plus,
   Vault,
-  ArrowLeft,
   Loader2,
   Download,
 } from "lucide-react";
@@ -270,14 +270,11 @@ export default function TreasuryDashboardPage() {
     return (
       <PageContainer
         title="Multisig Treasury"
-        action={
-          <Link href="/apps/treasury">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-              Apps
-            </Button>
-          </Link>
-        }
+        breadcrumb={[
+          { label: "Apps", href: "/discover" },
+          { label: "Multisig Treasury", href: "/apps/treasury" },
+          { label: truncateHash(loomId, 8) },
+        ]}
       >
         <InitializeForm loomId={loomId} onSuccess={fetchData} />
       </PageContainer>
@@ -288,14 +285,13 @@ export default function TreasuryDashboardPage() {
     <PageContainer
       title="Multisig Treasury"
       description="Shared treasury with multi-signature approval"
+      breadcrumb={[
+        { label: "Apps", href: "/discover" },
+        { label: "Multisig Treasury", href: "/apps/treasury" },
+        { label: truncateHash(loomId, 8) },
+      ]}
       action={
         <div className="flex items-center gap-2">
-          <Link href="/apps/treasury">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-              Apps
-            </Button>
-          </Link>
           <Link href={`/apps/treasury/${loomId}/deposit`}>
             <Button variant="outline" size="sm">
               <Download className="mr-1.5 h-3.5 w-3.5" />

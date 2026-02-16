@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import {
   Card,
@@ -11,12 +10,12 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { FormButton } from "@/components/ui/form-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTreasury } from "@/hooks/use-treasury";
-import { ArrowLeft, Download, Loader2 } from "lucide-react";
+import { truncateHash } from "@/lib/format";
+import { Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const NATIVE_TOKEN_ID = "0".repeat(64);
@@ -51,14 +50,12 @@ export default function DepositPage() {
   return (
     <PageContainer
       title="Deposit"
-      action={
-        <Link href={`/apps/treasury/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={[
+        { label: "Apps", href: "/discover" },
+        { label: "Multisig Treasury", href: "/apps/treasury" },
+        { label: truncateHash(loomId, 8), href: `/apps/treasury/${loomId}` },
+        { label: "Deposit" },
+      ]}
     >
       <div className="max-w-lg">
         <Card>

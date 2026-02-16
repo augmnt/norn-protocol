@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,9 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { useSwap } from "@/hooks/use-swap";
 import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
-import { truncateAddress, formatAmount, formatTimestamp } from "@/lib/format";
+import { truncateAddress, truncateHash, formatAmount, formatTimestamp } from "@/lib/format";
 import {
-  ArrowLeft,
   ArrowLeftRight,
   Loader2,
   CheckCircle,
@@ -99,14 +97,7 @@ export default function OrderDetailPage() {
   return (
     <PageContainer
       title={`Order #${order.id.toString()}`}
-      action={
-        <Link href={`/apps/swap/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={[{label: "Apps", href: "/discover"}, {label: "OTC Swap", href: "/apps/swap"}, {label: truncateHash(loomId, 8), href: `/apps/swap/${loomId}`}, {label: `Order #${params.id}`}]}
     >
       <div className="max-w-2xl space-y-4">
         {/* Swap visualization */}

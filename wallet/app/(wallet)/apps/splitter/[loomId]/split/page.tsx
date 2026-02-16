@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import {
   Card,
@@ -11,13 +10,12 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { FormButton } from "@/components/ui/form-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSplitter } from "@/hooks/use-splitter";
-import { truncateAddress, formatAmount } from "@/lib/format";
-import { ArrowLeft, GitFork, Loader2 } from "lucide-react";
+import { truncateAddress, truncateHash, formatAmount } from "@/lib/format";
+import { GitFork, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { SplitterConfig } from "@/lib/borsh-splitter";
 
@@ -72,14 +70,7 @@ export default function SplitPaymentPage() {
   return (
     <PageContainer
       title="Split Payment"
-      action={
-        <Link href={`/apps/splitter/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={[{label: "Apps", href: "/discover"}, {label: "Payment Splitter", href: "/apps/splitter"}, {label: truncateHash(loomId, 8), href: `/apps/splitter/${loomId}`}, {label: "Split Payment"}]}
     >
       <div className="max-w-lg space-y-4">
         <Card>

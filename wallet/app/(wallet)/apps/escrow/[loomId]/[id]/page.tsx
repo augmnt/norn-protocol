@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,9 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { useEscrow } from "@/hooks/use-escrow";
 import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
-import { truncateAddress, formatAmount, formatTimestamp } from "@/lib/format";
+import { truncateAddress, truncateHash, formatAmount, formatTimestamp } from "@/lib/format";
 import {
-  ArrowLeft,
   ShieldCheck,
   Loader2,
   AlertCircle,
@@ -153,9 +151,16 @@ export default function DealDetailPage() {
     }
   };
 
+  const breadcrumb = [
+    { label: "Apps", href: "/discover" },
+    { label: "P2P Escrow", href: "/apps/escrow" },
+    { label: truncateHash(loomId, 8), href: `/apps/escrow/${loomId}` },
+    { label: `Deal #${id}` },
+  ];
+
   if (fetching) {
     return (
-      <PageContainer>
+      <PageContainer breadcrumb={breadcrumb}>
         <div className="flex items-center justify-center py-16">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
@@ -165,7 +170,7 @@ export default function DealDetailPage() {
 
   if (!deal) {
     return (
-      <PageContainer title="Deal Not Found">
+      <PageContainer title="Deal Not Found" breadcrumb={breadcrumb}>
         <Card>
           <CardContent className="p-6 text-sm text-muted-foreground">
             Deal #{dealId.toString()} was not found.
@@ -180,14 +185,7 @@ export default function DealDetailPage() {
   return (
     <PageContainer
       title={`Deal #${deal.id.toString()}`}
-      action={
-        <Link href={`/apps/escrow/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={breadcrumb}
     >
       <div className="max-w-2xl space-y-4">
         {/* Status */}

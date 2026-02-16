@@ -2,19 +2,17 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { FormButton } from "@/components/ui/form-button";
 import { useAmm } from "@/hooks/use-amm";
 import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
-import { formatAmount, truncateAddress } from "@/lib/format";
+import { formatAmount, truncateAddress, truncateHash } from "@/lib/format";
 import type { AmmPool } from "@/lib/borsh-amm";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const DECIMALS = 12;
@@ -140,14 +138,7 @@ export default function LiquidityPage() {
     <PageContainer
       title="Liquidity"
       description={`Pool #${poolId.toString()}`}
-      action={
-        <Link href={`/apps/amm-pool/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={[{label: "Apps", href: "/discover"}, {label: "AMM Pool", href: "/apps/amm-pool"}, {label: truncateHash(loomId, 8), href: `/apps/amm-pool/${loomId}`}, {label: `Pool #${poolId.toString()}`}]}
     >
       <div className="mx-auto max-w-md space-y-4">
         <Tabs defaultValue="add">

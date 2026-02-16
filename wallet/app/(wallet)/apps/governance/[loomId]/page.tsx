@@ -20,11 +20,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useGovernance } from "@/hooks/use-governance";
 import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
-import { truncateAddress, formatTimestamp } from "@/lib/format";
+import { truncateAddress, truncateHash, formatTimestamp } from "@/lib/format";
 import {
   Vote,
   Plus,
-  ArrowLeft,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -274,14 +273,11 @@ export default function GovernanceDashboardPage() {
     return (
       <PageContainer
         title="DAO Governance"
-        action={
-          <Link href="/apps/governance">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-              Apps
-            </Button>
-          </Link>
-        }
+        breadcrumb={[
+          { label: "Apps", href: "/discover" },
+          { label: "DAO Governance", href: "/apps/governance" },
+          { label: truncateHash(loomId, 8) },
+        ]}
       >
         <InitializeForm
           loomId={loomId}
@@ -295,21 +291,18 @@ export default function GovernanceDashboardPage() {
     <PageContainer
       title="DAO Governance"
       description="On-chain voting on proposals with quorum requirements"
+      breadcrumb={[
+        { label: "Apps", href: "/discover" },
+        { label: "DAO Governance", href: "/apps/governance" },
+        { label: truncateHash(loomId, 8) },
+      ]}
       action={
-        <div className="flex items-center gap-2">
-          <Link href="/apps/governance">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-              Apps
-            </Button>
-          </Link>
-          <Link href={`/apps/governance/${loomId}/create`}>
-            <Button size="sm">
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              New Proposal
-            </Button>
-          </Link>
-        </div>
+        <Link href={`/apps/governance/${loomId}/create`}>
+          <Button size="sm">
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            New Proposal
+          </Button>
+        </Link>
       }
     >
       {/* Config overview */}

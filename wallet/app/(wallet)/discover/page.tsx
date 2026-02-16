@@ -101,19 +101,18 @@ export default function DiscoverPage() {
   const visibleItems = filteredItems.slice(0, visibleCount);
   const hasMore = visibleCount < filteredItems.length;
 
-  // Show catalog when "All" with no search
-  const showCatalog = filter === "all" && !search.trim();
-
   const filterChips = [
     { id: "all", label: "All" },
     { id: "mine", label: "Mine" },
     ...APPS.map((app) => ({ id: app.id, label: app.name })),
   ];
 
+  const totalDeployed = allItems?.length ?? 0;
+
   return (
     <PageContainer
       title="Apps"
-      description="Deployed contracts and on-chain activity"
+      description="Browse app templates and deployed contracts"
       action={
         <Link href="/contracts">
           <Button variant="ghost" size="sm">
@@ -123,69 +122,11 @@ export default function DiscoverPage() {
         </Link>
       }
     >
-      {/* Search bar */}
-      <div className="relative mb-4">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <input
-          type="text"
-          placeholder="Search by name, loom ID, or creator..."
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setVisibleCount(INITIAL_COUNT);
-          }}
-          className="w-full rounded-lg border border-border bg-background pl-10 pr-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-        />
-      </div>
-
-      {/* Filter chips */}
-      <div className="mb-6 flex flex-wrap gap-2">
-        {filterChips.map((f) => (
-          <button
-            key={f.id}
-            onClick={() => {
-              setFilter(f.id);
-              setVisibleCount(INITIAL_COUNT);
-            }}
-            className={cn(
-              "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-              filter === f.id
-                ? "border-norn bg-norn/10 text-norn"
-                : "border-border text-muted-foreground hover:text-foreground hover:bg-accent/50"
-            )}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Loading state */}
-      {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <Skeleton className="h-10 w-10 rounded-lg" />
-                  <Skeleton className="h-5 w-16 rounded-md" />
-                </div>
-                <Skeleton className="mt-4 h-4 w-32" />
-                <Skeleton className="mt-2 h-3 w-48" />
-                <Skeleton className="mt-3 h-3 w-24" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : error ? (
-        <Card>
-          <CardContent className="p-6">
-            <p className="text-sm text-destructive">
-              Failed to load feed: {error.message}
-            </p>
-          </CardContent>
-        </Card>
-      ) : showCatalog ? (
-        /* App Catalog Grid */
+      {/* App Catalog section — always visible */}
+      <div className="mb-8">
+        <h2 className="mb-4 text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+          App Catalog
+        </h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {APPS.map((app) => {
             const Icon = ICON_MAP[app.icon] ?? Blocks;
@@ -204,7 +145,7 @@ export default function DiscoverPage() {
                       </div>
                       {count > 0 && (
                         <Badge variant="secondary" className="text-[10px]">
-                          {count} {count === 1 ? "instance" : "instances"}
+                          {count} deployed
                         </Badge>
                       )}
                     </div>
@@ -213,7 +154,7 @@ export default function DiscoverPage() {
                       {app.description}
                     </p>
                     <div className="mt-4 flex items-center gap-1 text-xs text-norn opacity-0 transition-opacity group-hover:opacity-100">
-                      {count > 0 ? "View instances" : "Deploy"}
+                      {count > 0 ? "View contracts" : "Deploy"}
                       <ArrowRight className="h-3 w-3" />
                     </div>
                   </CardContent>
@@ -222,52 +163,124 @@ export default function DiscoverPage() {
             );
           })}
         </div>
-      ) : visibleItems.length === 0 ? (
-        <EmptyState
-          icon={filter !== "all" && filter !== "mine" ? (ICON_MAP[APPS.find((a) => a.id === filter)?.icon ?? ""] ?? Blocks) : Blocks}
-          title="No contracts found"
-          description={
-            filter === "mine"
-              ? "You haven't deployed any contracts yet."
-              : search.trim()
-                ? `No results for "${search.trim()}".`
-                : `No ${filterChips.find((f) => f.id === filter)?.label ?? filter} instances found.`
-          }
-          action={
-            filter !== "all" && filter !== "mine" && !search.trim() ? (
-              <Link href={`/apps/${filter}/deploy`}>
-                <Button size="sm">
-                  <Plus className="mr-1.5 h-3.5 w-3.5" />
-                  Deploy {filterChips.find((f) => f.id === filter)?.label ?? filter}
-                </Button>
-              </Link>
-            ) : undefined
-          }
-        />
-      ) : (
-        <>
+      </div>
+
+      {/* Deployed Contracts section */}
+      <div>
+        <h2 className="mb-4 text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+          Deployed Contracts{totalDeployed > 0 ? ` (${totalDeployed})` : ""}
+        </h2>
+
+        {/* Search bar */}
+        <div className="relative mb-4">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search by name, loom ID, or creator..."
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setVisibleCount(INITIAL_COUNT);
+            }}
+            className="w-full rounded-lg border border-border bg-background pl-10 pr-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+        </div>
+
+        {/* Filter chips */}
+        <div className="mb-6 flex flex-wrap gap-2">
+          {filterChips.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => {
+                setFilter(f.id);
+                setVisibleCount(INITIAL_COUNT);
+              }}
+              className={cn(
+                "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                filter === f.id
+                  ? "border-norn bg-norn/10 text-norn"
+                  : "border-border text-muted-foreground hover:text-foreground hover:bg-accent/50"
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Loading state */}
+        {isLoading ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {visibleItems.map((item) => (
-              <FeedCard
-                key={item.loomId}
-                item={item}
-                currentPubKey={activeAccount?.publicKeyHex}
-              />
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Card key={i}>
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between">
+                    <Skeleton className="h-10 w-10 rounded-lg" />
+                    <Skeleton className="h-5 w-16 rounded-md" />
+                  </div>
+                  <Skeleton className="mt-4 h-4 w-32" />
+                  <Skeleton className="mt-2 h-3 w-48" />
+                  <Skeleton className="mt-3 h-3 w-24" />
+                </CardContent>
+              </Card>
             ))}
           </div>
-
-          {hasMore && (
-            <div className="mt-6 flex justify-center">
-              <Button
-                variant="outline"
-                onClick={() => setVisibleCount((c) => c + LOAD_MORE_COUNT)}
-              >
-                Load more
-              </Button>
+        ) : error ? (
+          <Card>
+            <CardContent className="p-6">
+              <p className="text-sm text-destructive">
+                Failed to load feed: {error.message}
+              </p>
+            </CardContent>
+          </Card>
+        ) : visibleItems.length === 0 ? (
+          <EmptyState
+            icon={filter !== "all" && filter !== "mine" ? (ICON_MAP[APPS.find((a) => a.id === filter)?.icon ?? ""] ?? Blocks) : Blocks}
+            title="No contracts found"
+            description={
+              filter === "mine"
+                ? "You haven't deployed any contracts yet."
+                : search.trim()
+                  ? `No results for "${search.trim()}".`
+                  : totalDeployed === 0
+                    ? "No contracts deployed yet. Choose an app above to get started."
+                    : `No ${filterChips.find((f) => f.id === filter)?.label ?? filter} contracts found.`
+            }
+            action={
+              filter !== "all" && filter !== "mine" && !search.trim() ? (
+                <Link href={`/apps/${filter}/deploy`}>
+                  <Button size="sm">
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    Deploy {filterChips.find((f) => f.id === filter)?.label ?? filter}
+                  </Button>
+                </Link>
+              ) : undefined
+            }
+          />
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {visibleItems.map((item) => (
+                <FeedCard
+                  key={item.loomId}
+                  item={item}
+                  currentPubKey={activeAccount?.publicKeyHex}
+                />
+              ))}
             </div>
-          )}
-        </>
-      )}
+
+            {hasMore && (
+              <div className="mt-6 flex justify-center">
+                <Button
+                  variant="outline"
+                  onClick={() => setVisibleCount((c) => c + LOAD_MORE_COUNT)}
+                >
+                  Load more
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </PageContainer>
   );
 }

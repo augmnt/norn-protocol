@@ -2,17 +2,15 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormButton } from "@/components/ui/form-button";
 import { useAmm } from "@/hooks/use-amm";
 import { useWallet } from "@/hooks/use-wallet";
 import { useTokenBalances } from "@/hooks/use-token-balances";
-import { formatAmount, strip0x, truncateAddress } from "@/lib/format";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { formatAmount, strip0x, truncateAddress, truncateHash } from "@/lib/format";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const DECIMALS = 12;
@@ -81,14 +79,7 @@ export default function CreatePoolPage() {
     <PageContainer
       title="Create Pool"
       description="Create a new NORN liquidity pair"
-      action={
-        <Link href={`/apps/amm-pool/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={[{label: "Apps", href: "/discover"}, {label: "AMM Pool", href: "/apps/amm-pool"}, {label: truncateHash(loomId, 8), href: `/apps/amm-pool/${loomId}`}, {label: "Create Pool"}]}
     >
       <div className="mx-auto max-w-md">
         <Card>

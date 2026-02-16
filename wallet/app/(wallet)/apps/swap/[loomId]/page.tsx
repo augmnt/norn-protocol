@@ -12,11 +12,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useSwap } from "@/hooks/use-swap";
 import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
-import { truncateAddress, formatAmount } from "@/lib/format";
+import { truncateAddress, truncateHash, formatAmount } from "@/lib/format";
 import {
   Plus,
   ArrowLeftRight,
-  ArrowLeft,
   Loader2,
 } from "lucide-react";
 import type { SwapOrder, OrderStatus } from "@/lib/borsh-swap";
@@ -123,21 +122,14 @@ export default function SwapDashboardPage() {
     <PageContainer
       title="OTC Swap"
       description="Post and fill token swap orders at fixed rates"
+      breadcrumb={[{label: "Apps", href: "/discover"}, {label: "OTC Swap", href: "/apps/swap"}, {label: truncateHash(loomId, 8)}]}
       action={
-        <div className="flex items-center gap-2">
-          <Link href="/apps/swap">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-              Apps
-            </Button>
-          </Link>
-          <Link href={`/apps/swap/${loomId}/create`}>
-            <Button size="sm">
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              Create Order
-            </Button>
-          </Link>
-        </div>
+        <Link href={`/apps/swap/${loomId}/create`}>
+          <Button size="sm">
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Create Order
+          </Button>
+        </Link>
       }
     >
       <Tabs defaultValue="open" className="space-y-4">

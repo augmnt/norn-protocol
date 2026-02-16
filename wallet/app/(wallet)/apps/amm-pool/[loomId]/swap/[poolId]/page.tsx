@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,9 +10,9 @@ import { FormButton } from "@/components/ui/form-button";
 import { useAmm } from "@/hooks/use-amm";
 import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
-import { formatAmount, truncateAddress } from "@/lib/format";
+import { formatAmount, truncateAddress, truncateHash } from "@/lib/format";
 import type { AmmPool, AmmConfig } from "@/lib/borsh-amm";
-import { ArrowLeft, ArrowDownUp, Loader2 } from "lucide-react";
+import { ArrowDownUp, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const DECIMALS = 12;
@@ -144,14 +143,7 @@ export default function SwapPage() {
   return (
     <PageContainer
       title="Swap"
-      action={
-        <Link href={`/apps/amm-pool/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={[{label: "Apps", href: "/discover"}, {label: "AMM Pool", href: "/apps/amm-pool"}, {label: truncateHash(loomId, 8), href: `/apps/amm-pool/${loomId}`}, {label: "Swap"}]}
     >
       <div className="mx-auto max-w-md space-y-4">
         {/* Swap card */}

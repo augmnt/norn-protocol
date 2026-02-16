@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import {
   Card,
@@ -15,8 +14,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { useCrowdfund } from "@/hooks/use-crowdfund";
 import { useWallet } from "@/hooks/use-wallet";
-import { formatAmount } from "@/lib/format";
-import { ArrowLeft, Undo2, Loader2, AlertCircle } from "lucide-react";
+import { formatAmount, truncateHash } from "@/lib/format";
+import { Undo2, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
 export default function CrowdfundRefundPage() {
@@ -67,14 +66,7 @@ export default function CrowdfundRefundPage() {
   return (
     <PageContainer
       title="Claim Refund"
-      action={
-        <Link href={`/apps/crowdfund/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={[{label: "Apps", href: "/discover"}, {label: "Crowdfund", href: "/apps/crowdfund"}, {label: truncateHash(loomId, 8), href: `/apps/crowdfund/${loomId}`}, {label: "Refund"}]}
     >
       <div className="max-w-lg">
         <Card>

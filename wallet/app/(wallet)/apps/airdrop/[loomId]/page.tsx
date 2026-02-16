@@ -19,10 +19,9 @@ import { Label } from "@/components/ui/label";
 import { useAirdrop } from "@/hooks/use-airdrop";
 import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
-import { formatAmount, truncateAddress } from "@/lib/format";
+import { formatAmount, truncateAddress, truncateHash } from "@/lib/format";
 import {
   Gift,
-  ArrowLeft,
   Loader2,
   Plus,
   Download,
@@ -198,14 +197,11 @@ export default function AirdropDashboardPage() {
     return (
       <PageContainer
         title="Airdrop"
-        action={
-          <Link href="/apps/airdrop">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-              Apps
-            </Button>
-          </Link>
-        }
+        breadcrumb={[
+          { label: "Apps", href: "/discover" },
+          { label: "Airdrop", href: "/apps/airdrop" },
+          { label: truncateHash(loomId, 8) },
+        ]}
       >
         <InitializeForm loomId={loomId} onSuccess={fetchData} />
       </PageContainer>
@@ -221,14 +217,13 @@ export default function AirdropDashboardPage() {
     <PageContainer
       title="Airdrop"
       description="Distribute tokens to a list of recipients"
+      breadcrumb={[
+        { label: "Apps", href: "/discover" },
+        { label: "Airdrop", href: "/apps/airdrop" },
+        { label: truncateHash(loomId, 8) },
+      ]}
       action={
         <div className="flex items-center gap-2">
-          <Link href="/apps/airdrop">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-              Apps
-            </Button>
-          </Link>
           {isCreator && !config?.finalized && (
             <Link href={`/apps/airdrop/${loomId}/add`}>
               <Button variant="outline" size="sm">

@@ -19,10 +19,9 @@ import { Label } from "@/components/ui/label";
 import { useSplitter } from "@/hooks/use-splitter";
 import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
-import { truncateAddress, isValidAddress } from "@/lib/format";
+import { truncateAddress, truncateHash, isValidAddress } from "@/lib/format";
 import {
   GitFork,
-  ArrowLeft,
   Loader2,
   Plus,
   X,
@@ -236,14 +235,7 @@ export default function SplitterDashboardPage() {
     return (
       <PageContainer
         title="Payment Splitter"
-        action={
-          <Link href="/apps/splitter">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-              Apps
-            </Button>
-          </Link>
-        }
+        breadcrumb={[{label: "Apps", href: "/discover"}, {label: "Payment Splitter", href: "/apps/splitter"}, {label: truncateHash(loomId, 8)}]}
       >
         <InitializeForm loomId={loomId} onSuccess={fetchData} />
       </PageContainer>
@@ -254,23 +246,16 @@ export default function SplitterDashboardPage() {
     <PageContainer
       title="Payment Splitter"
       description="Route payments to multiple recipients by percentage"
+      breadcrumb={[{label: "Apps", href: "/discover"}, {label: "Payment Splitter", href: "/apps/splitter"}, {label: truncateHash(loomId, 8)}]}
       action={
-        <div className="flex items-center gap-2">
-          <Link href="/apps/splitter">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-              Apps
+        config && (
+          <Link href={`/apps/splitter/${loomId}/split`}>
+            <Button size="sm">
+              <Coins className="mr-1.5 h-3.5 w-3.5" />
+              Split Payment
             </Button>
           </Link>
-          {config && (
-            <Link href={`/apps/splitter/${loomId}/split`}>
-              <Button size="sm">
-                <Coins className="mr-1.5 h-3.5 w-3.5" />
-                Split Payment
-              </Button>
-            </Link>
-          )}
-        </div>
+        )
       }
     >
       {fetching ? (

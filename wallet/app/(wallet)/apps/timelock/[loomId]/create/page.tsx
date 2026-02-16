@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import {
   Card,
@@ -16,7 +15,8 @@ import { FormButton } from "@/components/ui/form-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTimelock } from "@/hooks/use-timelock";
-import { ArrowLeft, Clock, Loader2 } from "lucide-react";
+import { truncateHash } from "@/lib/format";
+import { Clock, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const NATIVE_TOKEN_ID = "0".repeat(64);
@@ -62,14 +62,12 @@ export default function CreateLockPage() {
   return (
     <PageContainer
       title="Create Time Lock"
-      action={
-        <Link href={`/apps/timelock/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={[
+        { label: "Apps", href: "/discover" },
+        { label: "Time-locked Vault", href: "/apps/timelock" },
+        { label: truncateHash(loomId, 8), href: `/apps/timelock/${loomId}` },
+        { label: "Create Lock" },
+      ]}
     >
       <div className="max-w-lg">
         <Card>

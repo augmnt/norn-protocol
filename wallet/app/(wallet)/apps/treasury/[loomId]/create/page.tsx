@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import {
   Card,
@@ -11,16 +10,15 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { FormButton } from "@/components/ui/form-button";
 import { FieldError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useTreasury } from "@/hooks/use-treasury";
-import { isValidAddress } from "@/lib/format";
+import { isValidAddress, truncateHash } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Vault, Loader2 } from "lucide-react";
+import { Vault, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const NATIVE_TOKEN_ID = "0".repeat(64);
@@ -74,14 +72,12 @@ export default function CreateProposalPage() {
   return (
     <PageContainer
       title="Create Proposal"
-      action={
-        <Link href={`/apps/treasury/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={[
+        { label: "Apps", href: "/discover" },
+        { label: "Multisig Treasury", href: "/apps/treasury" },
+        { label: truncateHash(loomId, 8), href: `/apps/treasury/${loomId}` },
+        { label: "Create Proposal" },
+      ]}
     >
       <div className="max-w-lg">
         <Card>

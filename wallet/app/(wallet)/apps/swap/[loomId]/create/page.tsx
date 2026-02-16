@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import {
   Card,
@@ -11,12 +10,12 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { FormButton } from "@/components/ui/form-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { truncateHash } from "@/lib/format";
 import { useSwap } from "@/hooks/use-swap";
-import { ArrowLeft, ArrowLeftRight, Loader2 } from "lucide-react";
+import { ArrowLeftRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const NATIVE_TOKEN_ID = "0".repeat(64);
@@ -64,14 +63,7 @@ export default function CreateOrderPage() {
   return (
     <PageContainer
       title="Create Swap Order"
-      action={
-        <Link href={`/apps/swap/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={[{label: "Apps", href: "/discover"}, {label: "OTC Swap", href: "/apps/swap"}, {label: truncateHash(loomId, 8), href: `/apps/swap/${loomId}`}, {label: "Create Order"}]}
     >
       <div className="max-w-lg">
         <Card>

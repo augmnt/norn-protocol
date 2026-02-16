@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,9 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { useGovernance } from "@/hooks/use-governance";
 import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
-import { truncateAddress, formatTimestamp } from "@/lib/format";
+import { truncateAddress, truncateHash, formatTimestamp } from "@/lib/format";
 import {
-  ArrowLeft,
   Vote,
   Loader2,
   ThumbsUp,
@@ -124,14 +122,12 @@ export default function ProposalDetailPage() {
   return (
     <PageContainer
       title={`Proposal #${proposal.id.toString()}`}
-      action={
-        <Link href={`/apps/governance/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={[
+        { label: "Apps", href: "/discover" },
+        { label: "DAO Governance", href: "/apps/governance" },
+        { label: truncateHash(loomId, 8), href: `/apps/governance/${loomId}` },
+        { label: `Proposal #${id}` },
+      ]}
     >
       <div className="max-w-2xl space-y-4">
         {/* Title and status */}

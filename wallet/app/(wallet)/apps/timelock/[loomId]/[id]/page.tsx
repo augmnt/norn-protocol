@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,9 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { useTimelock } from "@/hooks/use-timelock";
 import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
-import { truncateAddress, formatAmount, formatTimestamp } from "@/lib/format";
+import { truncateAddress, truncateHash, formatAmount, formatTimestamp } from "@/lib/format";
 import {
-  ArrowLeft,
   Clock,
   Loader2,
   Download,
@@ -33,7 +31,8 @@ function formatCountdown(secondsLeft: number): string {
 export default function LockDetailPage() {
   const params = useParams();
   const loomId = params.loomId as string;
-  const lockId = BigInt((params.id as string) || "0");
+  const id = params.id as string;
+  const lockId = BigInt(id || "0");
   const { activeAddress } = useWallet();
   const { getLock, withdraw, loading } = useTimelock(loomId);
 
@@ -107,14 +106,12 @@ export default function LockDetailPage() {
   return (
     <PageContainer
       title={`Lock #${lock.id.toString()}`}
-      action={
-        <Link href={`/apps/timelock/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={[
+        { label: "Apps", href: "/discover" },
+        { label: "Time-locked Vault", href: "/apps/timelock" },
+        { label: truncateHash(loomId, 8), href: `/apps/timelock/${loomId}` },
+        { label: `Lock #${id}` },
+      ]}
     >
       <div className="max-w-2xl space-y-4">
         {/* Status + Countdown */}

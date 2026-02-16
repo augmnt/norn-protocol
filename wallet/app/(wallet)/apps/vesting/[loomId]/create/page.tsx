@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import {
   Card,
@@ -17,8 +16,8 @@ import { FieldError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useVesting } from "@/hooks/use-vesting";
-import { isValidAddress } from "@/lib/format";
-import { ArrowLeft, Hourglass, Loader2 } from "lucide-react";
+import { isValidAddress, truncateHash } from "@/lib/format";
+import { Hourglass, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -92,14 +91,12 @@ export default function CreateSchedulePage() {
   return (
     <PageContainer
       title="Create Vesting Schedule"
-      action={
-        <Link href={`/apps/vesting/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={[
+        { label: "Apps", href: "/discover" },
+        { label: "Token Vesting", href: "/apps/vesting" },
+        { label: truncateHash(loomId, 8), href: `/apps/vesting/${loomId}` },
+        { label: "Create Schedule" },
+      ]}
     >
       <div className="max-w-lg">
         <Card>

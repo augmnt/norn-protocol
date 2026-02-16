@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import {
   Card,
@@ -11,12 +10,12 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { FormButton } from "@/components/ui/form-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useStaking } from "@/hooks/use-staking";
-import { ArrowLeft, Landmark, Loader2 } from "lucide-react";
+import { truncateHash } from "@/lib/format";
+import { Landmark, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function StakePage() {
@@ -48,14 +47,12 @@ export default function StakePage() {
   return (
     <PageContainer
       title="Stake Tokens"
-      action={
-        <Link href={`/apps/staking/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={[
+        { label: "Apps", href: "/discover" },
+        { label: "Staking Vault", href: "/apps/staking" },
+        { label: truncateHash(loomId, 8), href: `/apps/staking/${loomId}` },
+        { label: "Stake" },
+      ]}
     >
       <div className="max-w-lg">
         <Card>

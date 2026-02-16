@@ -12,11 +12,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useVesting } from "@/hooks/use-vesting";
 import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
-import { truncateAddress, formatAmount } from "@/lib/format";
+import { truncateAddress, truncateHash, formatAmount } from "@/lib/format";
 import {
   Plus,
   Hourglass,
-  ArrowLeft,
   Loader2,
 } from "lucide-react";
 import type { VestingSchedule } from "@/lib/borsh-vesting";
@@ -143,21 +142,18 @@ export default function VestingDashboardPage() {
     <PageContainer
       title="Token Vesting"
       description="Time-locked token releases with cliff periods"
+      breadcrumb={[
+        { label: "Apps", href: "/discover" },
+        { label: "Token Vesting", href: "/apps/vesting" },
+        { label: truncateHash(loomId, 8) },
+      ]}
       action={
-        <div className="flex items-center gap-2">
-          <Link href="/apps/vesting">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-              Apps
-            </Button>
-          </Link>
-          <Link href={`/apps/vesting/${loomId}/create`}>
-            <Button size="sm">
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              New Schedule
-            </Button>
-          </Link>
-        </div>
+        <Link href={`/apps/vesting/${loomId}/create`}>
+          <Button size="sm">
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            New Schedule
+          </Button>
+        </Link>
       }
     >
       <Tabs defaultValue="my_vesting" className="space-y-4">

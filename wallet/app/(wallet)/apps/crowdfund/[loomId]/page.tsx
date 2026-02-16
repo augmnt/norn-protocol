@@ -22,12 +22,12 @@ import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
 import {
   truncateAddress,
+  truncateHash,
   formatAmount,
   formatTimestamp,
 } from "@/lib/format";
 import {
   HandCoins,
-  ArrowLeft,
   Loader2,
   Coins,
   Undo2,
@@ -278,14 +278,7 @@ export default function CrowdfundDashboardPage() {
     return (
       <PageContainer
         title="Crowdfund"
-        action={
-          <Link href="/apps/crowdfund">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-              Apps
-            </Button>
-          </Link>
-        }
+        breadcrumb={[{label: "Apps", href: "/discover"}, {label: "Crowdfund", href: "/apps/crowdfund"}, {label: truncateHash(loomId, 8)}]}
       >
         <InitializeForm loomId={loomId} onSuccess={fetchData} />
       </PageContainer>
@@ -296,14 +289,9 @@ export default function CrowdfundDashboardPage() {
     <PageContainer
       title="Crowdfund"
       description="All-or-nothing fundraising with goal and deadline"
+      breadcrumb={[{label: "Apps", href: "/discover"}, {label: "Crowdfund", href: "/apps/crowdfund"}, {label: truncateHash(loomId, 8)}]}
       action={
         <div className="flex items-center gap-2">
-          <Link href="/apps/crowdfund">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-              Apps
-            </Button>
-          </Link>
           {isActive && !hasEnded && (
             <Link href={`/apps/crowdfund/${loomId}/contribute`}>
               <Button size="sm">

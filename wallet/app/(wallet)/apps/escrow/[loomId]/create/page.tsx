@@ -3,19 +3,17 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { FormButton } from "@/components/ui/form-button";
 import { FieldError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useEscrow } from "@/hooks/use-escrow";
-import { isValidAddress } from "@/lib/format";
+import { isValidAddress, truncateHash } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, ShieldCheck, Loader2 } from "lucide-react";
+import { ShieldCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const NATIVE_TOKEN_ID = "0".repeat(64);
@@ -69,14 +67,12 @@ export default function CreateDealPage() {
   return (
     <PageContainer
       title="Create Deal"
-      action={
-        <Link href={`/apps/escrow/${loomId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-            Back
-          </Button>
-        </Link>
-      }
+      breadcrumb={[
+        { label: "Apps", href: "/discover" },
+        { label: "P2P Escrow", href: "/apps/escrow" },
+        { label: truncateHash(loomId, 8), href: `/apps/escrow/${loomId}` },
+        { label: "Create Deal" },
+      ]}
     >
       <div className="max-w-lg">
         <Card>
