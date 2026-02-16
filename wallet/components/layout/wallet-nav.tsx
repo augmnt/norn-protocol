@@ -13,8 +13,8 @@ import {
   History,
   Coins,
   AtSign,
-  FileCode,
   Blocks,
+  ArrowLeftRight,
   Droplets,
   Settings,
   MoreHorizontal,
@@ -28,6 +28,8 @@ interface NavItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   testnetOnly?: boolean;
+  /** Additional path prefixes that should highlight this nav item */
+  matchPrefixes?: string[];
 }
 
 const navItems: NavItem[] = [
@@ -36,15 +38,23 @@ const navItems: NavItem[] = [
   { href: "/receive", label: "Receive", icon: QrCode },
   { href: "/history", label: "History", icon: History },
   { href: "/tokens", label: "Tokens", icon: Coins },
+  { href: "/swap", label: "Swap", icon: ArrowLeftRight },
   { href: "/names", label: "Names", icon: AtSign },
-  { href: "/contracts", label: "Contracts", icon: FileCode },
-  { href: "/discover", label: "Apps", icon: Blocks },
+  { href: "/discover", label: "Apps", icon: Blocks, matchPrefixes: ["/apps", "/contracts"] },
   { href: "/faucet", label: "Faucet", icon: Droplets, testnetOnly: true },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 // Show 5 tabs on mobile: Dashboard, Send, History, Tokens, More
 const MOBILE_TAB_COUNT = 4;
+
+function isNavActive(item: NavItem, pathname: string): boolean {
+  if (pathname === item.href) return true;
+  if (item.matchPrefixes) {
+    return item.matchPrefixes.some((prefix) => pathname.startsWith(prefix));
+  }
+  return false;
+}
 
 export function WalletNav() {
   const pathname = usePathname();
@@ -59,7 +69,7 @@ export function WalletNav() {
 
   const mobileTabs = filteredItems.slice(0, MOBILE_TAB_COUNT);
   const moreItems = filteredItems.slice(MOBILE_TAB_COUNT);
-  const moreActive = moreItems.some((item) => pathname === item.href);
+  const moreActive = moreItems.some((item) => isNavActive(item, pathname));
 
   // Close menu on navigation
   useEffect(() => {
@@ -76,7 +86,7 @@ export function WalletNav() {
         )}
       >
         {filteredItems.map((item) => {
-          const active = pathname === item.href;
+          const active = isNavActive(item, pathname);
           return (
             <Link
               key={item.href}
@@ -139,7 +149,7 @@ export function WalletNav() {
               </div>
               <div className="p-3 grid grid-cols-4 gap-2">
                 {moreItems.map((item) => {
-                  const active = pathname === item.href;
+                  const active = isNavActive(item, pathname);
                   return (
                     <Link
                       key={item.href}
@@ -165,7 +175,7 @@ export function WalletNav() {
       {/* Mobile bottom tabs */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 flex md:hidden border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 pb-[env(safe-area-inset-bottom)]">
         {mobileTabs.map((item) => {
-          const active = pathname === item.href;
+          const active = isNavActive(item, pathname);
           return (
             <Link
               key={item.href}

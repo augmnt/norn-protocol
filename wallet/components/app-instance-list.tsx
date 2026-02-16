@@ -14,7 +14,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Plus,
-  Loader2,
   Boxes,
   type LucideIcon,
   ShieldCheck,
@@ -28,6 +27,7 @@ import {
   ArrowLeftRight,
   Gift,
   Clock,
+  Waves,
 } from "lucide-react";
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -42,6 +42,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   ArrowLeftRight,
   Gift,
   Clock,
+  Waves,
 };
 
 interface AppInstanceListProps {
@@ -59,10 +60,10 @@ export function AppInstanceList({ appType }: AppInstanceListProps) {
       description={appConfig?.description}
       action={
         <div className="flex items-center gap-2">
-          <Link href="/apps">
+          <Link href="/discover">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-              Apps
+              All Apps
             </Button>
           </Link>
           <Link href={`/apps/${appType}/deploy`}>

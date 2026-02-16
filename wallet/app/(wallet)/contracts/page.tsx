@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useLoomOps } from "@/hooks/use-loom-ops";
 import { useLoomsList } from "@/hooks/use-looms-list";
 import { useSavedContractsStore } from "@/stores/saved-contracts-store";
@@ -26,7 +27,7 @@ import { getAppTypeForCodeHash } from "@/lib/code-hash-registry";
 import { PAGE_SIZE } from "@/lib/constants";
 import {
   FileCode, Search, Play, Terminal, AlertCircle, X, Bookmark, BookmarkPlus,
-  Trash2, Info, Layers, CheckCircle, XCircle, ChevronDown, ChevronUp,
+  Trash2, Info, Layers, CheckCircle, XCircle, ChevronDown, ChevronUp, ArrowLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -122,7 +123,18 @@ export default function ContractsPage() {
   };
 
   return (
-    <PageContainer title="Contracts" description="Interact with deployed Loom smart contracts">
+    <PageContainer
+      title="Dev Console"
+      description="Interact with deployed Loom smart contracts"
+      action={
+        <Link href="/discover">
+          <Button variant="ghost" size="sm">
+            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
+            All Apps
+          </Button>
+        </Link>
+      }
+    >
       <Tabs value={activeTab} onValueChange={setActiveTab} className="max-w-2xl">
         <TabsList>
           <TabsTrigger value="interact">

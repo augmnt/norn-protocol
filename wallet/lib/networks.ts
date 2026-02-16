@@ -34,8 +34,8 @@ export const NETWORKS: Record<string, NetworkConfig> = {
   },
   local: {
     name: "Local Node",
-    rpcUrl: "http://localhost:9944",
-    wsUrl: "ws://localhost:9944",
+    rpcUrl: "http://localhost:9741",
+    wsUrl: "ws://localhost:9741",
     chainId: "norn-local",
     explorerUrl: "http://localhost:3001",
     isTestnet: true,

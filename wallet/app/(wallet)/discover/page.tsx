@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Link from "next/link";
 import { PageContainer } from "@/components/ui/page-container";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,7 +27,10 @@ import {
   ArrowLeftRight,
   Gift,
   Clock,
+  Waves,
   ArrowRight,
+  Plus,
+  Terminal,
   type LucideIcon,
 } from "lucide-react";
 
@@ -42,6 +46,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   ArrowLeftRight,
   Gift,
   Clock,
+  Waves,
 };
 
 const INITIAL_COUNT = 12;
@@ -109,6 +114,14 @@ export default function DiscoverPage() {
     <PageContainer
       title="Apps"
       description="Deployed contracts and on-chain activity"
+      action={
+        <Link href="/contracts">
+          <Button variant="ghost" size="sm">
+            <Terminal className="mr-1.5 h-3.5 w-3.5" />
+            Dev Console
+          </Button>
+        </Link>
+      }
     >
       {/* Search bar */}
       <div className="relative mb-4">
@@ -178,12 +191,9 @@ export default function DiscoverPage() {
             const Icon = ICON_MAP[app.icon] ?? Blocks;
             const count = instanceCounts.get(app.id) ?? 0;
             return (
-              <button
+              <Link
                 key={app.id}
-                onClick={() => {
-                  setFilter(app.id);
-                  setVisibleCount(INITIAL_COUNT);
-                }}
+                href={app.href}
                 className="text-left"
               >
                 <Card className="group h-full transition-colors hover:border-norn/40">
@@ -203,18 +213,18 @@ export default function DiscoverPage() {
                       {app.description}
                     </p>
                     <div className="mt-4 flex items-center gap-1 text-xs text-norn opacity-0 transition-opacity group-hover:opacity-100">
-                      View instances
+                      {count > 0 ? "View instances" : "Deploy"}
                       <ArrowRight className="h-3 w-3" />
                     </div>
                   </CardContent>
                 </Card>
-              </button>
+              </Link>
             );
           })}
         </div>
       ) : visibleItems.length === 0 ? (
         <EmptyState
-          icon={Blocks}
+          icon={filter !== "all" && filter !== "mine" ? (ICON_MAP[APPS.find((a) => a.id === filter)?.icon ?? ""] ?? Blocks) : Blocks}
           title="No contracts found"
           description={
             filter === "mine"
@@ -222,6 +232,16 @@ export default function DiscoverPage() {
               : search.trim()
                 ? `No results for "${search.trim()}".`
                 : `No ${filterChips.find((f) => f.id === filter)?.label ?? filter} instances found.`
+          }
+          action={
+            filter !== "all" && filter !== "mine" && !search.trim() ? (
+              <Link href={`/apps/${filter}/deploy`}>
+                <Button size="sm">
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  Deploy {filterChips.find((f) => f.id === filter)?.label ?? filter}
+                </Button>
+              </Link>
+            ) : undefined
           }
         />
       ) : (

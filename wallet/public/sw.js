@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-const CACHE_NAME = "norn-wallet-v1";
+const CACHE_NAME = "norn-wallet-v3";
 const STATIC_ASSETS = ["/manifest.json", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -45,11 +45,22 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Cache-first for static assets
-  if (
-    url.pathname.startsWith("/_next/static/") ||
-    url.pathname.match(/\.(png|jpg|svg|ico|woff2?)$/)
-  ) {
+  // Network-first for JS/CSS chunks (ensures fresh code after rebuilds)
+  if (url.pathname.startsWith("/_next/static/")) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Cache-first for images/fonts (rarely change)
+  if (url.pathname.match(/\.(png|jpg|svg|ico|woff2?)$/)) {
     event.respondWith(
       caches.match(request).then(
         (cached) =>
