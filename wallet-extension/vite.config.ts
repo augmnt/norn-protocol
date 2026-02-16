@@ -6,6 +6,7 @@ import manifest from "./manifest.json";
 
 export default defineConfig({
   plugins: [react(), crx({ manifest })],
+  base: "",
   resolve: {
     alias: {
       "@": resolve(__dirname, "src"),
