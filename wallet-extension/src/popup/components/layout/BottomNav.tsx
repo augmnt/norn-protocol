@@ -20,7 +20,7 @@ const HIDDEN_ROUTES = new Set<string>([
 
 export function BottomNav() {
   const currentRoute = useNavigationStore((s) => s.currentRoute);
-  const navigate = useNavigationStore((s) => s.navigate);
+  const reset = useNavigationStore((s) => s.reset);
 
   if (HIDDEN_ROUTES.has(currentRoute)) return null;
 
@@ -31,7 +31,7 @@ export function BottomNav() {
         return (
           <button
             key={route}
-            onClick={() => navigate(route)}
+            onClick={() => reset(route)}
             className={cn(
               "flex flex-1 flex-col items-center gap-0.5 py-1.5 text-xs transition-colors duration-200",
               isActive

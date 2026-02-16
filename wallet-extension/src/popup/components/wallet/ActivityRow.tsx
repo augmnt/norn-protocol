@@ -1,20 +1,34 @@
 import { ArrowUpRight, ArrowDownLeft } from "lucide-react";
-import { truncateAddress, formatNorn, timeAgo } from "@/lib/format";
+import { truncateAddress, timeAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { TransactionHistoryEntry } from "@/types";
 
 interface ActivityRowProps {
   tx: TransactionHistoryEntry;
   currentAddress: string;
+  onClick?: () => void;
 }
 
-export function ActivityRow({ tx, currentAddress }: ActivityRowProps) {
+const NATIVE_TOKEN_ID = "0".repeat(64);
+
+export function ActivityRow({ tx, currentAddress, onClick }: ActivityRowProps) {
   const isSent =
     tx.from?.toLowerCase() === currentAddress.toLowerCase();
   const counterparty = isSent ? tx.to : tx.from;
+  const isNative = !tx.token_id || tx.token_id === NATIVE_TOKEN_ID || tx.token_id === `0x${NATIVE_TOKEN_ID}`;
+  const symbol = isNative ? "NORN" : (tx.symbol || "TOKEN");
 
   return (
-    <div className="flex items-center gap-3 py-2.5 transition-colors duration-150 hover:bg-muted/50 -mx-2 px-2 rounded-md">
+    <div
+      className={cn(
+        "flex items-center gap-3 py-2.5 transition-colors duration-150 hover:bg-muted/50 -mx-2 px-2 rounded-md",
+        onClick && "cursor-pointer",
+      )}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") onClick(); } : undefined}
+    >
       <div
         className={cn(
           "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
@@ -32,7 +46,7 @@ export function ActivityRow({ tx, currentAddress }: ActivityRowProps) {
 
       <div className="flex flex-1 flex-col">
         <span className="text-sm font-medium">
-          {isSent ? "Sent" : "Received"}
+          {isSent ? "Sent" : "Received"} {symbol}
         </span>
         {counterparty && (
           <span className="font-mono text-xs text-muted-foreground">
@@ -50,7 +64,7 @@ export function ActivityRow({ tx, currentAddress }: ActivityRowProps) {
           )}
         >
           {isSent ? "-" : "+"}
-          {formatNorn(tx.amount)}
+          {tx.human_readable}
         </span>
         {tx.timestamp && (
           <span className="text-xs text-muted-foreground">

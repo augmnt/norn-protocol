@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Coins, Plus } from "lucide-react";
+import { useEffect, useState, useMemo } from "react";
+import { Coins, Plus, Search, X } from "lucide-react";
 import { useWalletStore } from "@/stores/wallet-store";
 import { useNavigationStore } from "@/stores/navigation-store";
 import { rpc } from "@/lib/rpc";
@@ -9,15 +9,21 @@ import { Header } from "../components/layout/Header";
 import { BottomNav } from "../components/layout/BottomNav";
 import { TokenRow } from "../components/wallet/TokenRow";
 import { Spinner } from "../components/ui/spinner";
+import { cn } from "@/lib/utils";
 
 interface TokenWithBalance extends TokenInfo {
   balance: string;
 }
 
+type TokenFilter = "mine" | "all";
+
 export function Tokens() {
   const [nornBalance, setNornBalance] = useState<string>("0");
   const [tokens, setTokens] = useState<TokenWithBalance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<TokenFilter>("mine");
+  const [search, setSearch] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
 
   const getActiveAddress = useWalletStore((s) => s.getActiveAddress);
   const navigate = useNavigationStore((s) => s.navigate);
@@ -52,6 +58,33 @@ export function Tokens() {
     load();
   }, [address]);
 
+  const filtered = useMemo(() => {
+    let list = tokens;
+
+    // Apply filter
+    if (filter === "mine") {
+      list = list.filter((t) => BigInt(t.balance) > 0n);
+    }
+
+    // Apply search
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (t) =>
+          t.symbol.toLowerCase().includes(q) ||
+          t.name.toLowerCase().includes(q),
+      );
+    }
+
+    // Sort: non-zero balances first, then by symbol
+    return [...list].sort((a, b) => {
+      const aHas = BigInt(a.balance) > 0n ? 0 : 1;
+      const bHas = BigInt(b.balance) > 0n ? 0 : 1;
+      if (aHas !== bHas) return aHas - bHas;
+      return a.symbol.localeCompare(b.symbol);
+    });
+  }, [tokens, filter, search]);
+
   return (
     <div className="flex h-full flex-col">
       <Header />
@@ -59,12 +92,55 @@ export function Tokens() {
       <div className="flex flex-1 flex-col overflow-y-auto scrollbar-thin">
         <div className="flex items-center justify-between p-4 pb-2">
           <h2 className="text-lg font-semibold">Tokens</h2>
-          <button
-            onClick={() => navigate("create-token")}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-norn/20 text-norn transition-all duration-150 hover:bg-norn/30 active:scale-95"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                setShowSearch(!showSearch);
+                if (showSearch) setSearch("");
+              }}
+              className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground active:scale-95"
+            >
+              {showSearch ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
+            </button>
+            <button
+              onClick={() => navigate("create-token")}
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-norn/20 text-norn transition-all duration-150 hover:bg-norn/30 active:scale-95"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Search bar */}
+        {showSearch && (
+          <div className="px-4 pb-2 animate-slide-in">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search tokens..."
+              autoFocus
+              className="w-full rounded-md border bg-background px-3 py-1.5 text-sm outline-none ring-norn/50 transition-shadow duration-150 placeholder:text-muted-foreground/50 focus:ring-1"
+            />
+          </div>
+        )}
+
+        {/* Filter chips */}
+        <div className="flex gap-1.5 px-4 pb-2">
+          {(["mine", "all"] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-medium transition-all duration-150",
+                filter === f
+                  ? "bg-norn text-white"
+                  : "bg-secondary text-secondary-foreground hover:bg-muted",
+              )}
+            >
+              {f === "mine" ? "My Tokens" : "All Tokens"}
+            </button>
+          ))}
         </div>
 
         {loading ? (
@@ -73,6 +149,7 @@ export function Tokens() {
           </div>
         ) : (
           <div className="divide-y divide-border px-4 pb-2">
+            {/* Always show NORN first */}
             <div
               className="flex items-center gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors duration-150 hover:bg-muted/50 animate-slide-in"
             >
@@ -90,7 +167,7 @@ export function Tokens() {
               </span>
             </div>
 
-            {tokens.map((token, i) => (
+            {filtered.map((token, i) => (
               <div
                 key={token.token_id}
                 className="animate-slide-in"
@@ -106,10 +183,12 @@ export function Tokens() {
               </div>
             ))}
 
-            {tokens.length === 0 && (
+            {filtered.length === 0 && (
               <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground animate-fade-in">
                 <Coins className="h-6 w-6" />
-                <p className="text-sm">No custom tokens</p>
+                <p className="text-sm">
+                  {search ? "No tokens match your search" : filter === "mine" ? "No tokens with balance" : "No custom tokens"}
+                </p>
               </div>
             )}
           </div>

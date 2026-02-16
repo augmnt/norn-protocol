@@ -21,6 +21,7 @@ import { CreateToken } from "./pages/CreateToken";
 import { TokenDetail } from "./pages/TokenDetail";
 import { MintToken } from "./pages/MintToken";
 import { BurnToken } from "./pages/BurnToken";
+import { TransactionDetail } from "./pages/TransactionDetail";
 import { Spinner } from "./components/ui/spinner";
 import { PageTransition } from "./components/ui/page-transition";
 
@@ -100,6 +101,8 @@ function renderRoute(route: string) {
       return <Receive />;
     case "activity":
       return <Activity />;
+    case "transaction-detail":
+      return <TransactionDetail />;
     case "tokens":
       return <Tokens />;
     case "create-token":

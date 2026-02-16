@@ -16,7 +16,7 @@ export function Receive() {
 
       <div className="flex flex-1 flex-col items-center justify-center gap-6 p-4">
         <div className="space-y-1 text-center">
-          <h2 className="text-lg font-semibold">Receive NORN</h2>
+          <h2 className="text-lg font-semibold">Receive</h2>
           <p className="text-sm text-muted-foreground">
             Share this address to receive funds
           </p>

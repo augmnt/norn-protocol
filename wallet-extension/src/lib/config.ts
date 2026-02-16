@@ -3,8 +3,14 @@ import type { NetworkConfig } from "@/types";
 export const DEFAULT_NETWORK: NetworkConfig = {
   rpcUrl: "https://seed.norn.network",
   wsUrl: "wss://seed.norn.network",
-  name: "Norn Devnet",
+  name: "Devnet",
 };
+
+export const NETWORK_PRESETS: NetworkConfig[] = [
+  { rpcUrl: "https://seed.norn.network", wsUrl: "wss://seed.norn.network", name: "Devnet" },
+  { rpcUrl: "https://testnet.norn.network", wsUrl: "wss://testnet.norn.network", name: "Testnet" },
+  { rpcUrl: "http://localhost:9741", wsUrl: "ws://localhost:9741", name: "Local" },
+];
 
 export const NORN_DECIMALS = 12;
 

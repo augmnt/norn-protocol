@@ -9,6 +9,7 @@ import { Header } from "../components/layout/Header";
 import { BottomNav } from "../components/layout/BottomNav";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Card, CardContent } from "../components/ui/card";
 import { Spinner } from "../components/ui/spinner";
 
 /** Token creation fee: 10 NORN (12 decimals). */
@@ -22,6 +23,7 @@ export function CreateToken() {
   const [balance, setBalance] = useState("0");
   const [balanceLoaded, setBalanceLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const activeWallet = useWalletStore((s) => s.activeWallet);
   const getActiveAddress = useWalletStore((s) => s.getActiveAddress);
@@ -90,6 +92,74 @@ export function CreateToken() {
       setLoading(false);
     }
   };
+
+  // Confirmation step
+  if (showConfirm) {
+    return (
+      <div className="flex h-full flex-col">
+        <Header />
+
+        <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 scrollbar-thin">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold">Confirm Token Creation</h2>
+            <p className="text-sm text-muted-foreground">
+              Review the details before creating your token.
+            </p>
+          </div>
+
+          <Card>
+            <CardContent className="space-y-3 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase tracking-wider text-muted-foreground">Name</span>
+                <span className="text-sm font-medium">{name}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase tracking-wider text-muted-foreground">Symbol</span>
+                <span className="text-sm font-medium">{symbol}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase tracking-wider text-muted-foreground">Decimals</span>
+                <span className="font-mono text-sm tabular-nums">{decimals}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase tracking-wider text-muted-foreground">Max Supply</span>
+                <span className="font-mono text-sm tabular-nums">
+                  {maxSupply === "" || maxSupply === "0" ? "Unlimited" : maxSupply}
+                </span>
+              </div>
+              <div className="border-t pt-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs uppercase tracking-wider text-muted-foreground">Fee</span>
+                  <span className="font-mono text-lg font-medium tabular-nums">10 NORN</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex gap-3">
+            <Button
+              variant="ghost"
+              className="flex-1"
+              onClick={() => setShowConfirm(false)}
+              disabled={loading}
+            >
+              Back
+            </Button>
+            <Button
+              variant="norn"
+              className="flex-1"
+              onClick={handleCreate}
+              disabled={loading}
+            >
+              {loading ? <Spinner size="sm" /> : "Confirm"}
+            </Button>
+          </div>
+        </div>
+
+        <BottomNav />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -185,8 +255,8 @@ export function CreateToken() {
           )}
         </div>
 
-        <Button className="w-full" disabled={!isValid} onClick={handleCreate}>
-          {loading ? <Spinner size="sm" /> : "Create Token"}
+        <Button className="w-full" disabled={!isValid} onClick={() => setShowConfirm(true)}>
+          Review Token
         </Button>
       </div>
 

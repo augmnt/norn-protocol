@@ -5,11 +5,12 @@ import { buildNameRegistration } from "@norn-protocol/sdk";
 import { useWalletStore } from "@/stores/wallet-store";
 import { useNavigationStore } from "@/stores/navigation-store";
 import { rpc } from "@/lib/rpc";
-import { formatNorn } from "@/lib/format";
+import { formatNorn, truncateAddress } from "@/lib/format";
 import { Header } from "../components/layout/Header";
 import { BottomNav } from "../components/layout/BottomNav";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Card, CardContent } from "../components/ui/card";
 import { Spinner } from "../components/ui/spinner";
 import type { NameInfo } from "@/types";
 
@@ -23,6 +24,7 @@ export function RegisterName() {
   const [namesLoading, setNamesLoading] = useState(true);
   const [balance, setBalance] = useState("0");
   const [balanceLoaded, setBalanceLoaded] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const activeWallet = useWalletStore((s) => s.activeWallet);
   const getActiveAddress = useWalletStore((s) => s.getActiveAddress);
@@ -32,7 +34,6 @@ export function RegisterName() {
   useEffect(() => {
     if (!address) return;
 
-    // Fetch balance and names independently so one failure doesn't block the other
     rpc
       .getBalance(address)
       .then((bal) => {
@@ -86,6 +87,64 @@ export function RegisterName() {
     }
   };
 
+  // Confirmation step
+  if (showConfirm) {
+    return (
+      <div className="flex h-full flex-col">
+        <Header />
+
+        <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 scrollbar-thin">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold">Confirm Registration</h2>
+            <p className="text-sm text-muted-foreground">
+              Review the details before registering.
+            </p>
+          </div>
+
+          <Card>
+            <CardContent className="space-y-3 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase tracking-wider text-muted-foreground">Name</span>
+                <span className="text-sm font-medium">{name}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase tracking-wider text-muted-foreground">Owner</span>
+                <span className="font-mono text-sm">{truncateAddress(address)}</span>
+              </div>
+              <div className="border-t pt-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs uppercase tracking-wider text-muted-foreground">Fee</span>
+                  <span className="font-mono text-lg font-medium tabular-nums">1 NORN</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex gap-3">
+            <Button
+              variant="ghost"
+              className="flex-1"
+              onClick={() => setShowConfirm(false)}
+              disabled={loading}
+            >
+              Back
+            </Button>
+            <Button
+              variant="norn"
+              className="flex-1"
+              onClick={handleRegister}
+              disabled={loading}
+            >
+              {loading ? <Spinner size="sm" /> : "Confirm"}
+            </Button>
+          </div>
+        </div>
+
+        <BottomNav />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full flex-col">
       <Header />
@@ -137,9 +196,9 @@ export function RegisterName() {
         <Button
           className="w-full"
           disabled={!isValid}
-          onClick={handleRegister}
+          onClick={() => setShowConfirm(true)}
         >
-          {loading ? <Spinner size="sm" /> : "Register Name"}
+          Review Registration
         </Button>
 
         {/* Owned names */}

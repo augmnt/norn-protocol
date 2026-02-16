@@ -24,6 +24,7 @@ export type Route =
   | "confirm"
   | "receive"
   | "activity"
+  | "transaction-detail"
   | "tokens"
   | "create-token"
   | "token-detail"

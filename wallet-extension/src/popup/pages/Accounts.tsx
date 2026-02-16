@@ -51,6 +51,8 @@ export function Accounts() {
     if (accountId === activeAccountId) return;
     try {
       await switchAccount(accountId);
+      const switched = accounts.find((a) => a.id === accountId);
+      toast.success(`Switched to ${switched?.name ?? "account"}`);
       navigate("dashboard");
     } catch (err) {
       toast.error(

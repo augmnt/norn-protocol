@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { ArrowUpRight, Flame, Coins } from "lucide-react";
+import { ArrowUpRight, Flame, Coins, ExternalLink } from "lucide-react";
 import { useNavigationStore } from "@/stores/navigation-store";
+import { useNetworkStore } from "@/stores/network-store";
 import { useWalletStore } from "@/stores/wallet-store";
 import { rpc } from "@/lib/rpc";
 import { formatAmount, truncateAddress, formatTimestamp } from "@/lib/format";
@@ -10,6 +11,12 @@ import { BottomNav } from "../components/layout/BottomNav";
 import { Card, CardContent } from "../components/ui/card";
 import { Spinner } from "../components/ui/spinner";
 
+function getExplorerUrl(rpcUrl: string): string | null {
+  if (rpcUrl.includes("seed.norn.network")) return "https://explorer.norn.network";
+  if (rpcUrl.includes("localhost") || rpcUrl.includes("127.0.0.1")) return "http://localhost:3001";
+  return null;
+}
+
 export function TokenDetail() {
   const [token, setToken] = useState<TokenInfo | null>(null);
   const [balance, setBalance] = useState<string>("0");
@@ -18,6 +25,7 @@ export function TokenDetail() {
   const params = useNavigationStore((s) => s.params);
   const navigate = useNavigationStore((s) => s.navigate);
   const getActiveAddress = useWalletStore((s) => s.getActiveAddress);
+  const rpcUrl = useNetworkStore((s) => s.rpcUrl);
 
   const tokenId = params.tokenId as string;
   const address = getActiveAddress() ?? "";
@@ -173,6 +181,18 @@ export function TokenDetail() {
                     {formatTimestamp(token.created_at)}
                   </span>
                 </div>
+
+                {getExplorerUrl(rpcUrl) && (
+                  <a
+                    href={`${getExplorerUrl(rpcUrl)}/tokens/${tokenId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-1.5 rounded-lg border p-2.5 text-sm text-norn transition-colors duration-150 hover:bg-norn/10"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    View on Explorer
+                  </a>
+                )}
               </CardContent>
             </Card>
           </>

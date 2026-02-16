@@ -215,11 +215,15 @@ export function Dashboard() {
             <div className="divide-y divide-border">
               {transactions.slice(0, 5).map((tx, i) => (
                 <div
-                  key={i}
+                  key={tx.knot_id || i}
                   className="animate-slide-in"
                   style={{ animationDelay: `${i * 50}ms`, animationFillMode: "backwards" }}
                 >
-                  <ActivityRow tx={tx} currentAddress={address} />
+                  <ActivityRow
+                    tx={tx}
+                    currentAddress={address}
+                    onClick={() => navigate("transaction-detail", { tx })}
+                  />
                 </div>
               ))}
             </div>

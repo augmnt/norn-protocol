@@ -169,3 +169,50 @@ export async function exportPrivateKey(
   const privateKey = await decrypt(account.encryptedPrivateKey, password);
   return toHex(privateKey);
 }
+
+/**
+ * Change the password for all accounts.
+ * Decrypts each account's private key with the old password, then re-encrypts
+ * with the new password.
+ */
+export async function changePassword(
+  oldPassword: string,
+  newPassword: string,
+): Promise<void> {
+  const ks = await loadKeystore();
+
+  // Verify old password works on all accounts first
+  const decryptedKeys: Uint8Array[] = [];
+  for (const account of ks.accounts) {
+    const privateKey = await decrypt(account.encryptedPrivateKey, oldPassword);
+    decryptedKeys.push(privateKey);
+  }
+
+  // Re-encrypt all accounts with the new password
+  for (let i = 0; i < ks.accounts.length; i++) {
+    ks.accounts[i].encryptedPrivateKey = await encrypt(
+      decryptedKeys[i],
+      newPassword,
+    );
+  }
+
+  await saveKeystore(ks);
+}
+
+/**
+ * Erase all wallet data (factory reset).
+ * Requires password verification before wiping.
+ */
+export async function forgetWallet(password: string): Promise<void> {
+  const ks = await loadKeystore();
+  if (ks.accounts.length === 0) {
+    throw new Error("No wallet to forget");
+  }
+
+  // Verify password by attempting to unlock the active account (or first account)
+  const accountId = ks.activeAccountId ?? ks.accounts[0].id;
+  await unlockAccount(accountId, password);
+
+  // Wipe everything
+  await chrome.storage.local.clear();
+}
