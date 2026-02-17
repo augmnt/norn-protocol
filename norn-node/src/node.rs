@@ -789,15 +789,22 @@ impl Node {
             })
         });
 
+        // Give the relay time to establish peer connections before sync.
+        if self.relay_handle.is_some() {
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        }
+
         // Attempt state sync with peers before starting the main loop.
         self.sync_state().await;
 
-        // Schedule a sync retry for after mDNS has time to discover peers.
-        let needs_sync_retry = {
+        // If sync didn't succeed and we have a relay, schedule a retry and
+        // suppress block production until the retry completes (prevents the
+        // node from forking onto its own local chain before peers respond).
+        let mut sync_pending = {
             let engine = self.weave_engine.read().await;
-            engine.weave_state().height == 0
+            engine.weave_state().height == 0 && self.relay_handle.is_some()
         };
-        let mut sync_retry = if needs_sync_retry {
+        let mut sync_retry = if sync_pending {
             Some(Box::pin(tokio::time::sleep(
                 std::time::Duration::from_secs(15),
             )))
@@ -1241,7 +1248,7 @@ impl Node {
 
             tokio::select! {
                 _ = block_interval.tick() => {
-                    if self.config.validator.enabled {
+                    if self.config.validator.enabled && !sync_pending {
                         let timestamp = current_timestamp();
 
                         let mut engine = self.weave_engine.write().await;
@@ -1543,22 +1550,14 @@ impl Node {
                 }
                 _ = async { if let Some(ref mut s) = sync_retry { s.await } else { std::future::pending().await } } => {
                     sync_retry = None;
+                    sync_pending = false; // resume block production after this attempt
                     let height = {
                         let engine = self.weave_engine.read().await;
                         engine.weave_state().height
                     };
                     if height == 0 {
-                        if let Some(ref handle) = self.relay_handle {
-                            tracing::info!("Retrying state sync after peer discovery...");
-                            let request = NornMessage::StateRequest {
-                                current_height: 0,
-                                genesis_hash: self.genesis_hash,
-                            };
-                            let h = handle.clone();
-                            tokio::spawn(async move {
-                                let _ = h.broadcast(request).await;
-                            });
-                        }
+                        tracing::info!("Retrying state sync after peer discovery...");
+                        self.sync_state().await;
                     }
                 }
                 _ = tokio::signal::ctrl_c() => {

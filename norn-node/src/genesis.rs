@@ -91,10 +91,9 @@ const DEVNET_FOUNDER: Address = [
 ///
 /// Returns `(genesis_config, founder_address)`.
 pub fn devnet_genesis() -> (GenesisConfig, Address) {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    // Fixed timestamp so all --dev nodes produce the same genesis hash,
+    // enabling state sync between peers on the devnet chain.
+    let now: u64 = 1_700_000_000; // 2023-11-14T22:13:20Z
 
     let config = GenesisConfig {
         version: norn_types::genesis::GENESIS_CONFIG_VERSION,
@@ -242,13 +241,17 @@ mod tests {
     fn test_devnet_genesis_deterministic() {
         let (config1, addr1) = devnet_genesis();
         let (config2, addr2) = devnet_genesis();
-        // Timestamps use current time so they may differ by a second;
-        // compare everything except timestamp.
+        // Fixed timestamp ensures identical genesis across all dev nodes.
+        assert_eq!(config1.timestamp, config2.timestamp);
         assert_eq!(config1.chain_id, config2.chain_id);
         assert_eq!(config1.allocations, config2.allocations);
         assert_eq!(config1.parameters, config2.parameters);
         assert_eq!(config1.name_registrations, config2.name_registrations);
         assert_eq!(addr1, addr2);
+        // Genesis hash must be identical across calls.
+        let (block1, _) = create_genesis_block(&config1).unwrap();
+        let (block2, _) = create_genesis_block(&config2).unwrap();
+        assert_eq!(block1.hash, block2.hash);
     }
 
     #[test]

@@ -159,13 +159,13 @@ check_platform_deps() {
       success "Xcode command-line tools found"
     fi
   elif [ "$PLATFORM" = "linux" ]; then
-    if ! command -v cc &>/dev/null; then
-      warn "C compiler not found -- attempting to install build-essential"
+    if ! command -v cc &>/dev/null || ! command -v clang &>/dev/null; then
+      warn "Build tools missing -- installing build-essential and clang"
       if command -v apt-get &>/dev/null; then
-        sudo apt-get update -qq && sudo apt-get install -y -qq build-essential pkg-config libssl-dev
+        sudo apt-get update -qq && sudo apt-get install -y -qq build-essential pkg-config libssl-dev clang libclang-dev
         success "Build tools installed"
       elif command -v yum &>/dev/null; then
-        sudo yum groupinstall -y "Development Tools" && sudo yum install -y openssl-devel
+        sudo yum groupinstall -y "Development Tools" && sudo yum install -y openssl-devel clang clang-devel
         success "Build tools installed"
       else
         warn "Could not auto-install. Please install a C compiler manually."
