@@ -15,7 +15,11 @@ pub fn prompt_password(prompt: &str) -> Result<String, WalletError> {
 }
 
 /// Prompt the user for a new password with confirmation.
+/// If `NORN_WALLET_PASSWORD` env var is set, uses that instead of prompting.
 pub fn prompt_new_password() -> Result<String, WalletError> {
+    if let Ok(pw) = std::env::var("NORN_WALLET_PASSWORD") {
+        return Ok(pw);
+    }
     Password::new()
         .with_prompt("Enter password")
         .with_confirmation("Confirm password", "Passwords do not match")
