@@ -579,7 +579,10 @@ impl Node {
             return;
         }
 
-        tracing::info!(peer_count = peers.len(), "Requesting state sync from peers...");
+        tracing::info!(
+            peer_count = peers.len(),
+            "Requesting state sync from peers..."
+        );
 
         let our_genesis_hash = self.genesis_hash;
         let mut current_height: u64 = 0;

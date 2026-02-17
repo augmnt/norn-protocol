@@ -45,6 +45,9 @@ pub enum Command {
         /// Boot node multiaddr to connect to (can be specified multiple times)
         #[arg(long = "boot-node")]
         boot_nodes: Vec<String>,
+        /// Hex-encoded 32-byte seed for deterministic validator keypair
+        #[arg(long)]
+        keypair_seed: Option<String>,
     },
     /// Initialize a new node configuration
     Init {
@@ -86,6 +89,7 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
             reset_state,
             no_bootstrap,
             boot_nodes,
+            keypair_seed,
         } => {
             crate::banner::print_banner();
 
@@ -93,6 +97,9 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
                 let mut cfg = crate::config::NodeConfig::default();
                 cfg.validator.enabled = true;
                 cfg.validator.solo_mode = true;
+                // Default to seed node keypair; operators pass --keypair-seed to override.
+                cfg.validator.keypair_seed =
+                    Some(crate::genesis::DEVNET_SEED_KEYPAIR_SEED.to_string());
                 cfg.rpc.enabled = true;
                 cfg.rpc.listen_addr = "127.0.0.1:9741".to_string();
                 cfg.storage.db_type = "sqlite".to_string();
@@ -123,6 +130,9 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
             }
             if !boot_nodes.is_empty() {
                 config.network.boot_nodes.extend(boot_nodes);
+            }
+            if let Some(seed) = keypair_seed {
+                config.validator.keypair_seed = Some(seed);
             }
 
             // Wipe data directory if requested.

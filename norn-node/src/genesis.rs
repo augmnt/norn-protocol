@@ -1,6 +1,6 @@
 use norn_crypto::hash::blake3_hash;
 use norn_types::genesis::{
-    GenesisAllocation, GenesisConfig, GenesisNameRegistration, GenesisParameters,
+    GenesisAllocation, GenesisConfig, GenesisNameRegistration, GenesisParameters, GenesisValidator,
 };
 use norn_types::primitives::{Address, NATIVE_TOKEN_ID};
 use norn_types::weave::{FeeState, WeaveBlock, WeaveState};
@@ -87,7 +87,42 @@ const DEVNET_FOUNDER: Address = [
     0x6a, 0x64, 0x00, 0x03,
 ];
 
-/// Create a devnet genesis config with the augmnt founder pre-funded.
+/// Devnet seed node keypair seed (deterministic): `[0x01; 32]`
+pub const DEVNET_SEED_KEYPAIR_SEED: &str =
+    "0101010101010101010101010101010101010101010101010101010101010101";
+
+/// Devnet validator node keypair seed (deterministic): `[0x02; 32]`
+/// Passed via `--keypair-seed` on the validator server's service file.
+#[allow(dead_code)] // Used externally by operators via --keypair-seed CLI flag
+pub const DEVNET_VALIDATOR_KEYPAIR_SEED: &str =
+    "0202020202020202020202020202020202020202020202020202020202020202";
+
+/// Seed node public key (derived from `DEVNET_SEED_KEYPAIR_SEED`).
+const DEVNET_SEED_PUBKEY: [u8; 32] = [
+    0x8a, 0x88, 0xe3, 0xdd, 0x74, 0x09, 0xf1, 0x95, 0xfd, 0x52, 0xdb, 0x2d, 0x3c, 0xba, 0x5d, 0x72,
+    0xca, 0x67, 0x09, 0xbf, 0x1d, 0x94, 0x12, 0x1b, 0xf3, 0x74, 0x88, 0x01, 0xb4, 0x0f, 0x6f, 0x5c,
+];
+
+/// Seed node address (derived from `DEVNET_SEED_PUBKEY`).
+const DEVNET_SEED_ADDRESS: Address = [
+    0x83, 0x56, 0x1a, 0xdb, 0x39, 0x8f, 0xd8, 0x7f, 0x8e, 0x7e, 0xd8, 0x33, 0x1b, 0xff, 0x2f, 0xcb,
+    0x94, 0x57, 0x33, 0xcc,
+];
+
+/// Validator node public key (derived from `DEVNET_VALIDATOR_KEYPAIR_SEED`).
+const DEVNET_VALIDATOR_PUBKEY: [u8; 32] = [
+    0x81, 0x39, 0x77, 0x0e, 0xa8, 0x7d, 0x17, 0x5f, 0x56, 0xa3, 0x54, 0x66, 0xc3, 0x4c, 0x7e, 0xcc,
+    0xcb, 0x8d, 0x8a, 0x91, 0xb4, 0xee, 0x37, 0xa2, 0x5d, 0xf6, 0x0f, 0x5b, 0x8f, 0xc9, 0xb3, 0x94,
+];
+
+/// Validator node address (derived from `DEVNET_VALIDATOR_PUBKEY`).
+const DEVNET_VALIDATOR_ADDRESS: Address = [
+    0x1e, 0xed, 0x29, 0xb1, 0x65, 0x4f, 0xbc, 0xa9, 0x46, 0x17, 0x00, 0x4d, 0x79, 0x69, 0xdf, 0xc4,
+    0x65, 0x2b, 0x1f, 0x30,
+];
+
+/// Create a devnet genesis config with the augmnt founder pre-funded
+/// and two deterministic validators (seed + validator node).
 ///
 /// Returns `(genesis_config, founder_address)`.
 pub fn devnet_genesis() -> (GenesisConfig, Address) {
@@ -99,7 +134,18 @@ pub fn devnet_genesis() -> (GenesisConfig, Address) {
         version: norn_types::genesis::GENESIS_CONFIG_VERSION,
         chain_id: "norn-dev".to_string(),
         timestamp: now,
-        validators: Vec::new(), // auto-filled by Node::new() when validator.enabled
+        validators: vec![
+            GenesisValidator {
+                pubkey: DEVNET_SEED_PUBKEY,
+                address: DEVNET_SEED_ADDRESS,
+                stake: 1_000_000_000_000,
+            },
+            GenesisValidator {
+                pubkey: DEVNET_VALIDATOR_PUBKEY,
+                address: DEVNET_VALIDATOR_ADDRESS,
+                stake: 1_000_000_000_000,
+            },
+        ],
         allocations: vec![GenesisAllocation {
             address: DEVNET_FOUNDER,
             token_id: NATIVE_TOKEN_ID,
@@ -265,6 +311,24 @@ mod tests {
         assert_eq!(config.allocations[0].amount, 10_000_000_000_000_000_000);
         // Founder address is non-zero
         assert_ne!(founder_addr, [0u8; 20]);
+    }
+
+    #[test]
+    fn test_devnet_genesis_has_two_validators() {
+        let (config, _) = devnet_genesis();
+        assert_eq!(
+            config.validators.len(),
+            2,
+            "devnet must have seed + validator"
+        );
+        // Seed node
+        assert_eq!(config.validators[0].pubkey, DEVNET_SEED_PUBKEY);
+        assert_eq!(config.validators[0].address, DEVNET_SEED_ADDRESS);
+        // Validator node
+        assert_eq!(config.validators[1].pubkey, DEVNET_VALIDATOR_PUBKEY);
+        assert_eq!(config.validators[1].address, DEVNET_VALIDATOR_ADDRESS);
+        // Both have the same stake
+        assert_eq!(config.validators[0].stake, config.validators[1].stake);
     }
 
     #[test]
