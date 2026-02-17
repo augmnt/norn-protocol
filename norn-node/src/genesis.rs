@@ -93,7 +93,7 @@ const DEVNET_FOUNDER: Address = [
 pub fn devnet_genesis() -> (GenesisConfig, Address) {
     // Fixed timestamp so all --dev nodes produce the same genesis hash,
     // enabling state sync between peers on the devnet chain.
-    let now: u64 = 1_700_000_000; // 2023-11-14T22:13:20Z
+    let now: u64 = 1_739_750_400; // 2025-02-17T00:00:00Z
 
     let config = GenesisConfig {
         version: norn_types::genesis::GENESIS_CONFIG_VERSION,
