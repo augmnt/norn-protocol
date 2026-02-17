@@ -349,7 +349,7 @@ impl RelayNode {
                                         .gossipsub
                                         .publish(topic, data)
                                     {
-                                        debug!("outbound publish failed: {}", e);
+                                        warn!(%v_topic_name, "outbound publish failed: {}", e);
                                     }
                                 }
                                 Err(e) => {

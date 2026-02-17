@@ -581,8 +581,8 @@ impl Node {
                 genesis_hash: our_genesis_hash,
                 nonce: rand::random::<u64>(),
             };
-            if handle.broadcast(request).await.is_err() {
-                tracing::debug!("Failed to send state sync request");
+            if let Err(e) = handle.broadcast(request).await {
+                tracing::warn!("Failed to send state sync request: {:?}", e);
                 return;
             }
 
@@ -1008,6 +1008,11 @@ impl Node {
                             genesis_hash,
                             ..
                         } => {
+                            tracing::info!(
+                                current_height,
+                                peer = ?source_peer,
+                                "received state sync request from peer"
+                            );
                             // Reject if genesis hash mismatch.
                             if self.genesis_hash != [0u8; 32]
                                 && genesis_hash != [0u8; 32]
@@ -1034,6 +1039,11 @@ impl Node {
                                         }
                                     }
                                 }
+                                tracing::info!(
+                                    blocks_count = blocks.len(),
+                                    tip,
+                                    "responding to state sync request"
+                                );
                                 if !blocks.is_empty() {
                                     let h = handle.clone();
                                     let resp = NornMessage::StateResponse {
