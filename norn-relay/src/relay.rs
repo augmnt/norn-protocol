@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::sync::{Arc, Mutex as StdMutex};
 
 use futures::StreamExt;
 use libp2p::gossipsub::{self, IdentTopic};
@@ -34,6 +35,7 @@ enum OutboundMessage {
 #[derive(Clone)]
 pub struct RelayHandle {
     outbound_tx: mpsc::Sender<OutboundMessage>,
+    connected_peers: Arc<StdMutex<HashSet<PeerId>>>,
 }
 
 impl RelayHandle {
@@ -56,6 +58,14 @@ impl RelayHandle {
                 reason: "relay outbound channel closed".to_string(),
             })
     }
+
+    /// Get the currently connected peer IDs.
+    pub fn connected_peers(&self) -> Vec<PeerId> {
+        self.connected_peers
+            .lock()
+            .map(|guard| guard.iter().copied().collect())
+            .unwrap_or_default()
+    }
 }
 
 /// The main relay node that handles networking.
@@ -68,6 +78,8 @@ pub struct RelayNode {
     message_tx: broadcast::Sender<(NornMessage, Option<PeerId>)>,
     outbound_tx: mpsc::Sender<OutboundMessage>,
     outbound_rx: Option<mpsc::Receiver<OutboundMessage>>,
+    /// Shared set of connected peer IDs, readable from `RelayHandle`.
+    connected_peers_shared: Arc<StdMutex<HashSet<PeerId>>>,
     /// Protocol versions for which we've already broadcast an upgrade notice.
     notified_versions: HashSet<u8>,
 }
@@ -171,6 +183,7 @@ impl RelayNode {
         let spindle_registry = SpindleRegistry::new();
         let (message_tx, _) = broadcast::channel(1024);
         let (outbound_tx, outbound_rx) = mpsc::channel(256);
+        let connected_peers_shared = Arc::new(StdMutex::new(HashSet::new()));
 
         info!(
             peer_id = %swarm.local_peer_id(),
@@ -188,6 +201,7 @@ impl RelayNode {
             message_tx,
             outbound_tx,
             outbound_rx: Some(outbound_rx),
+            connected_peers_shared,
             notified_versions: HashSet::new(),
         })
     }
@@ -208,6 +222,7 @@ impl RelayNode {
     pub fn handle(&self) -> RelayHandle {
         RelayHandle {
             outbound_tx: self.outbound_tx.clone(),
+            connected_peers: self.connected_peers_shared.clone(),
         }
     }
 
@@ -317,11 +332,16 @@ impl RelayNode {
                                     "peer limit reached, disconnecting peer"
                                 );
                                 let _ = self.swarm.disconnect_peer_id(peer_id);
+                            } else if let Ok(mut peers) = self.connected_peers_shared.lock() {
+                                peers.insert(peer_id);
                             }
                         }
                         Some(SwarmEvent::ConnectionClosed { peer_id, .. }) => {
                             info!(%peer_id, "peer disconnected");
                             self.peer_manager.remove_peer(&peer_id);
+                            if let Ok(mut peers) = self.connected_peers_shared.lock() {
+                                peers.remove(&peer_id);
+                            }
                         }
                         Some(SwarmEvent::NewListenAddr { address, .. }) => {
                             info!(%address, "listening on new address");

@@ -563,13 +563,23 @@ impl Node {
 
     /// Attempt state sync with peers on startup.
     /// Continues requesting blocks in batches until fully caught up.
+    ///
+    /// Uses request-response (direct peer messaging) instead of gossipsub
+    /// broadcast, because gossipsub mesh formation takes multiple heartbeat
+    /// cycles and isn't ready immediately after peer connection.
     async fn sync_state(&mut self) {
         let handle = match self.relay_handle {
             Some(ref h) => h.clone(),
             None => return,
         };
 
-        tracing::info!("Requesting state sync from peers...");
+        let peers = handle.connected_peers();
+        if peers.is_empty() {
+            tracing::info!("State sync: no connected peers yet");
+            return;
+        }
+
+        tracing::info!(peer_count = peers.len(), "Requesting state sync from peers...");
 
         let our_genesis_hash = self.genesis_hash;
         let mut current_height: u64 = 0;
@@ -581,8 +591,18 @@ impl Node {
                 genesis_hash: our_genesis_hash,
                 nonce: rand::random::<u64>(),
             };
-            if let Err(e) = handle.broadcast(request).await {
-                tracing::warn!("Failed to send state sync request: {:?}", e);
+            // Send directly to each connected peer via request-response.
+            // This bypasses gossipsub which requires mesh formation.
+            let mut sent = false;
+            for peer_id in &peers {
+                if let Err(e) = handle.send_to_peer(*peer_id, request.clone()).await {
+                    tracing::warn!(%peer_id, "Failed to send state sync request: {:?}", e);
+                } else {
+                    sent = true;
+                }
+            }
+            if !sent {
+                tracing::warn!("Failed to send state sync request to any peer");
                 return;
             }
 
