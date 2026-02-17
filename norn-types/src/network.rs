@@ -237,6 +237,8 @@ pub enum NornMessage {
         current_height: u64,
         /// Genesis hash for chain identity validation.
         genesis_hash: Hash,
+        /// Random nonce to ensure gossipsub treats retries as unique messages.
+        nonce: u64,
     },
     /// Response with blocks for state sync.
     StateResponse {
@@ -341,6 +343,7 @@ mod tests {
         let msg = NornMessage::StateRequest {
             current_height: 0,
             genesis_hash: [0u8; 32],
+            nonce: 0,
         };
         assert_eq!(msg.discriminant(), 11);
     }

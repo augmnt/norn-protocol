@@ -579,6 +579,7 @@ impl Node {
             let request = NornMessage::StateRequest {
                 current_height,
                 genesis_hash: our_genesis_hash,
+                nonce: rand::random::<u64>(),
             };
             if handle.broadcast(request).await.is_err() {
                 tracing::debug!("Failed to send state sync request");
@@ -1005,6 +1006,7 @@ impl Node {
                         NornMessage::StateRequest {
                             current_height,
                             genesis_hash,
+                            ..
                         } => {
                             // Reject if genesis hash mismatch.
                             if self.genesis_hash != [0u8; 32]
