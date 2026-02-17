@@ -1064,22 +1064,22 @@ impl Node {
                                     tip,
                                     "responding to state sync request"
                                 );
-                                if !blocks.is_empty() {
-                                    let h = handle.clone();
-                                    let resp = NornMessage::StateResponse {
-                                        blocks,
-                                        tip_height: tip,
-                                        genesis_hash: self.genesis_hash,
-                                    };
-                                    if let Some(peer_id) = source_peer {
-                                        tokio::spawn(async move {
-                                            let _ = h.send_to_peer(peer_id, resp).await;
-                                        });
-                                    } else {
-                                        tokio::spawn(async move {
-                                            let _ = h.broadcast(resp).await;
-                                        });
-                                    }
+                                // Always respond (even with 0 blocks) so the requester
+                                // gets a definitive answer instead of timing out.
+                                let h = handle.clone();
+                                let resp = NornMessage::StateResponse {
+                                    blocks,
+                                    tip_height: tip,
+                                    genesis_hash: self.genesis_hash,
+                                };
+                                if let Some(peer_id) = source_peer {
+                                    tokio::spawn(async move {
+                                        let _ = h.send_to_peer(peer_id, resp).await;
+                                    });
+                                } else {
+                                    tokio::spawn(async move {
+                                        let _ = h.broadcast(resp).await;
+                                    });
                                 }
                             }
                         }
