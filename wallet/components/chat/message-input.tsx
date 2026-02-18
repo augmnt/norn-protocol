@@ -8,9 +8,9 @@ import { useWallet } from "@/hooks/use-wallet";
 import { useChatStore } from "@/stores/chat-store";
 import { useWalletStore } from "@/stores/wallet-store";
 import { signChatEvent, signEncryptedDm } from "@/lib/chat-signer";
-import { getChatProfile } from "@/lib/chat-storage";
+import { getChatProfile, saveChatProfile } from "@/lib/chat-storage";
 import { rpcCall } from "@/lib/rpc";
-import { fromHex, type ChatEvent, type SubmitResult } from "@norn-protocol/sdk";
+import { fromHex, verifyChatEvent, type ChatEvent, type SubmitResult } from "@norn-protocol/sdk";
 import { toast } from "sonner";
 
 interface MessageInputProps {
@@ -38,10 +38,39 @@ export function MessageInput({ conversationId, conversationType, peerPubkey }: M
         const tags: string[][] = [["c", conversationId]];
         event = await signChatEvent(meta, 30003, message, tags, activeAccountIndex, pw);
       } else if (conversationType === "dm" && peerPubkey) {
-        const profile = await getChatProfile(peerPubkey);
+        let profile = await getChatProfile(peerPubkey);
+
+        // If not cached locally, try fetching from server
+        if (!profile?.x25519PublicKey) {
+          try {
+            const events = await rpcCall<ChatEvent[]>("norn_getChatHistory", [
+              { kinds: [30000], pubkey: peerPubkey, limit: 1 },
+            ]);
+            const profileEvent = events.find(
+              (e) => e.pubkey === peerPubkey && verifyChatEvent(e)
+            );
+            if (profileEvent) {
+              const parsed = JSON.parse(profileEvent.content);
+              if (parsed.x25519PublicKey) {
+                await saveChatProfile(peerPubkey, {
+                  pubkey: peerPubkey,
+                  displayName: parsed.name,
+                  x25519PublicKey: parsed.x25519PublicKey,
+                  address: parsed.address ?? "",
+                  nornName: parsed.nornName,
+                  updatedAt: profileEvent.created_at,
+                });
+                profile = await getChatProfile(peerPubkey);
+              }
+            }
+          } catch {
+            // Non-fatal — fall through to error below
+          }
+        }
+
         if (!profile?.x25519PublicKey) {
           toast.error("Cannot send encrypted message", {
-            description: "Recipient hasn't published their chat profile yet",
+            description: "Recipient needs to open Chat at least once to publish their encryption key",
           });
           return;
         }
