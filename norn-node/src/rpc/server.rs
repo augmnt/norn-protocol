@@ -164,8 +164,7 @@ mod health_middleware {
 
             if is_health {
                 Box::pin(async move {
-                    let body =
-                        jsonrpsee::server::HttpBody::from(r#"{"status":"ok"}"#);
+                    let body = jsonrpsee::server::HttpBody::from(r#"{"status":"ok"}"#);
                     let response = Response::builder()
                         .status(StatusCode::OK)
                         .header("Content-Type", "application/json")
