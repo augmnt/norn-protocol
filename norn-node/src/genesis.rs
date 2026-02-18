@@ -91,11 +91,17 @@ const DEVNET_FOUNDER: Address = [
 pub const DEVNET_SEED_KEYPAIR_SEED: &str =
     "0101010101010101010101010101010101010101010101010101010101010101";
 
-/// Devnet validator node keypair seed (deterministic): `[0x02; 32]`
-/// Passed via `--keypair-seed` on the validator server's service file.
+/// Devnet validator 1 keypair seed (deterministic): `[0x02; 32]`
+/// Passed via `--keypair-seed` on the validator 1 server's service file.
 #[allow(dead_code)] // Used externally by operators via --keypair-seed CLI flag
 pub const DEVNET_VALIDATOR_KEYPAIR_SEED: &str =
     "0202020202020202020202020202020202020202020202020202020202020202";
+
+/// Devnet validator 2 keypair seed (deterministic): `[0x03; 32]`
+/// Passed via `--keypair-seed` on the validator 2 server's service file.
+#[allow(dead_code)] // Used externally by operators via --keypair-seed CLI flag
+pub const DEVNET_VALIDATOR2_KEYPAIR_SEED: &str =
+    "0303030303030303030303030303030303030303030303030303030303030303";
 
 /// Seed node public key (derived from `DEVNET_SEED_KEYPAIR_SEED`).
 const DEVNET_SEED_PUBKEY: [u8; 32] = [
@@ -115,14 +121,26 @@ const DEVNET_VALIDATOR_PUBKEY: [u8; 32] = [
     0xcb, 0x8d, 0x8a, 0x91, 0xb4, 0xee, 0x37, 0xa2, 0x5d, 0xf6, 0x0f, 0x5b, 0x8f, 0xc9, 0xb3, 0x94,
 ];
 
-/// Validator node address (derived from `DEVNET_VALIDATOR_PUBKEY`).
+/// Validator 1 address (derived from `DEVNET_VALIDATOR_PUBKEY`).
 const DEVNET_VALIDATOR_ADDRESS: Address = [
     0x1e, 0xed, 0x29, 0xb1, 0x65, 0x4f, 0xbc, 0xa9, 0x46, 0x17, 0x00, 0x4d, 0x79, 0x69, 0xdf, 0xc4,
     0x65, 0x2b, 0x1f, 0x30,
 ];
 
+/// Validator 2 public key (derived from `DEVNET_VALIDATOR2_KEYPAIR_SEED`).
+const DEVNET_VALIDATOR2_PUBKEY: [u8; 32] = [
+    0xed, 0x49, 0x28, 0xc6, 0x28, 0xd1, 0xc2, 0xc6, 0xea, 0xe9, 0x03, 0x38, 0x90, 0x59, 0x95, 0x61,
+    0x29, 0x59, 0x27, 0x3a, 0x5c, 0x63, 0xf9, 0x36, 0x36, 0xc1, 0x46, 0x14, 0xac, 0x87, 0x37, 0xd1,
+];
+
+/// Validator 2 address (derived from `DEVNET_VALIDATOR2_PUBKEY`).
+const DEVNET_VALIDATOR2_ADDRESS: Address = [
+    0x9c, 0x38, 0x0d, 0x6e, 0xfe, 0xc2, 0xec, 0x39, 0x32, 0x1d, 0x87, 0xd0, 0x42, 0x4f, 0xea, 0x83,
+    0x8f, 0x75, 0x2a, 0x84,
+];
+
 /// Create a devnet genesis config with the augmnt founder pre-funded
-/// and two deterministic validators (seed + validator node).
+/// and three deterministic validators (seed + validator 1 + validator 2).
 ///
 /// Returns `(genesis_config, founder_address)`.
 pub fn devnet_genesis() -> (GenesisConfig, Address) {
@@ -143,6 +161,11 @@ pub fn devnet_genesis() -> (GenesisConfig, Address) {
             GenesisValidator {
                 pubkey: DEVNET_VALIDATOR_PUBKEY,
                 address: DEVNET_VALIDATOR_ADDRESS,
+                stake: 1_000_000_000_000,
+            },
+            GenesisValidator {
+                pubkey: DEVNET_VALIDATOR2_PUBKEY,
+                address: DEVNET_VALIDATOR2_ADDRESS,
                 stake: 1_000_000_000_000,
             },
         ],
@@ -314,21 +337,25 @@ mod tests {
     }
 
     #[test]
-    fn test_devnet_genesis_has_two_validators() {
+    fn test_devnet_genesis_has_three_validators() {
         let (config, _) = devnet_genesis();
         assert_eq!(
             config.validators.len(),
-            2,
-            "devnet must have seed + validator"
+            3,
+            "devnet must have seed + validator 1 + validator 2"
         );
         // Seed node
         assert_eq!(config.validators[0].pubkey, DEVNET_SEED_PUBKEY);
         assert_eq!(config.validators[0].address, DEVNET_SEED_ADDRESS);
-        // Validator node
+        // Validator 1
         assert_eq!(config.validators[1].pubkey, DEVNET_VALIDATOR_PUBKEY);
         assert_eq!(config.validators[1].address, DEVNET_VALIDATOR_ADDRESS);
-        // Both have the same stake
+        // Validator 2
+        assert_eq!(config.validators[2].pubkey, DEVNET_VALIDATOR2_PUBKEY);
+        assert_eq!(config.validators[2].address, DEVNET_VALIDATOR2_ADDRESS);
+        // All have the same stake
         assert_eq!(config.validators[0].stake, config.validators[1].stake);
+        assert_eq!(config.validators[1].stake, config.validators[2].stake);
     }
 
     #[test]
