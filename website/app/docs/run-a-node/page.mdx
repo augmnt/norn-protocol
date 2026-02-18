@@ -162,7 +162,7 @@ Wants=network-online.target
 Type=simple
 User=norn
 Group=norn
-ExecStart=/usr/local/bin/norn run --dev --storage sqlite --data-dir /var/lib/norn/data
+ExecStart=/usr/local/bin/norn run --dev --consensus --storage sqlite --data-dir /var/lib/norn/data
 Restart=always
 RestartSec=5
 LimitNOFILE=65535
@@ -201,7 +201,7 @@ sudo journalctl -u norn-node -f
 
 | Mode | Chain ID | Faucet | Use Case |
 |------|----------|--------|----------|
-| `dev` | `norn-dev` | Enabled (60s cooldown) | Local development, solo validator |
+| `dev` | `norn-dev` | Enabled (60s cooldown) | Local development and devnet |
 | `testnet` | `norn-testnet-1` | Enabled (1hr cooldown) | Public testing, multi-node |
 | `mainnet` | `norn-mainnet` | Disabled | Production deployment |
 
@@ -209,7 +209,8 @@ sudo journalctl -u norn-node -f
 
 | Flag | Description |
 |------|-------------|
-| `--dev` | Dev mode: faucet, solo validator, SQLite storage, auto-bootstrap to devnet seed |
+| `--dev` | Dev mode: faucet, SQLite storage, solo validator, auto-bootstrap to devnet seed |
+| `--consensus` | Enable multi-validator HotStuff BFT consensus (overrides solo mode from `--dev`) |
 | `--no-bootstrap` | Run as the seed node (no outbound peers) |
 | `--storage <TYPE>` | Override storage: `sqlite` (default for --dev), `memory`, `rocksdb` |
 | `--boot-node <MULTIADDR>` | Add a custom bootstrap peer |

@@ -21,7 +21,7 @@ pub enum Command {
         /// Path to config file
         #[arg(short, long, default_value = "norn.toml")]
         config: String,
-        /// Start in dev mode (solo validator, testnet faucet, auto-config)
+        /// Start in dev mode (faucet, SQLite storage, solo validator; add --consensus for BFT)
         #[arg(long)]
         dev: bool,
         /// Override RPC listen address (e.g., "0.0.0.0:9741" for LAN access)
@@ -48,6 +48,9 @@ pub enum Command {
         /// Hex-encoded 32-byte seed for deterministic validator keypair
         #[arg(long)]
         keypair_seed: Option<String>,
+        /// Enable multi-validator consensus (overrides solo_mode from --dev)
+        #[arg(long)]
+        consensus: bool,
     },
     /// Initialize a new node configuration
     Init {
@@ -90,6 +93,7 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
             no_bootstrap,
             boot_nodes,
             keypair_seed,
+            consensus,
         } => {
             crate::banner::print_banner();
 
@@ -111,6 +115,11 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
             } else {
                 crate::config::NodeConfig::load(&config)?
             };
+
+            // Override solo_mode when --consensus is passed.
+            if consensus {
+                config.validator.solo_mode = false;
+            }
 
             // Apply CLI overrides.
             if let Some(addr) = rpc_addr {
@@ -164,7 +173,11 @@ pub async fn run(cli: Cli) -> Result<(), NodeError> {
                 let dim = console::Style::new().dim();
                 let cyan = console::Style::new().cyan();
                 let mode = if dev {
-                    format!("dev · solo validator · {} storage", config.storage.db_type)
+                    if consensus {
+                        format!("dev · consensus · {} storage", config.storage.db_type)
+                    } else {
+                        format!("dev · solo validator · {} storage", config.storage.db_type)
+                    }
                 } else {
                     "config".to_string()
                 };

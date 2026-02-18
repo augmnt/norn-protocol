@@ -5,6 +5,21 @@ All notable changes to the Norn Protocol will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] - 2026-02-18
+
+### Added
+
+- **HotStuff BFT consensus activation** -- `--consensus` CLI flag enables multi-validator consensus, overriding solo mode from `--dev`
+- Consensus timeout detection -- triggers view change after 9 seconds without a committed block (3x block time), preventing permanent chain stalls on leader failure
+- State sync block verification -- synced blocks are now validated (hash, proposer, Merkle roots, signatures) before application, rejecting invalid blocks from malicious peers
+- `staking_mut()` accessor on WeaveEngine for future validator slashing support
+- `setup-validator-service.sh` deploy script for the validator node
+
+### Changed
+
+- Devnet seed and validator services now run with `--consensus` for true multi-validator block production
+- Startup summary displays "dev . consensus" when `--consensus` is active
+
 ## [0.19.1] - 2026-02-15
 
 ### Fixed

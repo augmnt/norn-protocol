@@ -21,6 +21,9 @@ use crate::error::NodeError;
 use crate::metrics::NodeMetrics;
 use crate::state_manager::StateManager;
 
+/// Seconds without a committed block before triggering consensus timeout.
+const CONSENSUS_TIMEOUT_SECS: u64 = 9; // 3x block time target (3s)
+
 /// The main node that ties together all subsystems.
 #[allow(dead_code)] // Fields accessed indirectly via methods, not all read individually
 pub struct Node {
@@ -38,6 +41,8 @@ pub struct Node {
     relay_handle: Option<RelayHandle>,
     spindle: SpindleService,
     last_block_production_us: Arc<std::sync::Mutex<Option<u64>>>,
+    /// Tracks when the last block was committed (for consensus timeout detection).
+    last_committed_time: Arc<std::sync::Mutex<std::time::Instant>>,
 }
 
 /// Create a storage backend from the node configuration.
@@ -558,6 +563,7 @@ impl Node {
             relay_handle,
             spindle,
             last_block_production_us,
+            last_committed_time: Arc::new(std::sync::Mutex::new(std::time::Instant::now())),
         })
     }
 
@@ -673,6 +679,21 @@ impl Node {
 
                     let mut max_height = current_height;
                     for block in blocks {
+                        // Verify block integrity before applying.
+                        {
+                            let engine = self.weave_engine.read().await;
+                            let validator_set = engine.staking().active_validators();
+                            if let Err(e) = norn_weave::block::verify_block(&block, &validator_set)
+                            {
+                                tracing::warn!(
+                                    height = block.height,
+                                    "rejecting invalid synced block: {}",
+                                    e
+                                );
+                                continue;
+                            }
+                        }
+
                         if block.height > max_height {
                             max_height = block.height;
                         }
@@ -1439,6 +1460,10 @@ impl Node {
                         } else {
                             let messages = engine.on_tick(timestamp);
                             drop(engine); // Release lock before processing committed blocks.
+
+                            // Track whether any block was committed in this tick.
+                            let had_committed_block = messages.iter().any(|m| matches!(m, NornMessage::Block(_)));
+
                             // Process messages: committed blocks need state + persistence.
                             for msg in messages {
                                 if let NornMessage::Block(ref committed_block) = msg {
@@ -1568,6 +1593,37 @@ impl Node {
                                     tokio::spawn(async move {
                                         let _ = h.broadcast(msg).await;
                                     });
+                                }
+                            }
+
+                            // Reset timeout tracker if a block was committed.
+                            if had_committed_block {
+                                if let Ok(mut t) = self.last_committed_time.lock() {
+                                    *t = std::time::Instant::now();
+                                }
+                            }
+
+                            // Check for consensus timeout (no block committed recently).
+                            let timed_out = self.last_committed_time.lock()
+                                .map(|t| t.elapsed() > std::time::Duration::from_secs(CONSENSUS_TIMEOUT_SECS))
+                                .unwrap_or(false);
+
+                            if timed_out {
+                                tracing::warn!("consensus timeout — triggering view change");
+                                let mut engine = self.weave_engine.write().await;
+                                let timeout_messages = engine.on_consensus_timeout();
+                                drop(engine);
+                                for msg in timeout_messages {
+                                    if let Some(ref handle) = self.relay_handle {
+                                        let h = handle.clone();
+                                        tokio::spawn(async move {
+                                            let _ = h.broadcast(msg).await;
+                                        });
+                                    }
+                                }
+                                // Reset to avoid spamming timeouts every tick.
+                                if let Ok(mut t) = self.last_committed_time.lock() {
+                                    *t = std::time::Instant::now();
                                 }
                             }
                         }

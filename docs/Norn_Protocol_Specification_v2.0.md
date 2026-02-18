@@ -1701,13 +1701,28 @@ norn run --dev
 
 This creates a solo-validator node with:
 - Auto-generated keypair (no seed file needed)
-- Memory-backed storage
+- SQLite-backed storage
 - RPC enabled on `127.0.0.1:9741`
 - Solo block production (no consensus required)
 - Testnet faucet enabled
 - P2P relay enabled (broadcasts knots, blocks, and commitments to peers)
 
 No configuration file is needed in dev mode.
+
+#### Consensus Mode
+
+To activate multi-validator HotStuff BFT consensus, add `--consensus`:
+
+```
+norn run --dev --consensus
+```
+
+This overrides `solo_mode` and enables:
+- HotStuff BFT block production (leader proposes, validators vote)
+- Timeout-driven view changes (9-second timeout, 3x block time)
+- Block verification during state sync (hash, proposer, Merkle roots, signatures)
+
+Solo mode remains the default for `--dev` to keep local development simple. Use `--consensus` for production devnet and multi-validator deployments.
 
 ### 24.3 JSON-RPC API
 

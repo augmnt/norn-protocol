@@ -6,7 +6,7 @@
   <a href="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml"><img src="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-stable-orange.svg" alt="Rust"></a>
-  <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.19.1"><img src="https://img.shields.io/badge/version-0.19.1-green.svg" alt="Version"></a>
+  <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.20.0"><img src="https://img.shields.io/badge/version-0.20.0-green.svg" alt="Version"></a>
 </p>
 
 ---
@@ -92,13 +92,18 @@ flowchart TB
 
 ### Network Architecture
 
-Norn uses a **seed node** as the canonical block producer and bootstrap peer. All other nodes connect to the seed to sync blocks, submit transactions, and hold their local thread state.
+The devnet runs **HotStuff BFT consensus** across multiple validators. The seed node acts as the bootstrap peer and initial block producer, with validators participating in multi-validator consensus.
 
 ```mermaid
 flowchart TB
-    subgraph Seed["seed.norn.network (block producer)"]
+    subgraph Seed["seed.norn.network (validator + bootstrap)"]
         P2P["P2P :9740"]
         RPC["RPC :9741"]
+    end
+
+    subgraph Validator["validator (consensus participant)"]
+        VP2P["P2P :9740"]
+        VRPC["RPC :9741"]
     end
 
     Explorer["Explorer\nexplorer.norn.network"] -.->|HTTPS| RPC
@@ -108,15 +113,15 @@ flowchart TB
 
     subgraph Local["Local Nodes"]
         A["Your Node\n(norn run --dev)"]
-        B["Node B\n(norn run --dev)"]
     end
 
     A <-->|"gossip + sync"| P2P
-    B <-->|"gossip + sync"| P2P
+    Validator <-->|"consensus + gossip"| Seed
 ```
 
-- **Seed node**: The source of truth. Produces blocks, serves the explorer, web wallet, and wallet extension.
-- **Local nodes**: Connect to the seed as peers. Hold your thread locally, sync blocks from the network, and gossip transactions to the seed for inclusion in blocks.
+- **Seed node**: Bootstrap peer and consensus participant. Produces blocks via HotStuff BFT, serves the explorer, web wallet, and wallet extension.
+- **Validator node**: Consensus participant. Validates blocks, votes on proposals, and triggers view changes on leader failure.
+- **Local nodes**: Connect to the seed as peers. Hold your thread locally, sync blocks from the network, and gossip transactions for inclusion in blocks.
 
 ### Quick Start (Join the Devnet)
 
@@ -137,7 +142,7 @@ Your wallet CLI works against your local node by default (`--rpc-url http://loca
 The seed node runs with `--no-bootstrap` since it IS the bootstrap peer:
 
 ```bash
-norn run --dev --no-bootstrap --rpc-addr 0.0.0.0:9741 --data-dir /var/lib/norn/norn-data
+norn run --dev --consensus --no-bootstrap --rpc-addr 0.0.0.0:9741 --data-dir /var/lib/norn/norn-data
 ```
 
 ### Network Modes
@@ -146,7 +151,7 @@ Norn supports three network modes, selectable via `--network` flag or `network_i
 
 | Mode | Chain ID | Faucet | Use Case |
 |------|----------|--------|----------|
-| `dev` | `norn-dev` | Enabled (60s cooldown) | Local development, solo validator |
+| `dev` | `norn-dev` | Enabled (60s cooldown) | Local development and devnet |
 | `testnet` | `norn-testnet-1` | Enabled (1hr cooldown) | Public testing, multi-node |
 | `mainnet` | `norn-mainnet` | Disabled | Production deployment |
 
@@ -154,7 +159,8 @@ Norn supports three network modes, selectable via `--network` flag or `network_i
 
 | Flag | Description |
 |------|-------------|
-| `--dev` | Dev mode: faucet, solo validator, SQLite storage, auto-bootstrap to devnet seed |
+| `--dev` | Dev mode: faucet, SQLite storage, solo validator, auto-bootstrap to devnet seed |
+| `--consensus` | Enable multi-validator HotStuff BFT consensus (overrides solo mode from `--dev`) |
 | `--no-bootstrap` | Run as the seed node (no outbound peers) |
 | `--storage <TYPE>` | Override storage: `sqlite` (default for --dev), `memory`, `rocksdb` |
 | `--boot-node <MULTIADDR>` | Add a custom bootstrap peer |

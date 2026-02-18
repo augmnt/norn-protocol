@@ -21,17 +21,17 @@ This means:
 
 ### 1. Seed Node — `seed.norn.network`
 
-**Command:** `norn run --dev --no-bootstrap --storage sqlite --rpc-addr 127.0.0.1:9741`
+**Command:** `norn run --dev --consensus --no-bootstrap --storage sqlite --rpc-addr 0.0.0.0:9741`
 
-**Role:** Network infrastructure — always-on rendezvous point
+**Role:** Bootstrap peer and consensus participant
 
 | Aspect | Detail |
 |--------|--------|
-| Purpose | Stay online 24/7 so other nodes can find the network |
+| Purpose | Stay online 24/7 so other nodes can find the network; participate in consensus |
 | P2P | Listens on `0.0.0.0:9740`, accepts incoming connections |
-| RPC | `127.0.0.1:9741` (localhost only, not public) |
+| RPC | `0.0.0.0:9741` (public, serves explorer and wallets) |
 | Bootstrap | `--no-bootstrap` — doesn't try to connect to anyone else |
-| Validator | Yes (solo mode, produces blocks every ~3s) |
+| Validator | Yes (HotStuff BFT consensus with `--consensus`) |
 | Storage | SQLite (persistent across restarts) |
 | Wallet | None — no wallet on this machine |
 | Genesis | Creates its own identical genesis block on startup |
@@ -39,43 +39,42 @@ This means:
 **What it does NOT do:**
 - Does not receive wallet commands (no wallet installed)
 - Does not initiate connections (waits for others to connect)
-- Is not the "source of truth" — it's a peer like any other
 
-### 2. Alice — Primary Node
+### 2. Validator Node — `104.248.241.39`
 
-**Command:** `norn run --dev`
+**Command:** `norn run --dev --consensus --keypair-seed <SEED> --storage sqlite --rpc-addr 0.0.0.0:9741`
 
-**Role:** Primary participant — initiates transactions and manages the founder wallet
+**Role:** Consensus participant — validates and votes on blocks
 
 | Aspect | Detail |
 |--------|--------|
-| Purpose | Main node — send transfers, register names, manage wallets |
+| Purpose | Participate in HotStuff BFT consensus, validate blocks |
+| P2P | Listens on `0.0.0.0:9740`, connects to seed on startup |
+| RPC | `0.0.0.0:9741` |
+| Bootstrap | Connects to `seed.norn.network:9740` (`DEFAULT_BOOT_NODES`) |
+| Validator | Yes (HotStuff BFT consensus with `--consensus`) |
+| Storage | SQLite (persistent across restarts) |
+| Wallet | None |
+| Genesis | Creates its own identical genesis block on startup |
+
+### 3. Local Node (Alice/Bob)
+
+**Command:** `norn run --dev`
+
+**Role:** Participant — initiates transactions and manages wallets
+
+| Aspect | Detail |
+|--------|--------|
+| Purpose | Send transfers, register names, manage wallets, sync blocks |
 | P2P | Listens on `0.0.0.0:9740`, connects to seed on startup |
 | RPC | `127.0.0.1:9741` (wallet CLI connects here) |
 | Bootstrap | Connects to `seed.norn.network:9740` (`DEFAULT_BOOT_NODES`) |
-| Validator | Yes (solo mode, produces blocks every ~3s) |
-| Storage | Memory by default (or SQLite with `--storage sqlite`) |
-| Wallet | `~/.norn/wallets/founder.json` (or whatever name was chosen at creation) — holds the founder private key |
+| Validator | Solo mode (produces local blocks for testing; not part of devnet consensus) |
+| Storage | SQLite by default (or `--storage memory` for ephemeral) |
+| Wallet | `~/.norn/wallets/` — holds your private keys |
 | Genesis | Creates its own identical genesis block on startup |
 
 This is where you run all `norn wallet` commands. The wallet talks to Alice's local node via RPC (`localhost:9741`). The local node handles the transaction and gossips it to the network.
-
-### 3. Bob — Secondary Node
-
-**Command:** `norn run --dev`
-
-**Role:** Second participant for testing multi-node behavior
-
-| Aspect | Detail |
-|--------|--------|
-| Purpose | Test transfers, name sync, multi-validator behavior |
-| P2P | Listens on `0.0.0.0:9740`, connects to seed on startup |
-| RPC | `127.0.0.1:9741` (local wallet CLI connects here) |
-| Bootstrap | Connects to `seed.norn.network:9740` |
-| Validator | Yes (solo mode, produces blocks every ~3s) |
-| Storage | Memory by default |
-| Wallet | Separate wallet (funded from Alice's founder account) |
-| Genesis | Creates its own identical genesis block on startup |
 
 ---
 
@@ -83,22 +82,19 @@ This is where you run all `norn wallet` commands. The wallet talks to Alice's lo
 
 ```mermaid
 graph TD
-    Seed["<b>seed.norn.network</b><br/><i>always-on relay</i><br/>norn run --dev --no-bootstrap<br/>P2P: 0.0.0.0:9740"]
+    Seed["<b>seed.norn.network</b><br/><i>consensus + bootstrap</i><br/>norn run --dev --consensus --no-bootstrap<br/>P2P: 0.0.0.0:9740"]
 
-    Alice["<b>Alice</b> (primary)<br/>Wallet: founder.json"]
-    Bob["<b>Bob</b> (secondary)<br/>Wallet: bob.json"]
+    Validator["<b>Validator</b><br/><i>consensus participant</i><br/>norn run --dev --consensus"]
+
+    Alice["<b>Alice</b> (local node)<br/>Wallet: founder.json"]
 
     AliceCLI["norn wallet send<br/>norn wallet register-name<br/>norn wallet whoami"]
-    BobCLI["norn wallet send<br/>norn wallet balance"]
 
-    Alice -- "gossipsub (mesh)" --> Seed
-    Seed -- "gossipsub (mesh)" --> Alice
-    Bob -- "gossipsub (mesh)" --> Seed
-    Seed -- "gossipsub (mesh)" --> Bob
-    Alice <-- "mDNS on same LAN" --> Bob
+    Seed <-- "consensus + gossipsub" --> Validator
+    Alice -- "gossipsub (sync)" --> Seed
+    Seed -- "gossipsub (blocks)" --> Alice
 
     AliceCLI -- "RPC localhost:9741" --> Alice
-    BobCLI -- "RPC localhost:9741" --> Bob
 ```
 
 **Connection flow on startup:**
@@ -180,20 +176,19 @@ Step 5: NAME RESOLVABLE
 
 ---
 
-## The Multi-Validator Reality
+## Consensus Mode
 
-All three machines produce blocks independently. This is because `--dev` sets `solo_mode = true` on every node. There is no leader election or consensus — each node fires a block timer every 3 seconds (`BLOCK_TIME_TARGET`) and produces a block from its mempool.
+The devnet seed and validator nodes run with `--consensus`, which activates **HotStuff BFT consensus**. In this mode:
 
-**Consequences:**
-- The same transfer/name appears in blocks from multiple validators
-- Dedup mechanisms (`has_transfer()` via `known_knot_ids: HashSet`, `known_names`) prevent double-application
-- Duplicate name registrations are expected and logged at `debug` level
-- Block heights can differ across nodes (each has its own chain)
-- State sync replays blocks from peers, applying only what's new
+- A **single leader** proposes each block (determined by round-robin view rotation)
+- All validators must **vote** on proposals through Prepare → PreCommit → Commit phases
+- Blocks are **finalized** only with a 2f+1 quorum of votes
+- If the leader fails, a **view change** is triggered after 9 seconds (3x block time), rotating leadership to the next validator
+- State sync verifies block signatures before applying synced blocks
 
-This is fine for devnet. For mainnet, `solo_mode` would be `false` and HotStuff consensus would ensure a single leader produces each block.
+**Solo mode** (`--dev` without `--consensus`) is still available for local development. In solo mode, the node produces blocks independently without consensus — useful for testing but not suitable for production.
 
-**Source:** `norn-types/src/constants.rs:32` (`BLOCK_TIME_TARGET = 3s`)
+**Source:** `norn-types/src/constants.rs:32` (`BLOCK_TIME_TARGET = 3s`), `norn-weave/src/consensus.rs` (HotStuff BFT), `norn-node/src/node.rs` (timeout detection)
 
 ---
 

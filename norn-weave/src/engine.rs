@@ -725,6 +725,11 @@ impl WeaveEngine {
     pub fn staking(&self) -> &StakingState {
         &self.staking
     }
+
+    /// Access the staking state mutably (for future slashing support).
+    pub fn staking_mut(&mut self) -> &mut StakingState {
+        &mut self.staking
+    }
 }
 
 /// Extract the sender's public key from a consensus message.
