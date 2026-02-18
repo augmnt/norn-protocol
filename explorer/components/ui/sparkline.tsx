@@ -3,8 +3,8 @@
 import {
   AreaChart,
   Area,
-  ResponsiveContainer,
 } from "recharts";
+import { ChartContainer } from "@/components/ui/chart-container";
 
 interface SparklineProps {
   data: number[];
@@ -24,7 +24,7 @@ export function Sparkline({
 
   return (
     <div style={{ width: "100%", height }} className="opacity-30">
-      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+      <ChartContainer>
         <AreaChart
           data={chartData}
           margin={{ top: 0, right: 0, bottom: 0, left: 0 }}
@@ -45,7 +45,7 @@ export function Sparkline({
             isAnimationActive={false}
           />
         </AreaChart>
-      </ResponsiveContainer>
+      </ChartContainer>
     </div>
   );
 }

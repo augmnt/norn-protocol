@@ -7,9 +7,9 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChartContainer } from "@/components/ui/chart-container";
 import type { BlockChartPoint } from "@/hooks/use-chart-data";
 
 interface NetworkActivityChartProps {
@@ -73,7 +73,7 @@ export function NetworkActivityChart({ data }: NetworkActivityChartProps) {
       </CardHeader>
       <CardContent>
         <div className="h-[200px] animate-fade-in">
-          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+          <ChartContainer>
             <AreaChart
               data={display}
               margin={{ top: 4, right: 4, bottom: 0, left: -20 }}
@@ -118,7 +118,7 @@ export function NetworkActivityChart({ data }: NetworkActivityChartProps) {
                 }}
               />
             </AreaChart>
-          </ResponsiveContainer>
+          </ChartContainer>
         </div>
       </CardContent>
     </Card>

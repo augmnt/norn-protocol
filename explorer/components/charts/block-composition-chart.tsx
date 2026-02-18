@@ -1,6 +1,7 @@
 "use client";
 
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import { PieChart, Pie, Cell, Tooltip } from "recharts";
+import { ChartContainer } from "@/components/ui/chart-container";
 import type { BlockInfo } from "@/types";
 
 interface BlockCompositionChartProps {
@@ -52,7 +53,7 @@ export function BlockCompositionChart({ block }: BlockCompositionChartProps) {
 
   return (
     <div className="h-[160px]">
-      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+      <ChartContainer>
         <PieChart>
           <Pie
             data={data}
@@ -69,7 +70,7 @@ export function BlockCompositionChart({ block }: BlockCompositionChartProps) {
           </Pie>
           <Tooltip content={<CustomTooltip />} />
         </PieChart>
-      </ResponsiveContainer>
+      </ChartContainer>
     </div>
   );
 }
