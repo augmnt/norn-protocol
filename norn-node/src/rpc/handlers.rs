@@ -22,6 +22,7 @@ use super::types::{
     ValidatorRewardsInfo, ValidatorSetInfo, ValidatorStakeInfo, WeaveStateInfo,
 };
 use crate::metrics::NodeMetrics;
+use crate::rpc::chat_store::{ChatEventStore, ChatHistoryFilter};
 use crate::rpc::server::RpcBroadcasters;
 use crate::state_manager::StateManager;
 use norn_types::constants::{MAX_SUPPLY, NORN_DECIMALS};
@@ -134,6 +135,13 @@ pub trait NornRpc {
     /// Subscribe to pending transactions entering the mempool.
     #[subscription(name = "norn_subscribePendingTransactions" => "norn_pendingTransactions", unsubscribe = "norn_unsubscribePendingTransactions", item = PendingTransactionEvent)]
     async fn subscribe_pending_transactions(&self) -> SubscriptionResult;
+
+    /// Query stored chat events (channels, messages, profiles).
+    #[method(name = "norn_getChatHistory")]
+    async fn get_chat_history(
+        &self,
+        filter: ChatHistoryFilter,
+    ) -> Result<Vec<ChatEvent>, ErrorObjectOwned>;
 
     /// Publish a signed chat event to the relay. Node verifies ID + signature, then broadcasts.
     #[method(name = "norn_publishChatEvent")]
@@ -341,6 +349,8 @@ pub struct NornRpcImpl {
     pub faucet_tracker: std::sync::Mutex<std::collections::HashMap<[u8; 20], u64>>,
     /// Last measured block production time in milliseconds (shared with node tick loop).
     pub last_block_production_us: Arc<std::sync::Mutex<Option<u64>>>,
+    /// In-memory bounded store for chat events (channels, messages, profiles, DMs).
+    pub chat_store: Arc<std::sync::RwLock<ChatEventStore>>,
 }
 
 /// Parse a hex string into a 20-byte address.
@@ -1201,6 +1211,14 @@ impl NornRpcServer for NornRpcImpl {
         Ok(())
     }
 
+    async fn get_chat_history(
+        &self,
+        filter: ChatHistoryFilter,
+    ) -> Result<Vec<ChatEvent>, ErrorObjectOwned> {
+        let store = self.chat_store.read().unwrap();
+        Ok(store.query(&filter))
+    }
+
     async fn publish_chat_event(&self, event: ChatEvent) -> Result<SubmitResult, ErrorObjectOwned> {
         // Verify event ID: recompute BLAKE3 hash of [pubkey, created_at, kind, tags_json, content]
         let tags_json = serde_json::to_string(&event.tags).unwrap_or_default();
@@ -1239,7 +1257,13 @@ impl NornRpcServer for NornRpcImpl {
             });
         }
 
-        // Broadcast to subscribers (no persistence)
+        // Store in bounded in-memory cache
+        {
+            let mut store = self.chat_store.write().unwrap();
+            store.insert(event.clone());
+        }
+
+        // Broadcast to subscribers
         let _ = self.broadcasters.chat_tx.send(event);
 
         Ok(SubmitResult {
@@ -1259,15 +1283,19 @@ impl NornRpcServer for NornRpcImpl {
 
         tokio::spawn(async move {
             while let Ok(event) = rx.recv().await {
-                // Apply optional pubkey filter: matches event.pubkey or any ["p", filter] tag
+                // Apply optional pubkey filter for DMs only.
+                // Channels (30002, 30003) and profiles (30000) are always relayed.
+                // DMs (30001) are filtered: must match event.pubkey or a ["p", filter] tag.
                 if let Some(ref pk) = filter {
-                    let matches_author = event.pubkey == *pk;
-                    let matches_tag = event
-                        .tags
-                        .iter()
-                        .any(|tag| tag.len() >= 2 && tag[0] == "p" && tag[1] == *pk);
-                    if !matches_author && !matches_tag {
-                        continue;
+                    if event.kind == 30001 {
+                        let matches_author = event.pubkey == *pk;
+                        let matches_tag = event
+                            .tags
+                            .iter()
+                            .any(|tag| tag.len() >= 2 && tag[0] == "p" && tag[1] == *pk);
+                        if !matches_author && !matches_tag {
+                            continue;
+                        }
                     }
                 }
                 match jsonrpsee::SubscriptionMessage::from_json(&event) {

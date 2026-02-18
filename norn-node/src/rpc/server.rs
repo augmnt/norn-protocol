@@ -8,6 +8,7 @@ use norn_relay::relay::RelayHandle;
 use norn_types::network::NetworkId;
 use norn_weave::engine::WeaveEngine;
 
+use super::chat_store::ChatEventStore;
 use super::handlers::{NornRpcImpl, NornRpcServer};
 use super::types::{
     BlockInfo, ChatEvent, LoomExecutionEvent, PendingTransactionEvent, TokenEvent, TransferEvent,
@@ -80,6 +81,7 @@ pub async fn start_rpc_server(
         is_validator,
         faucet_tracker: std::sync::Mutex::new(std::collections::HashMap::new()),
         last_block_production_us,
+        chat_store: Arc::new(std::sync::RwLock::new(ChatEventStore::new())),
     };
 
     let handle = if let Some(key) = api_key {
@@ -162,8 +164,9 @@ mod auth_middleware {
         "norn_unsubscribeLoomEvents",
         "norn_subscribePendingTransactions",
         "norn_unsubscribePendingTransactions",
-        // Chat relay (ephemeral, no persistence).
+        // Chat relay.
         "norn_publishChatEvent",
+        "norn_getChatHistory",
         "norn_subscribeChatEvents",
         "norn_unsubscribeChatEvents",
     ];

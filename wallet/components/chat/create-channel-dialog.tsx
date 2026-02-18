@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useWallet } from "@/hooks/use-wallet";
 import { useChatStore } from "@/stores/chat-store";
+import { useWalletStore } from "@/stores/wallet-store";
 import { signChatEvent } from "@/lib/chat-signer";
 import { rpcCall } from "@/lib/rpc";
 import { toast } from "sonner";
@@ -40,7 +41,8 @@ export function CreateChannelDialog({ open, onOpenChange }: CreateChannelDialogP
         name: trimmed,
         description: description.trim(),
       });
-      const event = await signChatEvent(meta, 30002, content, [], activeAccountIndex);
+      const pw = useWalletStore.getState().sessionPassword ?? undefined;
+      const event = await signChatEvent(meta, 30002, content, [], activeAccountIndex, pw);
 
       const result = await rpcCall<SubmitResult>("norn_publishChatEvent", [event]);
       if (!result.success) {

@@ -16,8 +16,8 @@ import { useChatStore } from "@/stores/chat-store";
 import { getChatProfile } from "@/lib/chat-storage";
 import { rpcCall } from "@/lib/rpc";
 import { toast } from "sonner";
-import type { NameResolution } from "@norn-protocol/sdk";
-import { strip0x } from "@/lib/format";
+import { strip0x, truncateAddress } from "@/lib/format";
+import type { NameResolution, ThreadInfo } from "@norn-protocol/sdk";
 
 interface NewDmDialogProps {
   open: boolean;
@@ -34,45 +34,59 @@ export function NewDmDialog({ open, onOpenChange }: NewDmDialogProps) {
 
     setResolving(true);
     try {
-      let pubkey = trimmed;
-      let displayName = trimmed;
+      let pubkey: string | null = null;
+      let displayName: string = trimmed;
 
-      // Check if it's a Norn name (contains .norn or no hex chars)
-      if (trimmed.includes(".") || !/^[0-9a-fA-F]+$/.test(strip0x(trimmed))) {
-        // Try to resolve as a Norn name
+      const cleaned = strip0x(trimmed);
+      const isHex64 = /^[0-9a-fA-F]{64}$/.test(cleaned);
+      const isAddress = /^[0-9a-fA-F]{40}$/.test(cleaned);
+
+      if (isHex64) {
+        // Direct 32-byte pubkey
+        pubkey = cleaned;
+      } else if (isAddress) {
+        // Address — look up the thread to get the owner pubkey
+        pubkey = await resolveAddressToPubkey(trimmed);
+        if (!pubkey) {
+          toast.error("Account not found", {
+            description: `No account registered for address ${truncateAddress(trimmed)}`,
+          });
+          return;
+        }
+        displayName = truncateAddress(trimmed);
+      } else {
+        // Assume it's a Norn name
         const resolution = await rpcCall<NameResolution | null>("norn_resolveName", [trimmed]);
         if (!resolution) {
-          toast.error("Name not found", { description: `Could not resolve "${trimmed}"` });
+          toast.error("Name not found", {
+            description: `Could not resolve "${trimmed}"`,
+          });
           return;
         }
         displayName = trimmed;
-        // We need the pubkey, not the address — check profile cache
-        // For now, use the address owner as a display hint
+        pubkey = await resolveAddressToPubkey(resolution.owner);
+        if (!pubkey) {
+          toast.error("Account not found", {
+            description: `Resolved "${trimmed}" to ${truncateAddress(resolution.owner)} but no pubkey found`,
+          });
+          return;
+        }
       }
 
-      // Validate hex pubkey (64 chars = 32 bytes)
-      const cleanPubkey = strip0x(pubkey);
-      if (!/^[0-9a-fA-F]{64}$/.test(cleanPubkey)) {
-        toast.error("Invalid pubkey", {
-          description: "Enter a 32-byte hex pubkey or a Norn name",
-        });
-        return;
-      }
-
-      const dmConversationId = `dm:${cleanPubkey}`;
-      const profile = await getChatProfile(cleanPubkey);
+      const dmConversationId = `dm:${pubkey}`;
+      const profile = await getChatProfile(pubkey);
 
       useChatStore.getState().addConversation({
         id: dmConversationId,
         type: "dm",
-        name: profile?.displayName ?? displayName,
-        peerPubkey: cleanPubkey,
+        name: profile?.displayName ?? profile?.nornName ?? displayName,
+        peerPubkey: pubkey,
       });
       useChatStore.getState().setActiveConversation(dmConversationId, "dm");
 
       if (!profile?.x25519PublicKey) {
-        toast("Note", {
-          description: "Waiting for recipient's chat profile to enable encryption",
+        toast("Waiting for encryption key", {
+          description: "The recipient hasn't published their chat profile yet. Messages will be available once they open Chat.",
           duration: 5000,
         });
       }
@@ -94,18 +108,27 @@ export function NewDmDialog({ open, onOpenChange }: NewDmDialogProps) {
         <DialogHeader>
           <DialogTitle>New Direct Message</DialogTitle>
           <DialogDescription>
-            Enter a public key (hex) to start an encrypted conversation.
+            Enter a Norn name, address, or public key to start an encrypted conversation.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
-          <Label htmlFor="dm-pubkey">Recipient Public Key</Label>
+          <Label htmlFor="dm-recipient">Recipient</Label>
           <Input
-            id="dm-pubkey"
-            placeholder="64-character hex public key"
+            id="dm-recipient"
+            placeholder="alice.norn, 0x557d..., or pubkey hex"
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleStart();
+              }
+            }}
             className="font-mono text-xs"
           />
+          <p className="text-xs text-muted-foreground">
+            Accepts a Norn name, 0x address, or 64-character public key
+          </p>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -118,4 +141,13 @@ export function NewDmDialog({ open, onOpenChange }: NewDmDialogProps) {
       </DialogContent>
     </Dialog>
   );
+}
+
+async function resolveAddressToPubkey(address: string): Promise<string | null> {
+  const hex = address.startsWith("0x") ? address : `0x${address}`;
+  const thread = await rpcCall<ThreadInfo | null>("norn_getThread", [hex]);
+  if (thread?.owner && thread.owner.length === 64) {
+    return thread.owner;
+  }
+  return null;
 }

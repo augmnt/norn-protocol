@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useWallet } from "@/hooks/use-wallet";
+import { useWalletStore } from "@/stores/wallet-store";
 import { signChatEvent, getX25519PublicKey } from "@/lib/chat-signer";
 import { getChatProfile, saveChatProfile } from "@/lib/chat-storage";
 import { rpcCall } from "@/lib/rpc";
@@ -29,7 +30,8 @@ export function ChatProfilePublisher() {
       }
 
       try {
-        const x25519PublicKey = await getX25519PublicKey(meta!, activeAccountIndex);
+        const pw = useWalletStore.getState().sessionPassword ?? undefined;
+        const x25519PublicKey = await getX25519PublicKey(meta!, activeAccountIndex, pw);
 
         const content = JSON.stringify({
           name: activeAccount!.label || undefined,
@@ -37,7 +39,7 @@ export function ChatProfilePublisher() {
           address: activeAccount!.address,
         });
 
-        const event = await signChatEvent(meta!, 30000, content, [], activeAccountIndex);
+        const event = await signChatEvent(meta!, 30000, content, [], activeAccountIndex, pw);
         const result = await rpcCall<SubmitResult>("norn_publishChatEvent", [event]);
 
         if (result.success) {

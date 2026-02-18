@@ -358,6 +358,20 @@ export interface ChatEvent {
   sig: string;
 }
 
+/** Filter for querying chat history from the node. */
+export interface ChatHistoryFilter {
+  /** Filter by event kinds. */
+  kinds?: number[];
+  /** Filter by channel ID (for channel messages). */
+  channel_id?: string;
+  /** Filter by pubkey (matches author or recipient tag). */
+  pubkey?: string;
+  /** Only return events after this timestamp. */
+  since?: number;
+  /** Max events to return (default 100, max 500). */
+  limit?: number;
+}
+
 /** Real-time pending transaction event (WebSocket). */
 export interface PendingTransactionEvent {
   tx_type: string;

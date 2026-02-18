@@ -118,4 +118,5 @@ export type {
   LoomExecutionEvent,
   PendingTransactionEvent,
   ChatEvent,
+  ChatHistoryFilter,
 } from "./types.js";

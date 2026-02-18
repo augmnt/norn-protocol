@@ -4,8 +4,6 @@ import { useEffect, useRef, useCallback } from "react";
 import {
   subscribeChatEvents,
   verifyChatEvent,
-  decryptDmContent,
-  fromHex,
   type Subscription,
   type ChatEvent,
 } from "@norn-protocol/sdk";
@@ -22,6 +20,7 @@ import {
   type StoredMessage,
   type StoredChannel,
 } from "@/lib/chat-storage";
+import { rpcCall } from "@/lib/rpc";
 import { truncateAddress } from "@/lib/format";
 
 const MAX_RECONNECT_DELAY = 30_000;
@@ -33,6 +32,7 @@ export function useChatSubscription() {
   const subsRef = useRef<Subscription | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const attemptRef = useRef(0);
+  const hydratedRef = useRef(false);
   const activeNetworkId = useNetworkStore((s) => s.activeNetworkId);
 
   const handleEvent = useCallback(
@@ -119,24 +119,6 @@ export function useChatSubscription() {
         const peerPubkey = isIncoming ? event.pubkey : recipientPubkey;
         const dmConversationId = `dm:${peerPubkey}`;
 
-        // Try to decrypt
-        let decryptedContent: string | undefined;
-        if (pubkeyHex) {
-          try {
-            const senderProfile = await getChatProfile(peerPubkey);
-            if (senderProfile?.x25519PublicKey) {
-              const nonceTag = event.tags.find((t) => t[0] === "nonce");
-              if (nonceTag) {
-                // We need the wallet private key to decrypt — store encrypted for now
-                // Decryption will happen in the message display component
-                decryptedContent = undefined;
-              }
-            }
-          } catch {
-            // Decryption deferred to display
-          }
-        }
-
         const msg: StoredMessage = {
           id: event.id,
           pubkey: event.pubkey,
@@ -145,7 +127,6 @@ export function useChatSubscription() {
           tags: event.tags,
           content: event.content,
           sig: event.sig,
-          decryptedContent,
         };
         await appendChatMessage(dmConversationId, msg);
 
@@ -159,7 +140,7 @@ export function useChatSubscription() {
         });
         store.updateLastMessage(
           dmConversationId,
-          decryptedContent ?? "(encrypted)",
+          "(encrypted)",
           event.created_at
         );
         store.incrementUnread(dmConversationId);
@@ -177,10 +158,60 @@ export function useChatSubscription() {
     [pubkeyHex]
   );
 
+  // Hydrate: fetch existing channels, profiles, and recent messages from server
+  const hydrate = useCallback(async () => {
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
+
+    try {
+      // Fetch all channel creation events
+      const channels = await rpcCall<ChatEvent[]>("norn_getChatHistory", [
+        { kinds: [30002], limit: 100 },
+      ]);
+      for (const event of channels) {
+        await handleEvent(event);
+      }
+
+      // Fetch all profile events
+      const profiles = await rpcCall<ChatEvent[]>("norn_getChatHistory", [
+        { kinds: [30000], limit: 200 },
+      ]);
+      for (const event of profiles) {
+        await handleEvent(event);
+      }
+
+      // Fetch recent channel messages for each known channel
+      const store = useChatStore.getState();
+      for (const conv of store.conversations) {
+        if (conv.type === "channel") {
+          const msgs = await rpcCall<ChatEvent[]>("norn_getChatHistory", [
+            { kinds: [30003], channel_id: conv.id, limit: 100 },
+          ]);
+          for (const event of msgs) {
+            await handleEvent(event);
+          }
+        }
+      }
+
+      // Fetch recent DMs for this pubkey
+      if (pubkeyHex) {
+        const dms = await rpcCall<ChatEvent[]>("norn_getChatHistory", [
+          { kinds: [30001], pubkey: pubkeyHex, limit: 100 },
+        ]);
+        for (const event of dms) {
+          await handleEvent(event);
+        }
+      }
+    } catch {
+      // Non-fatal — hydration is best-effort
+    }
+  }, [handleEvent, pubkeyHex]);
+
   useEffect(() => {
     if (!pubkeyHex) return;
 
     let mounted = true;
+    hydratedRef.current = false;
 
     function connect() {
       subsRef.current?.unsubscribe();
@@ -197,6 +228,8 @@ export function useChatSubscription() {
           onOpen: () => {
             if (!mounted) return;
             attemptRef.current = 0;
+            // Hydrate history on first connect
+            hydrate();
           },
           onClose: () => {
             if (!mounted) return;
@@ -234,5 +267,5 @@ export function useChatSubscription() {
       subsRef.current?.unsubscribe();
       subsRef.current = null;
     };
-  }, [pubkeyHex, activeNetworkId, handleEvent]);
+  }, [pubkeyHex, activeNetworkId, handleEvent, hydrate]);
 }

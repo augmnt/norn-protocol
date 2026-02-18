@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useWallet } from "@/hooks/use-wallet";
 import { useChatStore } from "@/stores/chat-store";
+import { useWalletStore } from "@/stores/wallet-store";
 import { signChatEvent, signEncryptedDm } from "@/lib/chat-signer";
 import { getChatProfile } from "@/lib/chat-storage";
 import { rpcCall } from "@/lib/rpc";
@@ -30,11 +31,12 @@ export function MessageInput({ conversationId, conversationType, peerPubkey }: M
 
     setSending(true);
     try {
+      const pw = useWalletStore.getState().sessionPassword ?? undefined;
       let event: ChatEvent;
 
       if (conversationType === "channel") {
         const tags: string[][] = [["c", conversationId]];
-        event = await signChatEvent(meta, 30003, message, tags, activeAccountIndex);
+        event = await signChatEvent(meta, 30003, message, tags, activeAccountIndex, pw);
       } else if (conversationType === "dm" && peerPubkey) {
         const profile = await getChatProfile(peerPubkey);
         if (!profile?.x25519PublicKey) {
@@ -48,7 +50,8 @@ export function MessageInput({ conversationId, conversationType, peerPubkey }: M
           fromHex(profile.x25519PublicKey),
           message,
           peerPubkey,
-          activeAccountIndex
+          activeAccountIndex,
+          pw
         );
       } else {
         return;

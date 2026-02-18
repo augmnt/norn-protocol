@@ -22,6 +22,7 @@ import type {
   AddressHex,
   HashHex,
   ChatEvent,
+  ChatHistoryFilter,
 } from "./types.js";
 import { verifyBalanceProof } from "./merkle.js";
 
@@ -362,6 +363,11 @@ export class NornClient {
   /** Submit a fraud proof. */
   async submitFraudProof(proofHex: string): Promise<SubmitResult> {
     return this.call("norn_submitFraudProof", [proofHex]);
+  }
+
+  /** Query stored chat events (channels, messages, profiles). */
+  async getChatHistory(filter: ChatHistoryFilter): Promise<ChatEvent[]> {
+    return this.call("norn_getChatHistory", [filter]);
   }
 
   /** Publish a signed chat event to the relay. */
