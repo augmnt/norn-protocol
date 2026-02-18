@@ -85,9 +85,10 @@ pub async fn start_rpc_server(
     };
 
     let handle = if let Some(key) = api_key {
-        // Build server with auth middleware.
-        let middleware =
-            tower::ServiceBuilder::new().layer(auth_middleware::AuthLayer::new(key.clone()));
+        // Build server with health + auth middleware.
+        let middleware = tower::ServiceBuilder::new()
+            .layer(health_middleware::HealthLayer)
+            .layer(auth_middleware::AuthLayer::new(key.clone()));
         let server = ServerBuilder::default()
             .set_http_middleware(middleware)
             .build(addr)
@@ -98,19 +99,95 @@ pub async fn start_rpc_server(
         tracing::info!(addr = %addr, "RPC server started (API key auth enabled)");
         server.start(rpc_impl.into_rpc())
     } else {
-        // Build server without auth middleware (open access).
-        let server =
-            ServerBuilder::default()
-                .build(addr)
-                .await
-                .map_err(|e| NodeError::RpcError {
-                    reason: format!("failed to build RPC server: {}", e),
-                })?;
+        // Build server with health middleware (open access).
+        let middleware = tower::ServiceBuilder::new().layer(health_middleware::HealthLayer);
+        let server = ServerBuilder::default()
+            .set_http_middleware(middleware)
+            .build(addr)
+            .await
+            .map_err(|e| NodeError::RpcError {
+                reason: format!("failed to build RPC server: {}", e),
+            })?;
         tracing::info!(addr = %addr, "RPC server started");
         server.start(rpc_impl.into_rpc())
     };
 
     Ok((handle, broadcasters))
+}
+
+/// Tower middleware that intercepts `GET /health` and returns 200 OK
+/// before the request reaches jsonrpsee (which only handles POST).
+mod health_middleware {
+    use http::{Request, Response, StatusCode};
+    use http_body_util::BodyExt;
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+    use tower::{Layer, Service};
+
+    #[derive(Clone, Copy)]
+    pub struct HealthLayer;
+
+    impl<S> Layer<S> for HealthLayer {
+        type Service = HealthService<S>;
+
+        fn layer(&self, inner: S) -> Self::Service {
+            HealthService { inner }
+        }
+    }
+
+    #[derive(Clone)]
+    pub struct HealthService<S> {
+        inner: S,
+    }
+
+    impl<S, B> Service<Request<B>> for HealthService<S>
+    where
+        S: Service<Request<jsonrpsee::server::HttpBody>> + Clone + Send + 'static,
+        S::Response: From<Response<jsonrpsee::server::HttpBody>>,
+        S::Future: Send,
+        S::Error: Send,
+        B: http_body::Body + Send + 'static,
+        B::Data: Send,
+        B::Error: std::fmt::Display,
+    {
+        type Response = S::Response;
+        type Error = S::Error;
+        type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+        fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            self.inner.poll_ready(cx)
+        }
+
+        fn call(&mut self, req: Request<B>) -> Self::Future {
+            let is_health = req.method() == http::Method::GET && req.uri().path() == "/health";
+
+            if is_health {
+                Box::pin(async move {
+                    let body =
+                        jsonrpsee::server::HttpBody::from(r#"{"status":"ok"}"#);
+                    let response = Response::builder()
+                        .status(StatusCode::OK)
+                        .header("Content-Type", "application/json")
+                        .body(body)
+                        .expect("valid response");
+                    Ok(response.into())
+                })
+            } else {
+                let mut inner = self.inner.clone();
+                Box::pin(async move {
+                    let (parts, body) = req.into_parts();
+                    let collected = body
+                        .collect()
+                        .await
+                        .map(|c| c.to_bytes())
+                        .unwrap_or_default();
+                    let new_body = jsonrpsee::server::HttpBody::from(collected.to_vec());
+                    inner.call(Request::from_parts(parts, new_body)).await
+                })
+            }
+        }
+    }
 }
 
 /// Tower middleware for API key authentication on RPC mutation methods.
