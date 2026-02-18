@@ -144,7 +144,7 @@ export function NewDmDialog({ open, onOpenChange }: NewDmDialogProps) {
 }
 
 async function resolveAddressToPubkey(address: string): Promise<string | null> {
-  const hex = address.startsWith("0x") ? address : `0x${address}`;
+  const hex = strip0x(address);
   const thread = await rpcCall<ThreadInfo | null>("norn_getThread", [hex]);
   if (thread?.owner && thread.owner.length === 64) {
     return thread.owner;
