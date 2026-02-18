@@ -4,15 +4,17 @@ export const metadata = {
 
 # Run a Node
 
-Run your own Norn node, hold your thread state locally, and earn validator rewards from every transaction on the network.
+Run your own Norn node to sync chain state, interact with the network, and build on the protocol.
 
 ## Why Run a Node?
 
-Running a Norn node makes you a direct participant in the protocol. Here is what you get:
+Running a Norn node connects you directly to the network:
 
-- **Earn validator rewards** -- Every transaction pays a commitment fee. Those fees are distributed to validators at each epoch boundary, proportional to stake. No inflation, no token printing -- rewards come purely from real network usage.
 - **Hold your own state** -- Your Thread (personal state chain) lives on your machine. You do not depend on anyone else to verify your balances or history.
-- **Secure the network** -- More validators means stronger consensus. Your node validates transactions, propagates blocks, and watches for misbehavior.
+- **Full RPC access** -- Query blocks, submit transactions, and build applications against your own local endpoint with no rate limits.
+- **Sync the chain** -- Your node connects to the devnet, downloads all blocks, and stays in sync with the latest state.
+
+> **Note:** The devnet currently runs a fixed validator set of 3 nodes using HotStuff BFT consensus. Running a node syncs and verifies all blocks, but does not make your node a consensus validator. Dynamic validator joining (stake-to-participate) is planned for a future release.
 
 ## Quick Setup
 
@@ -36,7 +38,7 @@ To install **and** start the node in one go:
 curl -sSf https://raw.githubusercontent.com/augmnt/norn-protocol/main/scripts/setup-node.sh | bash -s -- --start --faucet
 ```
 
-This starts the node in the background and requests devnet faucet funds automatically. Your node is live and earning rewards immediately.
+This starts the node in the background and requests devnet faucet funds automatically.
 
 ### Production setup (Linux)
 
@@ -86,10 +88,10 @@ Verify the installation:
 norn --version
 ```
 
-### 2. Create a Validator Wallet
+### 2. Create a Wallet
 
 ```bash
-norn wallet create --name validator
+norn wallet create --name mynode
 ```
 
 This creates an encrypted keystore in `~/.norn/wallets/`. You will be prompted to set a password. Keep your password safe -- it protects your private key.
@@ -105,7 +107,7 @@ Your node will:
 - Connect to `seed.norn.network` as a peer (automatic)
 - Sync all existing blocks from the network
 - Store thread and chain state locally (SQLite, persistent)
-- Begin validating transactions and participating in consensus
+- Verify all blocks and transactions
 
 ### 4. Get Funded (Devnet Only)
 
@@ -113,17 +115,19 @@ Your node will:
 norn wallet faucet
 ```
 
-The devnet faucet sends you NORN so you can start transacting and staking immediately. There is a 60-second cooldown between requests.
+The devnet faucet sends you NORN so you can start transacting immediately. There is a 60-second cooldown between requests.
 
-### 5. Check Your Rewards
+## Consensus
 
-```bash
-norn wallet rewards
-```
+Norn uses **HotStuff BFT** for block consensus -- a 3-phase commit protocol (Prepare, PreCommit, Commit) that provides Byzantine fault tolerance.
 
-This shows your current epoch earnings, blocks until the next distribution, and your projected reward based on stake weight.
+The devnet currently operates with a fixed set of 3 validators. Blocks are proposed by a rotating leader and require agreement from the validator set before being finalized. Your node syncs these finalized blocks and verifies their integrity.
 
-## Validator Rewards
+### Becoming a Validator
+
+Dynamic validator joining is not yet available on devnet. The current validator set is defined in the genesis configuration. Future releases will support staking-based validator registration, where anyone meeting the minimum stake requirement can join the active set.
+
+### Validator Rewards
 
 Norn has **zero inflation**. There are no block rewards minted out of thin air. Instead, validators earn from real network activity:
 
@@ -132,17 +136,20 @@ Norn has **zero inflation**. There are no block rewards minted out of thin air. 
 3. **At each epoch boundary, the pool is distributed.** Validators receive a share proportional to their stake weight.
 4. **More network usage = higher rewards.** As adoption grows, so does the fee pool.
 
-### Checking Rewards
+### Checking Network Info
 
 ```bash
-# View pending fees and projected distribution
+# View current block height and sync status
+norn wallet node-info
+
+# View the current validator set and stake weights
+norn wallet validators
+
+# View epoch reward info
 norn wallet rewards
 
 # JSON output for scripting
 norn wallet rewards --json
-
-# View the current validator set and stake weights
-norn wallet validators
 ```
 
 ## Running as a Service
@@ -162,7 +169,7 @@ Wants=network-online.target
 Type=simple
 User=norn
 Group=norn
-ExecStart=/usr/local/bin/norn run --dev --consensus --storage sqlite --data-dir /var/lib/norn/data
+ExecStart=/usr/local/bin/norn run --dev --storage sqlite --data-dir /var/lib/norn/data
 Restart=always
 RestartSec=5
 LimitNOFILE=65535
@@ -209,8 +216,8 @@ sudo journalctl -u norn-node -f
 
 | Flag | Description |
 |------|-------------|
-| `--dev` | Dev mode: faucet, SQLite storage, solo validator, auto-bootstrap to devnet seed |
-| `--consensus` | Enable multi-validator HotStuff BFT consensus (overrides solo mode from `--dev`) |
+| `--dev` | Dev mode: faucet, SQLite storage, auto-bootstrap to devnet seed |
+| `--consensus` | Enable multi-validator HotStuff BFT consensus (for genesis validators only) |
 | `--no-bootstrap` | Run as the seed node (no outbound peers) |
 | `--storage <TYPE>` | Override storage: `sqlite` (default for --dev), `memory`, `rocksdb` |
 | `--boot-node <MULTIADDR>` | Add a custom bootstrap peer |
@@ -256,4 +263,4 @@ curl http://localhost:9741/health
 - [Wallet CLI](/docs/wallet) -- Full reference for all wallet commands
 - [Architecture](/docs/architecture) -- Understand Threads, Knots, and the Weave
 - [Quick Start](/docs/quickstart) -- Installation and devnet quickstart
-- [NornNames](/docs/names) -- Register a human-readable name for your validator
+- [NornNames](/docs/names) -- Register a human-readable name for your node
