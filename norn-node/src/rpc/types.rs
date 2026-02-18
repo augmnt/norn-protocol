@@ -563,6 +563,26 @@ pub struct BlockLoomDeployInfo {
     pub timestamp: u64,
 }
 
+/// A Nostr-inspired signed chat event (Ed25519 + BLAKE3).
+/// The node relays these ephemerally — no persistence.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatEvent {
+    /// BLAKE3 hash of [pubkey, created_at, kind, tags_json, content] as hex.
+    pub id: String,
+    /// Author's Ed25519 pubkey (hex).
+    pub pubkey: String,
+    /// Unix timestamp in seconds.
+    pub created_at: u64,
+    /// Event kind (30000=profile, 30001=DM, 30002=channel create, 30003=channel message).
+    pub kind: u32,
+    /// Nostr-style tags.
+    pub tags: Vec<Vec<String>>,
+    /// Plaintext or base64 ciphertext.
+    pub content: String,
+    /// Ed25519 signature over id bytes (hex).
+    pub sig: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

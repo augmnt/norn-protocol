@@ -14,6 +14,11 @@ export function blake3Hash(data: Uint8Array): Uint8Array {
   return blake3(data);
 }
 
+/** Derive key material using BLAKE3 KDF (derive_key mode). Matches norn-crypto blake3_kdf(). */
+export function blake3Kdf(context: string, keyMaterial: Uint8Array): Uint8Array {
+  return blake3(keyMaterial, { context });
+}
+
 /** Sign a message with an Ed25519 private key. Returns 64-byte signature. */
 export function ed25519Sign(
   message: Uint8Array,

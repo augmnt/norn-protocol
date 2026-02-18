@@ -10,7 +10,7 @@ use norn_weave::engine::WeaveEngine;
 
 use super::handlers::{NornRpcImpl, NornRpcServer};
 use super::types::{
-    BlockInfo, LoomExecutionEvent, PendingTransactionEvent, TokenEvent, TransferEvent,
+    BlockInfo, ChatEvent, LoomExecutionEvent, PendingTransactionEvent, TokenEvent, TransferEvent,
 };
 use crate::error::NodeError;
 use crate::metrics::NodeMetrics;
@@ -24,6 +24,7 @@ pub struct RpcBroadcasters {
     pub token_tx: tokio::sync::broadcast::Sender<TokenEvent>,
     pub loom_tx: tokio::sync::broadcast::Sender<LoomExecutionEvent>,
     pub pending_tx: tokio::sync::broadcast::Sender<PendingTransactionEvent>,
+    pub chat_tx: tokio::sync::broadcast::Sender<ChatEvent>,
 }
 
 impl Default for RpcBroadcasters {
@@ -40,12 +41,14 @@ impl RpcBroadcasters {
         let (token_tx, _) = tokio::sync::broadcast::channel::<TokenEvent>(64);
         let (loom_tx, _) = tokio::sync::broadcast::channel::<LoomExecutionEvent>(64);
         let (pending_tx, _) = tokio::sync::broadcast::channel::<PendingTransactionEvent>(256);
+        let (chat_tx, _) = tokio::sync::broadcast::channel::<ChatEvent>(512);
         Self {
             block_tx,
             transfer_tx,
             token_tx,
             loom_tx,
             pending_tx,
+            chat_tx,
         }
     }
 }
@@ -159,6 +162,10 @@ mod auth_middleware {
         "norn_unsubscribeLoomEvents",
         "norn_subscribePendingTransactions",
         "norn_unsubscribePendingTransactions",
+        // Chat relay (ephemeral, no persistence).
+        "norn_publishChatEvent",
+        "norn_subscribeChatEvents",
+        "norn_unsubscribeChatEvents",
     ];
 
     /// Tower layer that wraps services with API key authentication.

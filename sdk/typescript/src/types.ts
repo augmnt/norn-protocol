@@ -340,6 +340,24 @@ export interface LoomExecutionEvent {
   block_height: number;
 }
 
+/** A Nostr-inspired signed chat event (Ed25519 + BLAKE3). */
+export interface ChatEvent {
+  /** BLAKE3 hash of [pubkey, created_at, kind, tags_json, content] as hex. */
+  id: string;
+  /** Author's Ed25519 pubkey (hex). */
+  pubkey: string;
+  /** Unix timestamp in seconds. */
+  created_at: number;
+  /** Event kind (30000=profile, 30001=DM, 30002=channel create, 30003=channel message). */
+  kind: number;
+  /** Nostr-style tags. */
+  tags: string[][];
+  /** Plaintext or base64 ciphertext. */
+  content: string;
+  /** Ed25519 signature over id bytes (hex). */
+  sig: string;
+}
+
 /** Real-time pending transaction event (WebSocket). */
 export interface PendingTransactionEvent {
   tx_type: string;

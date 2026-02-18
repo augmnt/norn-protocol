@@ -4,6 +4,7 @@ import type {
   TokenEvent,
   LoomExecutionEvent,
   PendingTransactionEvent,
+  ChatEvent,
 } from "./types.js";
 
 /** A subscription that can be unsubscribed. */
@@ -134,4 +135,14 @@ export function subscribePendingTransactions(
   onEvent: (event: PendingTransactionEvent) => void,
 ): Subscription {
   return subscribe(options, "norn_subscribePendingTransactions", [], onEvent);
+}
+
+/** Subscribe to chat events, optionally filtered by pubkey. */
+export function subscribeChatEvents(
+  options: SubscribeOptions,
+  onEvent: (event: ChatEvent) => void,
+  pubkeyFilter?: string,
+): Subscription {
+  const params = pubkeyFilter ? [pubkeyFilter] : [];
+  return subscribe(options, "norn_subscribeChatEvents", params, onEvent);
 }

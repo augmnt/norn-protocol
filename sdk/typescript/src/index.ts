@@ -1,5 +1,6 @@
 export {
   blake3Hash,
+  blake3Kdf,
   ed25519Sign,
   ed25519Verify,
   publicKeyFromPrivate,
@@ -54,8 +55,27 @@ export {
   subscribeTokenEvents,
   subscribeLoomEvents,
   subscribePendingTransactions,
+  subscribeChatEvents,
 } from "./subscriptions.js";
 export type { SubscribeOptions } from "./subscriptions.js";
+
+export {
+  ed25519ToX25519Secret,
+  ed25519ToX25519Public,
+  encrypt,
+  decrypt,
+  deriveSharedSecret,
+  symmetricEncrypt,
+  symmetricDecrypt,
+} from "./encryption.js";
+export type { EncryptedMessage, SymmetricEncryptedMessage } from "./encryption.js";
+
+export {
+  createChatEvent,
+  verifyChatEvent,
+  encryptDmContent,
+  decryptDmContent,
+} from "./chat.js";
 
 export type {
   AddressHex,
@@ -97,4 +117,5 @@ export type {
   TokenEvent,
   LoomExecutionEvent,
   PendingTransactionEvent,
+  ChatEvent,
 } from "./types.js";

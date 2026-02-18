@@ -15,7 +15,7 @@ use norn_loom::lifecycle::LoomManager;
 use super::types::{
     AttributeInfo, BlockInfo, BlockLoomDeployInfo, BlockNameRegistrationInfo, BlockTokenBurnInfo,
     BlockTokenDefinitionInfo, BlockTokenMintInfo, BlockTransactionsInfo, BlockTransferInfo,
-    CommitmentProofInfo, EventInfo, ExecutionResult, FeeEstimateInfo, HealthInfo,
+    ChatEvent, CommitmentProofInfo, EventInfo, ExecutionResult, FeeEstimateInfo, HealthInfo,
     LoomExecutionEvent, LoomInfo, NameInfo, NameResolution, PendingTransactionEvent, QueryResult,
     StakingInfo, StateProofInfo, SubmitResult, ThreadInfo, ThreadStateInfo, TokenEvent, TokenInfo,
     TransactionHistoryEntry, TransferEvent, ValidatorInfo, ValidatorRewardInfo,
@@ -134,6 +134,14 @@ pub trait NornRpc {
     /// Subscribe to pending transactions entering the mempool.
     #[subscription(name = "norn_subscribePendingTransactions" => "norn_pendingTransactions", unsubscribe = "norn_unsubscribePendingTransactions", item = PendingTransactionEvent)]
     async fn subscribe_pending_transactions(&self) -> SubscriptionResult;
+
+    /// Publish a signed chat event to the relay. Node verifies ID + signature, then broadcasts.
+    #[method(name = "norn_publishChatEvent")]
+    async fn publish_chat_event(&self, event: ChatEvent) -> Result<SubmitResult, ErrorObjectOwned>;
+
+    /// Subscribe to chat events, optionally filtered by pubkey (matches event.pubkey or "p" tags).
+    #[subscription(name = "norn_subscribeChatEvents" => "norn_chatEvents", unsubscribe = "norn_unsubscribeChatEvents", item = ChatEvent)]
+    async fn subscribe_chat_events(&self, pubkey_filter: Option<String>) -> SubscriptionResult;
 
     /// Get transaction history for an address.
     #[method(name = "norn_getTransactionHistory")]
@@ -1179,6 +1187,89 @@ impl NornRpcServer for NornRpcImpl {
 
         tokio::spawn(async move {
             while let Ok(event) = rx.recv().await {
+                match jsonrpsee::SubscriptionMessage::from_json(&event) {
+                    Ok(msg) => {
+                        if sink.send(msg).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    async fn publish_chat_event(&self, event: ChatEvent) -> Result<SubmitResult, ErrorObjectOwned> {
+        // Verify event ID: recompute BLAKE3 hash of [pubkey, created_at, kind, tags_json, content]
+        let tags_json = serde_json::to_string(&event.tags).unwrap_or_default();
+        let preimage = format!(
+            "{}{}{}{}{}",
+            event.pubkey, event.created_at, event.kind, tags_json, event.content
+        );
+        let expected_id = hex::encode(norn_crypto::hash::blake3_hash(preimage.as_bytes()));
+        if expected_id != event.id {
+            return Ok(SubmitResult {
+                success: false,
+                reason: Some("invalid event ID".to_string()),
+            });
+        }
+
+        // Verify Ed25519 signature over raw ID bytes
+        let id_bytes = hex::decode(&event.id)
+            .map_err(|_| ErrorObjectOwned::owned(-32602, "invalid hex in event id", None::<()>))?;
+        let sig_bytes = hex::decode(&event.sig)
+            .map_err(|_| ErrorObjectOwned::owned(-32602, "invalid hex in event sig", None::<()>))?;
+        let pubkey_bytes = hex::decode(&event.pubkey).map_err(|_| {
+            ErrorObjectOwned::owned(-32602, "invalid hex in event pubkey", None::<()>)
+        })?;
+
+        let sig_arr: [u8; 64] = sig_bytes.try_into().map_err(|_| {
+            ErrorObjectOwned::owned(-32602, "signature must be 64 bytes", None::<()>)
+        })?;
+        let pubkey_arr: [u8; 32] = pubkey_bytes
+            .try_into()
+            .map_err(|_| ErrorObjectOwned::owned(-32602, "pubkey must be 32 bytes", None::<()>))?;
+
+        if norn_crypto::keys::verify(&id_bytes, &sig_arr, &pubkey_arr).is_err() {
+            return Ok(SubmitResult {
+                success: false,
+                reason: Some("invalid signature".to_string()),
+            });
+        }
+
+        // Broadcast to subscribers (no persistence)
+        let _ = self.broadcasters.chat_tx.send(event);
+
+        Ok(SubmitResult {
+            success: true,
+            reason: None,
+        })
+    }
+
+    async fn subscribe_chat_events(
+        &self,
+        pending: PendingSubscriptionSink,
+        pubkey_filter: Option<String>,
+    ) -> SubscriptionResult {
+        let mut rx = self.broadcasters.chat_tx.subscribe();
+        let sink = pending.accept().await?;
+        let filter = pubkey_filter.clone();
+
+        tokio::spawn(async move {
+            while let Ok(event) = rx.recv().await {
+                // Apply optional pubkey filter: matches event.pubkey or any ["p", filter] tag
+                if let Some(ref pk) = filter {
+                    let matches_author = event.pubkey == *pk;
+                    let matches_tag = event
+                        .tags
+                        .iter()
+                        .any(|tag| tag.len() >= 2 && tag[0] == "p" && tag[1] == *pk);
+                    if !matches_author && !matches_tag {
+                        continue;
+                    }
+                }
                 match jsonrpsee::SubscriptionMessage::from_json(&event) {
                     Ok(msg) => {
                         if sink.send(msg).await.is_err() {

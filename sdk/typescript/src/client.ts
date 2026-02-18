@@ -21,6 +21,7 @@ import type {
   NodeInfo,
   AddressHex,
   HashHex,
+  ChatEvent,
 } from "./types.js";
 import { verifyBalanceProof } from "./merkle.js";
 
@@ -361,6 +362,11 @@ export class NornClient {
   /** Submit a fraud proof. */
   async submitFraudProof(proofHex: string): Promise<SubmitResult> {
     return this.call("norn_submitFraudProof", [proofHex]);
+  }
+
+  /** Publish a signed chat event to the relay. */
+  async publishChatEvent(event: ChatEvent): Promise<SubmitResult> {
+    return this.call("norn_publishChatEvent", [event]);
   }
 
   // ── State verification ────────────────────────────────────────────────
