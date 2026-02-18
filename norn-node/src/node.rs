@@ -1458,6 +1458,7 @@ impl Node {
                             }
                             drop(engine); // Release lock before metrics.
                         } else {
+                            let tick_start = std::time::Instant::now();
                             let messages = engine.on_tick(timestamp);
                             drop(engine); // Release lock before processing committed blocks.
 
@@ -1469,9 +1470,14 @@ impl Node {
                                 if let NornMessage::Block(ref committed_block) = msg {
                                     // A block was finalized through consensus — persist and apply.
                                     let block = committed_block.as_ref();
+                                    let production_us = tick_start.elapsed().as_micros() as u64;
+                                    if let Ok(mut guard) = self.last_block_production_us.lock() {
+                                        *guard = Some(production_us);
+                                    }
                                     tracing::info!(
                                         height = block.height,
                                         commitments = block.commitments.len(),
+                                        production_us,
                                         "block finalized via consensus"
                                     );
                                     self.metrics.blocks_produced.inc();
@@ -1548,7 +1554,7 @@ impl Node {
                                             );
                                             sm.debit_fee(commit.thread_id, fee_per);
                                         }
-                                        sm.archive_block(block.clone(), None);
+                                        sm.archive_block(block.clone(), Some(production_us));
                                     }
 
                                     // Distribute epoch rewards to validators (consensus path).
@@ -1583,7 +1589,7 @@ impl Node {
 
                                     // Notify WebSocket subscribers.
                                     if let Some(ref bc) = self.broadcasters {
-                                        let _ = bc.block_tx.send(block_info_from_weave(block, None));
+                                        let _ = bc.block_tx.send(block_info_from_weave(block, Some(production_us)));
                                     }
                                 }
 
