@@ -111,7 +111,14 @@ impl HotStuffEngine {
             justify: self.prepare_qc.clone(),
         };
 
-        vec![ConsensusAction::Broadcast(msg)]
+        let mut actions = vec![ConsensusAction::Broadcast(msg)];
+
+        // Leader also casts its own PrepareVote (a node doesn't receive its own
+        // gossipsub broadcasts, so we must process the vote locally).
+        let own_vote = self.make_vote(self.current_view, block_hash, ConsensusPhase::Prepare);
+        actions.extend(self.handle_prepare_vote(own_vote));
+
+        actions
     }
 
     /// Handle an incoming consensus message.
@@ -168,8 +175,14 @@ impl HotStuffEngine {
             signature,
         };
 
-        let msg = ConsensusMessage::ViewChange(tv);
-        vec![ConsensusAction::Broadcast(msg)]
+        let msg = ConsensusMessage::ViewChange(tv.clone());
+        let mut actions = vec![ConsensusAction::Broadcast(msg)];
+
+        // Process our own timeout vote locally (a node doesn't receive its own
+        // gossipsub broadcasts, so we must handle the vote ourselves).
+        actions.extend(self.handle_view_change(tv));
+
+        actions
     }
 
     /// Advance to the next view and reset per-view state.
@@ -252,7 +265,13 @@ impl HotStuffEngine {
                 view: self.current_view,
                 prepare_qc: qc,
             };
-            return vec![ConsensusAction::Broadcast(msg)];
+            let mut actions = vec![ConsensusAction::Broadcast(msg)];
+
+            // Leader also casts its own PreCommitVote (gossipsub self-delivery).
+            let own_vote = self.make_vote(self.current_view, block_hash, ConsensusPhase::PreCommit);
+            actions.extend(self.handle_precommit_vote(own_vote));
+
+            return actions;
         }
 
         vec![]
@@ -323,7 +342,13 @@ impl HotStuffEngine {
                 view: self.current_view,
                 precommit_qc: qc,
             };
-            return vec![ConsensusAction::Broadcast(msg)];
+            let mut actions = vec![ConsensusAction::Broadcast(msg)];
+
+            // Leader also casts its own CommitVote (gossipsub self-delivery).
+            let own_vote = self.make_vote(self.current_view, block_hash, ConsensusPhase::Commit);
+            actions.extend(self.handle_commit_vote(own_vote));
+
+            return actions;
         }
 
         vec![]
