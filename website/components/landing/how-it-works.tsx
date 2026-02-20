@@ -3,7 +3,7 @@ const steps = [
     number: "01",
     title: "Threads",
     description:
-      "Personal state chains. Each user maintains their own signed history of state transitions, stored locally.",
+      "Personal state chains. Each user maintains their own cryptographically owned history of state transitions, replicated across the network.",
     art: `      ╔═══════════════════════════════════════════════════════╗
       ║                                                       ║
       ╠═══╤═══╤═══╤═══╤═══╤═══╤═══╤═══╤═══╤═══╤═══╤═══╤═══╣
@@ -59,7 +59,7 @@ const steps = [
     number: "03",
     title: "Weave",
     description:
-      "The anchor chain. A minimal BFT blockchain that processes commitments and fraud proofs.",
+      "The anchor chain. A minimal BFT blockchain that orders transactions and anchors state.",
     art: `┌──────────────────────────────────────────────────────────────────┐
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │                        BEAM                              │  │
@@ -92,7 +92,7 @@ const steps = [
     number: "04",
     title: "Looms",
     description:
-      "Off-chain smart contracts. WASM programs with on-chain fraud proof guarantees.",
+      "WASM smart contracts. Programs that execute on validators with fraud proof guarantees.",
     art: `                                │
                      ┌──────────┤
                      │          │
@@ -184,7 +184,7 @@ export function HowItWorks() {
             Six primitives, one protocol
           </h2>
           <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
-            Users own their state. The chain validates transitions, settles
+            Users control their state. The chain validates transitions, settles
             disputes, and anchors history.
           </p>
         </div>

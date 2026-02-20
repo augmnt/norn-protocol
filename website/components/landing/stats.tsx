@@ -1,7 +1,7 @@
 const stats = [
   { value: "$0", label: "Transfer fees" },
   { value: "~3s", label: "Block finality" },
-  { value: "~2 GB", label: "RAM for a full node" },
+  { value: "~2 GB", label: "RAM to start a full node" },
   { value: "3s", label: "Block time" },
   { value: "SMT", label: "State verification" },
   { value: "Wasm", label: "Smart contracts" },

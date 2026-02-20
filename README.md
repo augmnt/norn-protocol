@@ -13,17 +13,17 @@
 
 ## What is Norn?
 
-Norn is a thread-centric blockchain protocol that reimagines the relationship between users and the chain. Rather than forcing every transaction through global consensus -- the bottleneck that limits every existing blockchain -- Norn puts state ownership back in your hands. **You hold the thread.**
+Norn is a thread-centric blockchain protocol that reimagines the relationship between users and the chain. Rather than treating accounts as entries in a global ledger, Norn gives every user a personal cryptographic chain with sovereign control. **You hold the thread.**
 
-Users own their state through personal cryptographic chains called *Threads*. Transfers are signed by the sender and validated by the network. Clients can independently verify their balances using Merkle proofs. The chain validates state transitions and guarantees correctness -- it doesn't hold your money.
+Every account is a *Thread* -- a personal cryptographic chain that only you can sign. Your state is replicated across the network for availability, but only your signature can authorize changes. Transfers are signed by the sender and validated by the network. Clients can independently verify their balances using Merkle proofs. The chain validates state transitions and guarantees correctness -- it doesn't hold your money.
 
-For complex multi-party logic, off-chain smart contracts called *Looms* provide WebAssembly-powered programmability with on-chain fraud proof guarantees. The result is a protocol with zero-fee transfers, fast finality, and cryptographic state verification -- where the chain exists only to keep everyone honest.
+For complex multi-party logic, WASM smart contracts called *Looms* provide WebAssembly-powered programmability with fraud proof guarantees. The result is a protocol with zero-fee transfers, fast finality, and cryptographic state verification -- where the chain exists only to keep everyone honest.
 
 ## Key Properties
 
-- **Zero-fee transfers** -- Transfers carry no protocol fee. Only periodic commitments to the anchor chain carry a small dynamic fee.
+- **Zero-fee transfers** -- Transfers carry no protocol fee. Only operations like name registration and token creation carry a small fee.
 - **Fast finality** -- Transactions confirm in ~3 second blocks on the Weave.
-- **Phone-runnable full nodes** -- The anchor chain processes only commitments and fraud proofs, keeping on-chain state minimal. A full node runs on a modern smartphone.
+- **Lightweight full nodes** -- Memory-bounded data structures and efficient state management keep resource requirements low. A full node starts under 2 GB of RAM.
 - **State verification** -- Clients independently verify balances via Merkle proofs against the on-chain state root.
 - **Fraud-proof security** -- Cheating is detectable and punishable through economic penalties. Honest behavior is the Nash equilibrium.
 
@@ -57,11 +57,11 @@ Norn's architecture consists of six core components:
 
 | Component | Description |
 |-----------|-------------|
-| **Threads** | Personal state chains -- each user maintains their own signed history of state transitions, stored locally on their device. |
+| **Threads** | Personal state chains -- each user maintains their own cryptographically owned history of state transitions, replicated across the network. |
 | **Knots** | Atomic state transitions -- signed transfers that update Thread state, validated by the network. |
-| **Weave** | The anchor chain -- a minimal HotStuff BFT blockchain that processes commitments, registrations, and fraud proofs. |
-| **Looms** | Off-chain smart contracts -- WebAssembly programs that execute off-chain with on-chain fraud proof guarantees. |
-| **Spindles** | Watchtower services -- monitor the Weave on behalf of offline users and submit fraud proofs when misbehavior is detected. |
+| **Weave** | The anchor chain -- a HotStuff BFT blockchain that orders transactions and anchors state. |
+| **Looms** | WASM smart contracts -- WebAssembly programs that execute on validators with fraud proof guarantees. |
+| **Spindles** | Watchtower services -- monitor the Weave for invalid operations and submit fraud proofs when misbehavior is detected. |
 | **Relays** | P2P message buffers -- asynchronous message delivery between Threads via the libp2p protocol stack. |
 
 ```mermaid
@@ -73,18 +73,18 @@ flowchart TB
 
     A <-->|"Signed Transfers<br/>(zero-fee, fast finality)"| B
 
-    A -->|"Periodic commitments<br/>(state hash + version)"| W
-    B -->|"Periodic commitments<br/>(state hash + version)"| W
+    A -->|"Transactions<br/>(transfers, operations)"| W
+    B -->|"Transactions<br/>(transfers, operations)"| W
 
     subgraph W["The Weave (Anchor Chain -- HotStuff BFT Consensus)"]
-        C[Commitments]
+        T[Transfers]
         R[Registrations]
         F[Fraud Proofs]
         L2[Looms]
     end
 
     SP["Spindles<br/>(Watchtower Services)"] --> W
-    LM["Looms<br/>(Off-chain Contracts)"] --> W
+    LM["Looms<br/>(WASM Contracts)"] --> W
     RL["Relays<br/>(P2P Message Buffers)"] --> W
 ```
 
@@ -121,7 +121,7 @@ flowchart TB
 
 - **Seed node**: Bootstrap peer and consensus participant. Produces blocks via HotStuff BFT, serves the explorer, web wallet, and wallet extension.
 - **Validator node**: Consensus participant. Validates blocks, votes on proposals, and triggers view changes on leader failure.
-- **Local nodes**: Connect to the seed as peers. Hold your thread locally, sync blocks from the network, and gossip transactions for inclusion in blocks.
+- **Local nodes**: Connect to the seed as peers. Sync blocks from the network, maintain local state, and gossip transactions for inclusion in blocks.
 
 ### Quick Start (Join the Devnet)
 
@@ -132,7 +132,7 @@ norn run --dev
 That's it. This will:
 1. Connect to `seed.norn.network` as a peer (automatic)
 2. Sync all existing blocks from the network
-3. Store your thread and chain state locally (SQLite, persistent)
+3. Store chain state locally (SQLite, persistent)
 4. Gossip any transactions you submit to the seed for inclusion in blocks
 
 Your wallet CLI works against your local node by default (`--rpc-url http://localhost:9741`), and transactions will propagate to the entire network.
@@ -188,7 +188,7 @@ Norn supports three network modes, selectable via `--network` flag or `network_i
 | `norn-thread` | Thread management (Thread chain, Knot creation/validation, state management, version tracking) |
 | `norn-storage` | Storage abstraction (KvStore trait with memory, SQLite, and RocksDB backends; Merkle, Thread, and Weave stores) |
 | `norn-relay` | P2P networking (libp2p behaviour, protocol codec, peer discovery, relay service, state sync, Spindle registry) |
-| `norn-weave` | Anchor chain (block production, commitment processing, HotStuff consensus, dynamic fees, fraud proof verification, staking) |
+| `norn-weave` | Anchor chain (block production, transaction processing, HotStuff consensus, dynamic fees, fraud proof verification, staking) |
 | `norn-loom` | Smart contract runtime (Wasm runtime, host functions, gas metering, Loom lifecycle, dispute resolution) |
 | `norn-spindle` | Watchtower service (Weave monitoring, fraud proof construction, rate limiting, service orchestration) |
 | `norn-sdk` | Contract SDK for writing Norn loom smart contracts (`#![no_std]`, targets `wasm32-unknown-unknown`) |
@@ -412,7 +412,7 @@ For full technical details, see the [Protocol Specification, Section 28b](docs/N
 
 ## Loom Smart Contracts
 
-Norn supports **off-chain smart contracts** called Looms -- WebAssembly programs that execute off-chain with on-chain fraud proof guarantees. Loom deployments are consensus-level: registrations are included in `WeaveBlock`s and propagate to all nodes via P2P gossip.
+Norn supports **WASM smart contracts** called Looms -- WebAssembly programs that execute on every validator with fraud proof guarantees. Loom deployments are consensus-level: registrations are included in `WeaveBlock`s and propagate to all nodes via P2P gossip.
 
 ### Loom Operations
 

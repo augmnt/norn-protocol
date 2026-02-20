@@ -30,7 +30,7 @@
 
 ## 1. Abstract
 
-Norn is a thread-centric blockchain protocol that reimagines the relationship between users and the chain. Rather than forcing every transaction through global consensus -- the bottleneck that limits every existing blockchain -- Norn puts state ownership back in your hands. You hold the thread. Users own their state through personal cryptographic chains called *Threads*. Transfers are signed by the sender and validated by the network. Clients can independently verify their balances using Merkle proofs against the on-chain state root. This architecture achieves what no existing protocol can deliver simultaneously: zero-fee transfers, fast finality in ~3 second blocks, phone-runnable full nodes with minimal storage requirements, and cryptographic state verification that lets clients prove their balances without trusting the node. For complex multi-party logic, off-chain smart contracts called *Looms* provide WebAssembly-powered programmability with on-chain fraud proof guarantees. The result is a protocol where the chain is a lightweight validator and arbiter -- it validates state transitions and guarantees correctness, but users own their state.
+Norn is a thread-centric blockchain protocol that reimagines the relationship between users and the chain. Rather than treating accounts as entries in a global ledger, Norn gives every user a personal cryptographic chain with sovereign control. You hold the thread. Every account is a *Thread* -- a personal cryptographic chain that only you can sign. Your state is replicated across the network for availability, but only your signature can authorize changes. Transfers are signed by the sender and validated by the network. Clients can independently verify their balances using Merkle proofs against the on-chain state root. This architecture achieves what no existing protocol can deliver simultaneously: zero-fee transfers, fast finality in ~3 second blocks, lightweight full nodes with minimal storage requirements, and cryptographic state verification that lets clients prove their balances without trusting the node. For complex multi-party logic, WASM smart contracts called *Looms* provide WebAssembly-powered programmability with fraud proof guarantees. The result is a protocol where the chain is a lightweight validator and arbiter -- it validates state transitions and guarantees correctness, but only your key controls your state.
 
 ---
 
@@ -56,21 +56,21 @@ This is the equivalent of requiring every contract, every handshake, every excha
 
 Consider how value exchange works in the physical world. When Alice hands Bob a $20 bill for a cup of coffee, no central authority witnesses the transaction. The exchange is bilateral, private, and instant. The legal system (courts, police, regulators) exists as a backstop for disputes, not as a prerequisite for every exchange.
 
-Norn applies this insight to digital value. The protocol separates state ownership from state validation. Users own their state through personal cryptographic chains (Threads), signing transfers that the network validates and applies. The chain exists as a validator and arbiter: it guarantees correctness, resolves disputes, and anchors state -- but never holds your money.
+Norn applies this insight to digital value. The protocol separates state ownership from state validation. Each user has a personal cryptographic chain (a Thread) that only their private key can authorize changes to. The network replicates state for availability and validates every transition for correctness. The chain exists as a validator and arbiter: it guarantees correctness, resolves disputes, and anchors state -- but only your signature controls your money.
 
 ### 2.3 What Norn Delivers
 
 By inverting the traditional blockchain architecture, Norn achieves properties that are impossible under the global-consensus model:
 
-- **Zero-fee transfers.** Transfers carry no protocol fee. Only periodic commitments and operations like name registration carry a small dynamic fee.
+- **Zero-fee transfers.** Transfers carry no protocol fee. Only operations like name registration, token creation, and contract deployment carry a small fee.
 
 - **Fast finality.** Transactions confirm in ~3 second blocks on the Weave. No probabilistic finality, no extended confirmation wait.
 
-- **Phone-runnable full nodes.** The anchor chain (the Weave) processes commitments, registrations, transfers, and fraud proofs with minimal overhead. A full node runs on a modern smartphone with 2 GB of RAM and 50 GB of storage.
+- **Lightweight full nodes.** Memory-bounded data structures and efficient state management keep resource requirements low. A full node starts under 2 GB of RAM.
 
 - **State verification.** Clients can independently verify their balances using Merkle proofs against the on-chain state root. You don't need to trust the node -- you can prove your state cryptographically.
 
-- **Thread-centric state ownership.** Each user's state lives in their own Thread -- a personal cryptographic chain. The network validates transitions but never holds your state.
+- **Thread-centric state ownership.** Each user's state lives in their own Thread -- a personal cryptographic chain. State is replicated across the network for availability, but only the owner's signature can authorize changes.
 
 ---
 
@@ -82,11 +82,11 @@ The Norn Protocol is built on six foundational principles that guide every desig
 
 **Principle 1: Simplicity over cleverness.** The protocol avoids novel cryptographic constructions, untested consensus mechanisms, and clever optimizations that trade auditability for performance. Every component uses well-understood, battle-tested primitives: Ed25519 for signatures, BLAKE3 for hashing, HotStuff for consensus. Complexity is the enemy of security.
 
-**Principle 2: User sovereignty.** Users own their state. A Thread -- the complete history of a user's state transitions -- is stored on the user's own device, not on a remote server. No validator, operator, or third party can freeze, censor, or modify a user's state without their cryptographic consent. The user's private key is the sole authority over their Thread.
+**Principle 2: User sovereignty.** Users own their state cryptographically. A Thread -- the complete history of a user's state transitions -- is replicated across the network for availability, but only the owner's Ed25519 signature can authorize changes. No validator, operator, or third party can freeze, censor, or modify a user's state without their cryptographic consent. The user's private key is the sole authority over their Thread.
 
-**Principle 3: Minimal on-chain footprint.** The anchor chain (the Weave) is a lightweight validator. It validates state transitions, maintains a sparse Merkle tree of balances for state verification, and stores commitments. This keeps the chain small, fast, and cheap to operate.
+**Principle 3: Minimal on-chain footprint.** The anchor chain (the Weave) is a lightweight validator. It validates state transitions, maintains a sparse Merkle tree of balances for state verification, and records transactions. Memory-bounded data structures keep the chain small, fast, and cheap to operate.
 
-**Principle 4: Phone-first design.** If a full node cannot run on a modern smartphone, the protocol has failed. Decentralization is meaningless if participation requires expensive hardware. Every design decision is filtered through the question: "Can a phone handle this?"
+**Principle 4: Lightweight-first design.** Full nodes should run on resource-constrained devices. Decentralization is meaningless if participation requires expensive hardware. Every design decision is filtered through the question: "Can modest hardware handle this?"
 
 **Principle 5: Progressive trust.** For small, frequent transactions between known parties, no chain interaction is needed at all. For larger or higher-risk transactions, users can demand on-chain commitments and Spindle monitoring. For complex multi-party interactions, Looms provide smart contract guarantees. Trust requirements scale with transaction importance, not with protocol mandate.
 
@@ -96,9 +96,9 @@ The Norn Protocol is built on six foundational principles that guide every desig
 
 Clarity about what Norn is *not* is as important as clarity about what it is.
 
-**Norn is not a world computer.** It does not aspire to execute arbitrary programs on a globally replicated state machine. Ethereum's model of global computation is powerful but fundamentally unscalable. Norn's smart contracts (Looms) execute off-chain with on-chain fraud proof guarantees -- a deliberate trade-off of global composability for scalability and privacy.
+**Norn is not a world computer.** It does not aspire to execute arbitrary programs on a globally replicated state machine in the manner of Ethereum's EVM. Norn's smart contracts (Looms) are WASM programs with fraud proof guarantees. The current implementation executes Looms on every validator; future optimistic execution modes will allow off-chain execution with on-chain dispute resolution.
 
-**Norn is not a data availability layer.** The Weave does not store transaction data, blobs, or calldata. Off-chain data availability is the responsibility of the transacting parties and their Spindles (watchtowers). The chain stores only cryptographic commitments to state.
+**Norn is not a heavy-chain protocol.** While the Weave does contain full transaction data (transfers, token operations, contract deployments), memory-bounded data structures and efficient state management keep the chain lightweight compared to protocols like Ethereum or Solana.
 
 **Norn is not a blockchain for speculation.** The protocol is designed for real economic activity: payments, commerce, contracts. The fee structure -- zero for transfers, minimal for chain commitments -- discourages the rent-seeking that dominates existing blockchains and encourages genuine use.
 
@@ -117,20 +117,20 @@ flowchart TB
 
     A <-->|"Signed Transfers<br/>(zero-fee, fast finality)"| B
 
-    A -->|"Periodic commitments<br/>(state hash + version)"| W
-    B -->|"Periodic commitments<br/>(state hash + version)"| W
+    A -->|"Transactions<br/>(transfers, operations)"| W
+    B -->|"Transactions<br/>(transfers, operations)"| W
 
     subgraph W["The Weave (Anchor Chain -- HotStuff BFT Consensus)"]
         direction LR
-        C[Commitments]
+        T[Transfers]
         R[Registrations]
         F[Fraud Proofs]
         L2[Looms]
-        META["Block time: 3 sec | Target: 10,000 commitments/block"]
+        META["Block time: 3 sec"]
     end
 
     SP["Spindles<br/>(Watchtower Services)"] --> W
-    LM["Looms<br/>(Off-chain Smart Contracts)"] --> W
+    LM["Looms<br/>(WASM Smart Contracts)"] --> W
     RL["Relays<br/>(P2P Message Buffers)"] --> W
 ```
 
@@ -138,7 +138,7 @@ flowchart TB
 
 A Thread is a user's personal state history. It is the foundational data structure of the Norn Protocol.
 
-Every user has exactly one Thread, identified by a 20-byte address derived from the BLAKE3 hash of their Ed25519 public key. The Thread is stored locally on the user's device -- their phone, laptop, or any hardware they control. It is never uploaded to the chain in its entirety.
+Every user has exactly one Thread, identified by a 20-byte address derived from the BLAKE3 hash of their Ed25519 public key. Thread state is replicated across the network for availability -- every validator maintains every thread's state. However, only the owner's Ed25519 signature can authorize changes, providing cryptographic sovereignty over state.
 
 A Thread consists of two parts:
 
@@ -160,7 +160,7 @@ A Thread consists of two parts:
 - `looms`: A map of Loom identifiers to Loom-specific participation data.
 - `nonce`: A replay-protection counter, incremented with each Knot.
 
-The Thread State is never stored on-chain. Only its BLAKE3 hash appears in commitments to the Weave. This is the key insight that enables Norn's minimal chain footprint: the Weave verifies *that* a state exists (via its hash) without needing to know *what* the state contains.
+Thread state is maintained by validators and anchored on-chain via its BLAKE3 hash in the sparse Merkle tree. This enables lightweight state verification: clients can prove their balances using Merkle proofs against the on-chain state root without trusting any individual node.
 
 ### 4.2 Knots -- Atomic State Transitions
 
@@ -191,35 +191,36 @@ A Knot contains:
 
 ### 4.3 The Weave -- The Anchor Chain
 
-The Weave is Norn's anchor chain: a minimal blockchain that provides ordering, commitment anchoring, and dispute resolution. It is deliberately not a transaction processing chain. It is a *commitment* processing chain.
+The Weave is Norn's block chain: an ordered sequence of blocks containing validated transactions. It provides ordering, state anchoring, and dispute resolution.
 
 A Weave Block contains:
 
-- **Commitment Updates**: Thread owners periodically submit a commitment -- a signed attestation of their current version and state hash -- to anchor their off-chain state on-chain. Up to 10,000 commitments per block.
-- **Registrations**: New Thread registrations, establishing a public key's presence on the network.
+- **Transfers**: Token transfers between threads (sender, recipient, amount, optional memo).
+- **Token Operations**: Token definitions, mints, and burns for the NT-1 fungible token standard.
+- **Name Registrations**: NornNames registrations, mapping human-readable names to addresses.
+- **Loom Deploys**: Smart contract deployments and their associated metadata.
 - **Fraud Proofs**: Evidence of protocol violations (double-signing, stale commits, invalid Loom transitions), submitted by anyone.
-- **Loom Anchors**: Periodic state snapshots from Loom operators, anchoring off-chain smart contract state.
-- **Merkle Roots**: Separate Merkle roots for commitments, registrations, anchors, and fraud proofs -- enabling lightweight verification.
+- **Merkle Roots**: Separate Merkle roots for different transaction types, enabling lightweight verification.
 
-The Weave produces a new block every 3 seconds. Blocks are proposed and validated by a set of validators running HotStuff BFT consensus. After 10 blocks (30 seconds), a commitment achieves finality depth and is considered irreversible.
+The Weave produces a new block every 3 seconds. Blocks are proposed and validated by a set of validators running HotStuff BFT consensus.
 
-The critical insight is what the Weave does *not* contain: transaction details, token balances, counterparty information, or transfer amounts. The Weave sees only hashes and public keys. This is not a limitation but a feature -- it is the foundation of Norn's privacy model.
+### 4.4 Looms -- WASM Smart Contracts
 
-### 4.4 Looms -- Off-Chain Smart Contracts
+Looms are Norn's answer to smart contracts.
 
-Looms are Norn's answer to smart contracts, designed for the off-chain-first paradigm.
+A Loom is a WebAssembly (Wasm) program with fraud proof guarantees. The metaphor extends the textile theme: if Threads are individual strands of state and Knots tie them together, then Looms are the structures on which complex, multi-party patterns are woven.
 
-A Loom is a WebAssembly (Wasm) program that runs off-chain, facilitated by an operator, with on-chain fraud proof guarantees. The metaphor extends the textile theme: if Threads are individual strands of state and Knots tie them together, then Looms are the structures on which complex, multi-party patterns are woven.
+In the current implementation, Looms execute on every validator during block processing -- every node downloads the WASM bytecode and re-executes every state transition. Fraud proof infrastructure exists (types, validation logic, and Spindle watchtowers) to support a future optimistic execution mode where Looms could execute off-chain with on-chain dispute resolution.
 
 **How Looms work:**
 
-1. **Deployment.** An operator deploys a Loom by registering its configuration and Wasm bytecode. The bytecode hash is recorded on-chain for dispute resolution.
-2. **Entry (Deposit).** Users join a Loom by creating a `LoomInteraction` Knot of type `Deposit`, locking tokens from their Thread into the Loom's custody.
-3. **Interaction.** Participants interact with the Loom by submitting inputs to the operator, who executes the Wasm code and produces state transitions. Each transition records the before-state hash, after-state hash, inputs, and outputs.
-4. **Anchoring.** The operator periodically anchors the Loom's state hash to the Weave, creating a public, verifiable checkpoint.
-5. **Exit.** Users can exit cooperatively (the operator processes a withdrawal) or unilaterally (by submitting the last anchored state to the Weave and withdrawing after the challenge period).
+1. **Deployment.** An operator deploys a Loom by registering its configuration on-chain (costs 50 NORN, burned). The deployment is included in a WeaveBlock and propagated to all nodes.
+2. **Upload.** The operator uploads Wasm bytecode to the node, which initializes the contract by calling `init()`.
+3. **Execute.** Participants submit inputs via RPC. The node executes the Wasm code, producing state transitions that are applied to the Loom's key-value state.
+4. **Query.** Anyone can perform read-only queries against the Loom's current state without modifying it.
+5. **Join/Leave.** Users can join or leave a Loom as participants.
 
-**Fraud proof guarantee:** Because the Loom's Wasm bytecode and its input/output history are deterministic, any participant can challenge a disputed state transition by re-executing the code with the same inputs. If the re-execution produces a different state hash, the operator is proven fraudulent and slashed.
+**Fraud proof guarantee:** Because the Loom's Wasm bytecode and its input/output history are deterministic, any participant can challenge a disputed state transition by re-executing the code with the same inputs. If the re-execution produces a different state hash, the operator is proven fraudulent and slashed. This infrastructure is built and tested, designed for future optimistic execution modes.
 
 **Example applications:**
 
@@ -232,15 +233,15 @@ A Loom is a WebAssembly (Wasm) program that runs off-chain, facilitated by an op
 
 ### 4.5 Spindles -- Watchtower Services
 
-Spindles are watchtower services that protect users when they are offline. The name continues the textile metaphor: a spindle holds and guards thread.
+Spindles are watchtower services that monitor the network for invalid operations. The name continues the textile metaphor: a spindle holds and guards thread.
 
-A Spindle monitors the Weave on behalf of its clients, watching for:
+A Spindle monitors the Weave, watching for:
 
-- **Fraudulent commitments**: A counterparty committing a stale or conflicting state to the Weave.
-- **Loom operator misbehavior**: An operator posting an invalid state transition.
-- **Missed challenge windows**: Ensuring that fraud proofs are submitted before the 24-hour challenge period expires.
+- **Double-signing**: A thread owner creating two conflicting knots at the same version number.
+- **Stale commits**: A thread owner committing outdated state that omits recent transactions.
+- **Invalid Loom transitions**: An operator posting a state transition that doesn't match deterministic re-execution.
 
-When a Spindle detects suspicious activity, it constructs and submits the appropriate fraud proof to the Weave, protecting its client's interests even while the client's device is powered off.
+When a Spindle detects suspicious activity, it constructs and submits the appropriate fraud proof to the Weave, protecting network integrity.
 
 Spindles are economically incentivized through fraud proof bounties: a portion of the slashed stake from a proven cheater is awarded to the Spindle that submitted the proof.
 
@@ -254,8 +255,7 @@ Relays handle block propagation, state synchronization, and peer discovery. When
 
 Relays handle:
 
-- **Knot proposals and responses**: The bilateral negotiation of state transitions.
-- **Commitment broadcasts**: Propagation of commitment updates to the Weave.
+- **Transaction propagation**: Broadcasting signed transactions to the network for inclusion in blocks.
 - **Block propagation**: New Weave blocks are broadcast to all connected peers.
 - **Consensus messages**: HotStuff protocol messages between validators.
 - **Spindle alerts**: Notifications of suspicious activity.
@@ -287,27 +287,29 @@ The native token is identified by a special 32-byte zero identifier (`[0x00; 32]
 
 ### 5.2 Fee Structure
 
-Norn's fee model is radically different from existing blockchains because it reflects the protocol's architectural separation between off-chain transactions and on-chain commitments.
+Norn's fee model is radically different from existing blockchains.
 
-**Transfers are free.** Transfer Knots incur zero protocol fees. There is no gas, no base fee, no tip. Alice can send Bob 10 NORN at zero cost. This is possible because the chain's validation overhead for transfers is minimal -- it validates the signature, checks the balance, and updates the state.
+**Transfers are free.** Transfers incur zero protocol fees. There is no gas, no base fee, no tip. Alice can send Bob 10 NORN at zero cost. This is possible because the chain's validation overhead for transfers is minimal -- it validates the signature, checks the balance, and updates the state.
 
-**Weave commitments carry dynamic fees.** When a user commits their Thread state to the Weave, they pay a small fee that adjusts dynamically based on chain utilization. This fee mechanism is inspired by Ethereum's EIP-1559, adapted for Norn's commitment-based model:
+**Certain operations carry fees.** Operations that create persistent on-chain state carry fees:
 
-```
-fee = base_fee * fee_multiplier / 1000 * commitment_count
-```
+| Operation | Fee | Destination |
+|-----------|-----|-------------|
+| Name registration | 1 NORN | Burned |
+| Token creation | 10 NORN | Burned |
+| Loom deployment | 50 NORN | Burned |
 
-The `fee_multiplier` adjusts each block based on utilization:
+These fees serve as anti-spam measures and contribute to deflationary tokenomics. A dynamic fee mechanism inspired by Ethereum's EIP-1559 adjusts the base fee based on chain utilization:
 
-- If block utilization exceeds 50%: the multiplier increases by 12.5%.
-- If block utilization is below 50%: the multiplier decreases by 12.5%.
-- The multiplier is clamped between 0.1x (100/1000) and 10x (10000/1000).
+- If block utilization exceeds 50%: the fee multiplier increases by 12.5%.
+- If block utilization is below 50%: the fee multiplier decreases by 12.5%.
+- The multiplier is clamped between 0.1x and 10x.
 
-This creates a self-regulating fee market: during low demand, commitment fees approach the minimum. During high demand, fees rise to discourage spam and prioritize genuine commitments. Importantly, since commitments are periodic (users do not need to commit after every Knot), the effective per-transaction cost is the commitment fee amortized over all Knots since the last commitment.
+This creates a self-regulating fee market that discourages spam during high demand while keeping costs minimal during normal operation.
 
 ### 5.3 Validator Rewards
 
-Validators earn revenue from commitment fees collected in each block. There is **no block reward inflation** -- the NORN supply is fixed at genesis. This makes the token model inherently deflationary if any tokens are burned or permanently locked.
+Validators earn revenue from fees collected in each block (name registrations, token creations, loom deployments). There is **no block reward inflation** -- the NORN supply is fixed at genesis. This makes the token model inherently deflationary since fees are burned rather than redistributed.
 
 Fraud proof bounties provide an additional revenue stream: when a fraud proof is accepted and a cheater's stake is slashed, a portion of the slashed amount is awarded to the submitter. This creates a vigilant ecosystem of Spindles and watchers actively monitoring for misbehavior.
 
@@ -410,12 +412,12 @@ This mechanism ensures liveness: the protocol continues making progress as long 
 
 Validators are selected through Delegated Proof of Stake. Any account holder can stake NORN to become a validator, provided they meet the minimum stake threshold (configurable at genesis). The active validator set is sorted by stake in descending order, and leader rotation follows this ordering.
 
-**Validator requirements are minimal by design.** The Weave processes commitments and fraud proofs, not raw transactions. The state it maintains is compact (Merkle roots, not account balances). As a result, a validator node can run on hardware equivalent to a modern smartphone: an ARM Cortex-A78 processor, 2 GB of RAM, and 50 GB of storage.
+**Validator requirements are minimal by design.** Memory-bounded data structures and efficient state management keep resource requirements low. A full validator node starts under 2 GB of RAM. As the network grows and the number of accounts increases, resource requirements will scale accordingly, but the architecture is designed to remain lightweight relative to comparable protocols.
 
 ### 6.5 Finality
 
-- **Bilateral Knot finality**: Instant. The moment all parties sign, the state transition is irreversible.
-- **Weave commitment finality**: 10 blocks at 3-second block time = **30 seconds**. After this depth, a commitment is considered final and can be relied upon by third parties.
+- **Transaction finality**: ~3 seconds. Once a transaction is included in a block, it is applied to state.
+- **Deep finality**: 10 blocks at 3-second block time = **30 seconds**. After this depth, a block is considered irreversible.
 
 ### 6.6 Slashing Conditions
 
@@ -501,16 +503,22 @@ The protocol's security relies on the following cryptographic and operational as
 
 ## 8. Smart Contracts (Looms)
 
-### 8.1 Off-Chain Execution, On-Chain Guarantee
+### 8.1 WASM Execution with Fraud Proof Guarantees
 
-Looms represent a fundamentally different approach to smart contracts. Rather than executing code on every node in the network (as Ethereum's EVM does), Looms execute code off-chain on a single operator's machine. The on-chain guarantee comes not from redundant execution but from the ability to *challenge* any execution by deterministically re-running it.
+Looms are WASM smart contracts that currently execute on every validator during block processing. Fraud proof infrastructure exists to support a future optimistic execution mode.
 
-This model, inspired by optimistic rollups, is adapted for Norn's Thread-based architecture. The key properties are:
+**Current model:** Every validator downloads the WASM bytecode and re-executes every state transition during block processing. This provides strong consistency guarantees -- all validators agree on the resulting state.
 
-- **Scalability.** Execution happens once (on the operator's machine), not thousands of times (on every validator). This is orders of magnitude more efficient.
-- **Privacy.** Only the operator and participants see the inputs and state. The chain sees only the state hash.
+**Future optimistic model:** The fraud proof types, validation logic, and Spindle watchtower infrastructure are built and tested, designed for a future mode where Looms execute on a single operator's machine with on-chain challenge capability. This model, inspired by optimistic rollups, would provide:
+
+- **Scalability.** Execution happens once (on the operator's machine), not on every validator.
+- **Privacy.** Only the operator and participants see the inputs and state.
+- **Security.** If the operator cheats, anyone can prove it by re-executing the code deterministically.
+
+**Properties shared by both models:**
+
 - **Flexibility.** Any computation expressible in WebAssembly can be a Loom. There is no EVM-specific language or instruction set limitation.
-- **Security.** If the operator cheats, anyone can prove it by re-executing the code. The operator's stake is slashed, and the fraudulent state is reverted.
+- **Determinism.** Given the same bytecode, initial state, and inputs, execution always produces the same output. This is essential for fraud proof verification.
 
 ### 8.2 WebAssembly Runtime
 
@@ -549,19 +557,18 @@ Loom contracts interact with the Norn Protocol through a set of host functions e
 ```mermaid
 stateDiagram-v2
     [*] --> Deploy
-    Deploy --> Entry : Register config + upload Wasm
-    Entry --> Interact : Deposit tokens
-    Interact --> Anchor : Execute off-chain
-    Anchor --> Exit : On-chain snapshot
-    Exit --> Interact : repeat
-    Exit --> [*] : Withdraw
+    Deploy --> Upload : Register on-chain (50 NORN)
+    Upload --> Execute : Upload Wasm + init()
+    Execute --> Query : Mutate state
+    Query --> Execute : Read state
+    Execute --> [*] : Leave
 ```
 
-1. **Deploy**: Operator registers Loom configuration (name, participant limits, accepted tokens) and uploads Wasm bytecode. The bytecode hash is stored on-chain.
-2. **Entry**: Users join by creating a `LoomInteraction` Knot of type `Deposit`, transferring tokens from their Thread into the Loom.
-3. **Interact**: Participants submit inputs to the operator. The operator runs the Wasm code, producing state transitions with before/after state hashes.
-4. **Anchor**: The operator periodically commits the Loom's state hash to the Weave, creating a publicly verifiable checkpoint.
-5. **Exit**: Users withdraw cooperatively (operator processes the withdrawal) or unilaterally (user submits the last anchored state and withdraws after the 24-hour challenge period).
+1. **Deploy**: Operator registers Loom on-chain by submitting a `LoomRegistration` (costs 50 NORN, burned). The deployment is included in a WeaveBlock.
+2. **Upload**: Operator uploads Wasm bytecode to the node, which initializes the contract by calling `init()`.
+3. **Execute**: Participants submit inputs via RPC. The node executes the Wasm code, producing state transitions applied to the Loom's key-value state.
+4. **Query**: Anyone can perform read-only queries against the Loom's current state.
+5. **Join/Leave**: Users can join or leave a Loom as participants.
 
 ### 8.5 Dispute Resolution
 
@@ -580,24 +587,23 @@ This mechanism works because WebAssembly execution is fully deterministic: the s
 
 ### 9.1 Privacy Characteristics
 
-Norn's privacy model is similar to other transparent blockchains: the network validates transfers and maintains state, so transfer details (sender, recipient, amount) are visible to nodes. However, Norn provides some privacy advantages through its architecture:
-
-**Minimal on-chain data.** The Weave stores commitments (state hash + version) rather than full transaction histories. While the validating node sees transfer details, only cryptographic commitments are anchored on-chain permanently.
+Norn's privacy model is similar to other transparent blockchains: the network validates transfers and maintains state, so transfer details (sender, recipient, amount) are visible to nodes and stored in blocks.
 
 **Thread-centric state.** Balances are stored per-thread rather than in a global account tree. State proofs allow clients to verify their own balances without exposing others' state.
 
-| What the Weave stores permanently | What only nodes see transiently |
+| What the Weave stores permanently | What requires direct queries |
 |-----------------------------------|--------------------------------|
-| Commitment hashes and versions | Transfer details (sender, recipient, amount) |
-| Block headers and state roots | Memo contents |
-| Fraud proof evidence | Individual balance queries |
+| Transfers (sender, recipient, amount) | Individual balance lookups |
+| Block headers and state roots | Aggregate account analytics |
+| Token operations and name registrations | |
+| Fraud proof evidence | |
 
 ### 9.2 Privacy Comparison
 
 | Privacy Property | Bitcoin | Ethereum | Solana | Norn |
 |-----------------|---------|----------|--------|------|
 | Transfer details visible to nodes | Yes | Yes | Yes | Yes |
-| Full tx history on-chain permanently | Yes | Yes | Yes | No (only commitments) |
+| Full tx history on-chain permanently | Yes | Yes | Yes | Yes |
 | State verification without full sync | No | No | No | Yes (Merkle proofs) |
 | Transaction graph analyzable | Yes | Yes | Yes | Yes |
 
@@ -628,54 +634,52 @@ In practice, throughput is bounded by block time (3 seconds) and the number of t
 
 ### 10.2 Weave Throughput
 
-The Weave is designed to process up to **10,000 commitments per 3-second block**, yielding approximately 3,333 commitments per second. Since each commitment can represent hundreds or thousands of underlying bilateral Knots, the effective transaction throughput anchored by the Weave is orders of magnitude higher than the commitment rate.
-
-For example, if the average user commits after 100 Knots, 10,000 commitments per block represents up to 1,000,000 underlying transactions anchored per block.
+The Weave produces blocks every 3 seconds. Each block contains the full set of transactions (transfers, token operations, name registrations, contract deployments) submitted during that interval. Throughput is bounded by block size and validation capacity.
 
 ### 10.3 Finality Latency
 
 | Operation | Finality Time |
 |-----------|--------------|
 | Transfer | **~3 seconds** (next block) |
-| Weave commitment | **30 seconds** (10 blocks x 3 seconds) |
-| Loom state anchor | **30 seconds** (commitment finality depth) |
-| Fraud proof challenge window | **24 hours** (for third-party reliance) |
+| Deep finality | **30 seconds** (10 blocks x 3 seconds) |
+| Fraud proof challenge window | **24 hours** (for dispute resolution) |
 
 ### 10.4 Resource Requirements
 
-Norn's minimal on-chain footprint translates directly to minimal hardware requirements:
+Norn's efficient state management translates to low hardware requirements at current network scale:
 
-| Resource | Validator Node | Light Client (Phone) |
-|----------|---------------|---------------------|
-| CPU | ARM Cortex-A78 or equivalent | Any modern smartphone SoC |
-| RAM | 2 GB | 512 MB |
-| Storage | 50 GB | 1 GB (own Thread only) |
-| Bandwidth | 10 Mbps | 1 Mbps |
-| Power | Battery-powered viable | Battery-powered by definition |
+| Resource | Full Node (starting) |
+|----------|---------------------|
+| CPU | Any modern multi-core processor |
+| RAM | ~2 GB (grows with number of accounts) |
+| Storage | SQLite or RocksDB, grows with chain history |
+| Bandwidth | 10 Mbps |
 
-For comparison, an Ethereum full node requires 16+ GB of RAM and 2+ TB of SSD storage. A Solana validator requires 256+ GB of RAM and enterprise-grade NVMe storage. Norn's requirements are approximately 100x lower.
+For comparison, an Ethereum full node requires 16+ GB of RAM and 2+ TB of SSD storage. A Solana validator requires 256+ GB of RAM and enterprise-grade NVMe storage. Norn's requirements are significantly lower, though they will scale with network growth. Memory-bounded data structures (block archive max 1,000, transfer log max 10K, dedup sets max 50K) help contain resource usage.
 
 ### 10.5 On-Chain State Size
 
 The Weave's state consists primarily of:
 
-- **Thread commitments**: 32 bytes (state hash) per registered Thread, stored in a Sparse Merkle Tree.
+- **Thread states**: Per-address state (balances, nonce, version) maintained in memory by every validator, with persistence to disk.
+- **Merkle tree**: Sparse Merkle Tree with 32 bytes per leaf for state verification proofs.
 - **Validator set**: A few kilobytes for the active validator list.
 - **Fee state**: Negligible (a few hundred bytes).
 - **Block headers**: Fixed-size headers with Merkle roots.
 
-With 10 million registered Threads, the commitment state requires approximately 320 MB of Merkle tree data -- comfortably within smartphone storage constraints. This is in stark contrast to Ethereum's world state, which stores full account balances, contract storage, and nonce values for every account.
+State grows linearly with the number of accounts. Memory-bounded collections (block archive capped at 1,000, transfer log at 10K) prevent unbounded growth in auxiliary data structures.
 
 ### 10.6 Transaction Cost
 
 | Operation | Cost |
 |-----------|------|
 | Transfer | **$0.00** (free) |
-| Weave commitment | Minimal (dynamic, EIP-1559-style fee) |
-| Loom interaction | Gas cost (paid to operator, not to chain) |
-| Thread registration | One-time commitment fee |
+| Name registration | 1 NORN (burned) |
+| Token creation | 10 NORN (burned) |
+| Loom deployment | 50 NORN (burned) |
+| Loom execution/query | Free (gas metered but no fee) |
 
-In practice, the cost of using Norn for everyday payments is effectively zero. The only chain fee is the periodic commitment, which at low utilization approaches the minimum base fee -- fractions of a cent.
+In practice, the cost of using Norn for everyday payments is effectively zero. Fees apply only to operations that create persistent on-chain state.
 
 ---
 
@@ -684,25 +688,22 @@ In practice, the cost of using Norn for everyday payments is effectively zero. T
 | Property | Bitcoin | Ethereum | Solana | Lightning Network | Norn |
 |----------|---------|----------|--------|-------------------|------|
 | **Transfer TPS** | ~7 | ~30 | ~5,000 | ~1,000,000+ | **~5,000-10,000** |
-| **On-chain TPS** | ~7 | ~30 | ~5,000 | N/A | ~10,000 commitments/block |
-| **Finality** | ~60 min | ~15 min | ~0.4 sec | Instant (channel) | **~3 sec** (block) / 30 sec (Weave) |
-| **Transfer cost** | $1-50 | $0.50-50 | $0.001 | ~$0 | **$0** (transfers) / minimal (Weave) |
-| **Phone full node** | No | No | No | Partial | **Yes** |
+| **Finality** | ~60 min | ~15 min | ~0.4 sec | Instant (channel) | **~3 sec** (block) |
+| **Transfer cost** | $1-50 | $0.50-50 | $0.001 | ~$0 | **$0** |
+| **Lightweight node** | No | No | No | Partial | **Yes** |
 | **State verification** | Full node | Full node | Full node | N/A | **Merkle proofs** |
 | **Smart contracts** | Limited (Script) | Yes (EVM) | Yes (SVM) | Limited (HTLCs) | **Yes (Wasm Looms)** |
-| **Chain size (full)** | ~550 GB | ~1 TB+ | ~100 TB+ | N/A | **Minimal** (~hundreds of MB) |
 | **Consensus** | PoW (Nakamoto) | PoS (Gasper) | PoS + PoH | N/A | **HotStuff BFT (DPoS)** |
 | **Channel management** | N/A | N/A | N/A | Required (complex) | **Not required** |
-| **Routing problem** | N/A | N/A | N/A | Yes (significant) | **None** (direct P2P) |
-| **Offline protection** | Full nodes | Full nodes | Full nodes | Watchtowers (limited) | **Spindles** (comprehensive) |
+| **Offline protection** | Full nodes | Full nodes | Full nodes | Watchtowers (limited) | **Spindles** |
 
 ### Key Differentiators
 
-**Versus Bitcoin and Ethereum:** Norn achieves orders-of-magnitude higher throughput and lower cost by not forcing bilateral transactions through global consensus. Bitcoin and Ethereum are optimized for global agreement; Norn is optimized for bilateral exchange.
+**Versus Bitcoin and Ethereum:** Norn achieves higher throughput and lower cost through its thread-centric architecture and zero-fee transfers. The lightweight validation model (signature check, balance check, state update) enables fast block processing.
 
-**Versus Solana:** Norn achieves comparable or superior performance without requiring data-center hardware. Solana's approach (faster global consensus) hits a ceiling imposed by network latency and hardware costs. Norn's approach (bilateral execution with minimal consensus) has no such ceiling.
+**Versus Solana:** Norn achieves comparable performance without requiring data-center hardware. Solana's approach (faster global consensus) demands expensive infrastructure. Norn's lightweight design keeps hardware requirements accessible.
 
-**Versus Lightning Network:** Norn eliminates the need for payment channels, channel funding transactions, routing, and channel rebalancing. Any two Norn users can transact directly without pre-existing channels. There is no routing problem because there is no routing -- transactions are bilateral and direct.
+**Versus Lightning Network:** Norn eliminates the need for payment channels, channel funding transactions, routing, and channel rebalancing. Any two Norn users can transact directly by submitting transfers to the network. There is no routing problem and no channel management overhead.
 
 ---
 
@@ -717,7 +718,7 @@ Norn is built entirely in Rust, chosen for its memory safety guarantees, high pe
 | **Language** | Rust | Memory-safe systems programming; no garbage collector; compiles to native and Wasm |
 | **Consensus** | HotStuff BFT | Custom Rust implementation with pipelined phases |
 | **Networking** | libp2p | TCP transport (QUIC planned), GossipSub pubsub, Kademlia DHT, encrypted connections |
-| **Smart Contracts** | WebAssembly (wasmtime) | Deterministic off-chain execution with fuel-based gas metering |
+| **Smart Contracts** | WebAssembly (wasmtime) | Deterministic execution with fuel-based gas metering |
 | **Serialization** | borsh | Binary Object Representation Serializer for Hashing -- deterministic, canonical, compact |
 | **Hashing** | BLAKE3 | 256-bit cryptographic hash; faster than SHA-256 while maintaining security |
 | **Signatures** | Ed25519 (ed25519-dalek) | Compact 64-byte signatures, 32-byte public keys; high performance |
@@ -725,7 +726,7 @@ Norn is built entirely in Rust, chosen for its memory safety guarantees, high pe
 | **Symmetric Encryption** | XChaCha20-Poly1305 | Authenticated encryption for wallet keystore and relay message encryption |
 | **Key Derivation** | Argon2id | Memory-hard password hashing for wallet keystore encryption |
 | **Validator Storage** | RocksDB | High-performance embedded key-value store for validator nodes |
-| **Device Storage** | SQLite | Lightweight embedded database for phone and desktop nodes |
+| **Device Storage** | SQLite | Lightweight embedded database for resource-constrained nodes |
 | **Merkle Trees** | Custom Sparse Merkle Tree | 32 bytes per leaf; efficient proof generation and verification |
 
 ### 12.2 Workspace Architecture
@@ -817,11 +818,13 @@ The node exposes a JSON-RPC API for programmatic interaction, supporting:
 
 | Tool | Status | Description |
 |------|--------|-------------|
+| TypeScript SDK | **Complete** | `@norn-protocol/sdk` -- wallet primitives, transaction builders, RPC client, WebSocket subscriptions |
+| Block Explorer | **Complete** | Next.js 15 web app for browsing blocks, transactions, accounts, tokens, and contracts |
+| Web Wallet | **Complete** | Passkey-secured browser wallet for managing NORN, tokens, names, and contracts |
+| Wallet Extension | **Complete** | Chrome extension for sending/receiving NORN, managing accounts, and registering names |
+| Loom SDK | **Complete** | `norn-sdk` crate -- `#[norn_contract]` proc macro, storage primitives, stdlib (Ownable, Pausable, Norn20) |
+| WebSocket Subscriptions | **Complete** | Real-time event streaming for blocks, transfers, tokens, looms, and pending transactions |
 | Mobile Wallet (Flutter) | Planned | Native mobile wallet with Rust FFI for cryptographic operations |
-| TypeScript SDK | Planned | Wasm-compiled bindings for browser and Node.js integration |
-| Loom SDK | Planned | Developer toolkit for writing, testing, and deploying Loom smart contracts |
-| Loom CLI | Planned | Command-line tools for Loom deployment, interaction, and monitoring |
-| WebSocket Subscriptions | Planned | Real-time event streaming for commitment, block, and fraud proof notifications |
 
 ---
 
@@ -862,7 +865,7 @@ The long-term vision for Norn extends beyond the core protocol:
 - **Privacy enhancements**: Stealth addresses, commitment blinding, and private Looms to strengthen the default privacy model.
 - **Cross-chain bridges**: Secure bridges to existing blockchains (Ethereum, Bitcoin) for asset portability.
 - **Decentralized identity**: Thread-based identity with verifiable credentials and selective disclosure.
-- **IoT integration**: Leveraging the phone-first design for Internet-of-Things microtransactions where device constraints make traditional blockchains impractical.
+- **IoT integration**: Leveraging the lightweight-first design for Internet-of-Things microtransactions where device constraints make traditional blockchains impractical.
 - **Formal verification**: Mathematical proof of core protocol properties (safety, liveness, economic security bounds).
 
 ---

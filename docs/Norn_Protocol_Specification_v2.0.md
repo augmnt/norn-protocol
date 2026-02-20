@@ -54,7 +54,7 @@
 
 ## 1. Introduction
 
-Norn is a thread-centric Layer 1 blockchain protocol. Unlike account-based or UTXO-based systems, Norn organizes state into **threads** -- autonomous, owner-controlled chains of state transitions called **knots**. Threads interact bilaterally or multilaterally through knots, producing a fabric of provable state transitions. A global ordering layer, the **Weave**, provides finality, fraud proofs, and cross-thread coordination through **looms**.
+Norn is a thread-centric Layer 1 blockchain protocol. Unlike account-based or UTXO-based systems, Norn organizes state into **threads** -- autonomous, owner-controlled chains of state transitions called **knots**. Thread state is replicated across the network for availability, but only the owner's signature can authorize changes. A global ordering layer, the **Weave**, provides transaction ordering, finality, fraud proofs, and cross-thread coordination through **looms**.
 
 Norn is implemented as a Rust workspace comprising 9 crates. This specification is the authoritative reference derived directly from the codebase.
 
@@ -89,7 +89,7 @@ This document specifies:
 
 2. **Sender authorization.** Transfers require the sender's cryptographic signature. The network validates state transitions and applies them.
 
-3. **Off-chain execution, on-chain verification.** Threads execute locally. The Weave only stores commitment hashes and can verify fraud proofs, but never re-executes thread logic.
+3. **Cryptographic ownership, network validation.** Thread state is replicated across validators for availability. The Weave orders transactions, validates state transitions, and maintains Merkle roots for state verification. Only the thread owner's signature can authorize changes.
 
 4. **Optimistic finality.** Commitments are assumed valid unless proven fraudulent within a challenge window (24 hours). This keeps Weave throughput high.
 
@@ -227,7 +227,7 @@ A **thread** is the fundamental unit of identity and state in Norn. Each thread:
 
 1. **Key generation.** Generate an Ed25519 keypair. Derive the address.
 2. **Registration.** Submit a `Registration` to the Weave, announcing the thread's existence and initial state hash.
-3. **Operation.** Create knots bilaterally with other threads. Each knot modifies the `ThreadState`.
+3. **Operation.** Submit signed transactions (transfers, token operations). Each transaction modifies the relevant `ThreadState`.
 4. **Commitment.** Periodically submit a `CommitmentUpdate` to the Weave with the current state hash.
 5. **Finality.** After `COMMITMENT_FINALITY_DEPTH` blocks (10) without a fraud proof, the commitment is final.
 
@@ -239,7 +239,7 @@ Threads are **non-transferable**. The thread ID is permanently bound to the crea
 
 ## 6. Knot System
 
-A **knot** is the fundamental unit of state transition. Knots record bilateral or multilateral agreements between thread participants.
+A **knot** is the fundamental unit of state transition. Knots record signed state changes between thread participants.
 
 ### 6.1 KnotType
 
@@ -404,7 +404,7 @@ For `Deposit` and `Withdraw` interactions, `token_id` and `amount` must be `Some
 
 ### 9.1 ThreadState
 
-The full mutable state of a thread. This is stored locally, not on-chain. Only its BLAKE3 hash is committed to the Weave.
+The full mutable state of a thread. Thread state is maintained by every validator in memory (with persistence to disk) and anchored on-chain via its BLAKE3 hash in the sparse Merkle tree.
 
 ```rust
 pub struct ThreadState {
@@ -2449,7 +2449,7 @@ This allows commands like: `norn wallet transfer --to alice --amount 10`
 
 ### 28a.1 Overview
 
-Transfers between threads are executed off-chain via knots and propagated in real-time via `NornMessage::KnotProposal` gossip. However, to ensure that nodes joining later can reconstruct balances, transfers are also recorded in `WeaveBlock` as `BlockTransfer` records.
+Transfers between threads are submitted via RPC, included in blocks by the block producer, and applied by all validators during block processing. Transfers are recorded in `WeaveBlock` as `BlockTransfer` records and propagated to all nodes via P2P gossip.
 
 ### 28a.2 BlockTransfer Type
 
@@ -2775,7 +2775,7 @@ The faucet is gated both at compile time (`#[cfg(feature = "testnet")]`) and at 
 | `norn-thread` | `norn-thread/` | Thread management: knot building, knot validation, chain verification, version tracking |
 | `norn-storage` | `norn-storage/` | Storage abstraction: `KvStore` trait with memory, SQLite, and RocksDB backends. Domain stores for threads, blocks, and Merkle data |
 | `norn-relay` | `norn-relay/` | P2P networking via libp2p: GossipSub, peer discovery (mDNS/Kademlia), message codec, spindle registry |
-| `norn-weave` | `norn-weave/` | Consensus engine: HotStuff BFT, block production, commitment/registration processing, fraud proof validation, dynamic fees, staking, mempool, leader election |
+| `norn-weave` | `norn-weave/` | Consensus engine: HotStuff BFT, block production, transaction/registration processing, fraud proof validation, dynamic fees, staking, mempool, leader election |
 | `norn-loom` | `norn-loom/` | Wasm runtime via wasmtime: loom lifecycle, gas metering, host functions, state management, dispute resolution, SDK |
 | `norn-spindle` | `norn-spindle/` | Watchtower service: thread monitoring, spindle registration, rate limiting, alert dispatch |
 | `norn-node` | `norn-node/` | Full node binary: TOML configuration, JSON-RPC server (jsonrpsee), wallet CLI (clap), metrics, genesis loading, node orchestration |
@@ -2971,7 +2971,7 @@ Protocol version 0.10.0 completes Loom smart contracts with execution support �
 | Enhanced `LoomInfo` | Added `has_bytecode: bool` and `participant_count: usize` fields |
 | Protocol constants | `PROTOCOL_VERSION=6` (unchanged), `SCHEMA_VERSION=6` (bumped from 5) |
 
-Execution is off-chain by design — bytecode upload and execution are local to each node and not broadcast or included in blocks. The PROTOCOL_VERSION remains at 6 (P2P compatible with v0.9.x).
+Loom execution occurs on every validator during block processing. Bytecode upload triggers local initialization via `init()`, and subsequent executions happen as part of block validation. The PROTOCOL_VERSION remains at 6 (P2P compatible with v0.9.x).
 
 ### 32.11 v0.11.0 Updates (Loom SDK v2 — Beginner-Friendly Contracts)
 

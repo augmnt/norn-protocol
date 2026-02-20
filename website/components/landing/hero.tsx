@@ -59,9 +59,10 @@ export function Hero() {
               <span className="text-muted-foreground">the thread.</span>
             </h1>
             <p className="mt-6 text-lg text-muted-foreground max-w-2xl leading-relaxed">
-              Norn is a blockchain where users own their state through personal
-              cryptographic chains. The network validates transitions and
-              guarantees correctness.
+              Norn is a blockchain where users control their state through
+              personal cryptographic chains — only your signature can authorize
+              changes. The network validates transitions and guarantees
+              correctness.
             </p>
             <div className="mt-10 flex flex-wrap gap-4">
               <Button asChild size="lg" variant="norn">

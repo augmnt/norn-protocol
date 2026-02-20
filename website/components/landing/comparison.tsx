@@ -12,7 +12,7 @@ const rows: { label: string; values: Record<(typeof chains)[number], string> }[]
     values: { Norn: "Free", Bitcoin: "~$1–50", Ethereum: "~$0.50–30", Solana: "~$0.001" },
   },
   {
-    label: "Phone Node",
+    label: "Lightweight Node",
     values: { Norn: "Yes", Bitcoin: "No", Ethereum: "No", Solana: "No" },
   },
   {
