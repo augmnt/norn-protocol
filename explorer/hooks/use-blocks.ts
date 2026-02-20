@@ -11,16 +11,14 @@ async function fetchBlocks(
 ): Promise<{ blocks: BlockInfo[]; hasNext: boolean }> {
   const client = getClient();
   const startHeight = latestHeight - (page - 1) * PAGE_SIZE;
-  const blocks: BlockInfo[] = [];
 
+  const fetches: Promise<BlockInfo | null>[] = [];
   for (let h = startHeight; h > startHeight - PAGE_SIZE && h >= 0; h--) {
-    try {
-      const block = await client.getBlock(h);
-      if (block) blocks.push(block);
-    } catch {
-      // Block might not exist
-    }
+    fetches.push(client.getBlock(h).catch(() => null));
   }
+
+  const results = await Promise.all(fetches);
+  const blocks = results.filter((b): b is BlockInfo => b !== null);
 
   return {
     blocks,

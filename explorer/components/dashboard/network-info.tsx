@@ -5,6 +5,7 @@ import { useWeaveState } from "@/hooks/use-weave-state";
 import { LiveIndicator } from "@/components/ui/live-indicator";
 import { useRealtimeStore } from "@/stores/realtime-store";
 import { formatNorn } from "@/lib/format";
+import { TRANSFER_FEE } from "@/lib/constants";
 
 export function NetworkInfo() {
   const { data: health } = useHealth();
@@ -40,6 +41,12 @@ export function NetworkInfo() {
           </span>
         </span>
       )}
+      <span>
+        Transfer Fee:{" "}
+        <span className="text-foreground font-mono">
+          {formatNorn(TRANSFER_FEE)} NORN
+        </span>
+      </span>
     </div>
   );
 }

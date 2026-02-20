@@ -34,6 +34,9 @@ export const PAGE_SIZE = 20;
 
 export const NATIVE_TOKEN_ID = "0".repeat(64);
 
+/** Transfer fee in nits (0.001 NORN = 10^9 nits). */
+export const TRANSFER_FEE = "1000000000";
+
 export const WS_CAPS = {
   blocks: 50,
   transfers: 200,

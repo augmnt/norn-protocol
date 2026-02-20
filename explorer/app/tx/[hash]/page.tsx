@@ -11,8 +11,8 @@ import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { CardSkeleton } from "@/components/ui/loading-skeleton";
 import { ErrorState } from "@/components/ui/error-state";
 import { useTransaction } from "@/hooks/use-transaction";
-import { formatTimestamp } from "@/lib/format";
-import { strip0x } from "@/lib/format";
+import { formatTimestamp, formatNorn, strip0x } from "@/lib/format";
+import { TRANSFER_FEE } from "@/lib/constants";
 
 export default function TransactionDetailPage({
   params,
@@ -149,6 +149,17 @@ export default function TransactionDetailPage({
                     ) : (
                       <span className="text-muted-foreground">Pending</span>
                     )}
+                  </dd>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
+                    Fee (burned)
+                  </dt>
+                  <dd className="font-mono text-sm">
+                    {formatNorn(TRANSFER_FEE)} NORN
                   </dd>
                 </div>
               </div>
