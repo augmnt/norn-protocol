@@ -5,18 +5,18 @@ export function Insight() {
         <div className="max-w-3xl">
           <p className="text-2xl sm:text-3xl leading-relaxed font-light">
             <span className="text-muted-foreground">
-              Every blockchain forces every transaction through global consensus.
-              Thousands of nodes validate your coffee purchase.{" "}
+              Every blockchain charges you to move your own money. Gas fees,
+              base fees, tips — your coffee costs more in transaction fees
+              than milk.
             </span>
-            <span className="text-foreground font-normal">Norn flips this.</span>
           </p>
           <p className="mt-8 text-2xl sm:text-3xl leading-relaxed font-light">
             <span className="text-foreground font-normal">
               You sign a transfer. The network validates it. Done.
             </span>{" "}
             <span className="text-muted-foreground">
-              The chain validates state, settles disputes, and anchors history.
-              No bottleneck. No fees. No waiting.
+              No fees. No waiting. The chain validates state, settles disputes,
+              and anchors history — but only your signature controls your money.
             </span>
           </p>
         </div>
