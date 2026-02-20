@@ -15,7 +15,7 @@ export function Insight() {
               You sign a transfer. The network validates it. Done.
             </span>{" "}
             <span className="text-muted-foreground">
-              No fees. No waiting. The chain validates state, settles disputes,
+              Near-zero fees. No waiting. The chain validates state, settles disputes,
               and anchors history — but only your signature controls your money.
             </span>
           </p>

@@ -17,11 +17,11 @@ Norn is a thread-centric blockchain protocol that reimagines the relationship be
 
 Every account is a *Thread* -- a personal cryptographic chain that only you can sign. Your state is replicated across the network for availability, but only your signature can authorize changes. Transfers are signed by the sender and validated by the network. Clients can independently verify their balances using Merkle proofs. The chain validates state transitions and guarantees correctness -- it doesn't hold your money.
 
-For complex multi-party logic, WASM smart contracts called *Looms* provide WebAssembly-powered programmability with fraud proof guarantees. The result is a protocol with zero-fee transfers, fast finality, and cryptographic state verification -- where the chain exists only to keep everyone honest.
+For complex multi-party logic, WASM smart contracts called *Looms* provide WebAssembly-powered programmability with fraud proof guarantees. The result is a protocol with near-zero fee transfers, fast finality, and cryptographic state verification -- where the chain exists only to keep everyone honest.
 
 ## Key Properties
 
-- **Zero-fee transfers** -- Transfers carry no protocol fee. Only operations like name registration and token creation carry a small fee.
+- **Near-zero fee transfers** -- Each transfer incurs a flat 0.001 NORN fee that is burned, preventing spam while keeping costs negligible. Operations like name registration and token creation carry additional fees.
 - **Fast finality** -- Transactions confirm in ~3 second blocks on the Weave.
 - **Lightweight full nodes** -- Memory-bounded data structures and efficient state management keep resource requirements low. A full node starts under 2 GB of RAM.
 - **State verification** -- Clients independently verify balances via Merkle proofs against the on-chain state root.
@@ -71,7 +71,7 @@ flowchart TB
         B["Thread B<br/>(Bob)"]
     end
 
-    A <-->|"Signed Transfers<br/>(zero-fee, fast finality)"| B
+    A <-->|"Signed Transfers<br/>(near-zero fees, fast finality)"| B
 
     A -->|"Transactions<br/>(transfers, operations)"| W
     B -->|"Transactions<br/>(transfers, operations)"| W
@@ -499,7 +499,7 @@ NORN has a fixed maximum supply of **1,000,000,000 NORN** (1 billion), enforced 
 | Initial Liquidity | 5% | 50,000,000 | Available at launch |
 | Testnet Participants | 5% | 50,000,000 | Airdrop at mainnet launch |
 
-**Deflationary mechanics:** NornNames registration burns 1 NORN per name. NT-1 token creation burns 10 NORN per token. Loom deployment burns 50 NORN per contract. Future fee burning (EIP-1559-style) planned.
+**Deflationary mechanics:** Every transfer burns 0.001 NORN. NornNames registration burns 1 NORN per name. NT-1 token creation burns 10 NORN per token. Loom deployment burns 50 NORN per contract.
 
 For full details, see the [Protocol Specification](docs/Norn_Protocol_Specification_v2.0.md).
 

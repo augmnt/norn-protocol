@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use borsh::{BorshDeserialize, BorshSerialize};
 
 use norn_crypto::merkle::SparseMerkleTree;
-use norn_types::constants::MAX_SUPPLY;
+use norn_types::constants::{MAX_SUPPLY, TRANSFER_FEE};
 use norn_types::error::NornError;
 use norn_types::loom::LOOM_DEPLOY_FEE;
 use norn_types::name::NAME_REGISTRATION_FEE;
@@ -364,21 +364,42 @@ impl StateManager {
             return Err(NornError::InvalidAmount);
         }
 
-        // Check sender balance
+        // Check sender balance (amount + transfer fee).
         let sender_state = self
             .thread_states
             .get(&from)
             .ok_or(NornError::ThreadNotFound(from))?;
-        if !sender_state.has_balance(&token_id, amount) {
-            return Err(NornError::InsufficientBalance {
-                available: sender_state.balance(&token_id),
-                required: amount,
-            });
+        if token_id == NATIVE_TOKEN_ID {
+            // Native token: need amount + fee in a single token.
+            if !sender_state.has_balance(&token_id, amount + TRANSFER_FEE) {
+                return Err(NornError::InsufficientBalance {
+                    available: sender_state.balance(&token_id),
+                    required: amount + TRANSFER_FEE,
+                });
+            }
+        } else {
+            // Custom token: need full amount in that token AND fee in NORN.
+            if !sender_state.has_balance(&token_id, amount) {
+                return Err(NornError::InsufficientBalance {
+                    available: sender_state.balance(&token_id),
+                    required: amount,
+                });
+            }
+            if !sender_state.has_balance(&NATIVE_TOKEN_ID, TRANSFER_FEE) {
+                return Err(NornError::InsufficientBalance {
+                    available: sender_state.balance(&NATIVE_TOKEN_ID),
+                    required: TRANSFER_FEE,
+                });
+            }
         }
 
-        // Debit sender
+        // Debit sender (transfer amount).
         let sender_state = self.thread_states.get_mut(&from).unwrap();
         sender_state.debit(&token_id, amount);
+
+        // Debit transfer fee (burned — decrements total supply).
+        sender_state.debit(&NATIVE_TOKEN_ID, TRANSFER_FEE);
+        self.total_supply_cache = self.total_supply_cache.saturating_sub(TRANSFER_FEE);
 
         // Credit receiver
         let receiver_state = self
@@ -400,6 +421,10 @@ impl StateManager {
         // Update SMT for both sender and receiver.
         self.update_smt(&from, &token_id);
         self.update_smt(&to, &token_id);
+        // For custom-token transfers, also update SMT for the sender's NORN balance (fee).
+        if token_id != NATIVE_TOKEN_ID {
+            self.update_smt(&from, &NATIVE_TOKEN_ID);
+        }
 
         // Track knot_id for dedup.
         self.known_knot_ids.insert(knot_id);
@@ -416,6 +441,16 @@ impl StateManager {
             block_height: None,
         };
         self.transfer_log.push(record.clone());
+
+        // Log synthetic burn for the transfer fee.
+        self.log_synthetic_transfer(
+            from,
+            [0u8; 20],
+            NATIVE_TOKEN_ID,
+            TRANSFER_FEE,
+            Some("Transfer fee"),
+            timestamp,
+        );
 
         // Persist
         if let Some(ref store) = self.state_store {
@@ -467,6 +502,17 @@ impl StateManager {
                 let sender_state = self.thread_states.get_mut(&from).unwrap();
                 sender_state.debit(&token_id, amount);
 
+                // Debit transfer fee (burned). Best-effort — warn if insufficient.
+                if sender_state.has_balance(&NATIVE_TOKEN_ID, TRANSFER_FEE) {
+                    sender_state.debit(&NATIVE_TOKEN_ID, TRANSFER_FEE);
+                    self.total_supply_cache = self.total_supply_cache.saturating_sub(TRANSFER_FEE);
+                } else {
+                    tracing::warn!(
+                        "peer transfer: sender {} insufficient balance for transfer fee",
+                        hex::encode(from),
+                    );
+                }
+
                 // Update sender state hash.
                 if let Some(meta) = self.thread_meta.get_mut(&from) {
                     meta.state_hash = norn_thread::state::compute_state_hash(
@@ -476,6 +522,9 @@ impl StateManager {
 
                 // Update SMT for sender.
                 self.update_smt(&from, &token_id);
+                if token_id != NATIVE_TOKEN_ID {
+                    self.update_smt(&from, &NATIVE_TOKEN_ID);
+                }
                 true
             } else {
                 tracing::warn!(
@@ -531,6 +580,16 @@ impl StateManager {
             block_height: None,
         };
         self.transfer_log.push(record.clone());
+
+        // Log synthetic burn for the transfer fee.
+        self.log_synthetic_transfer(
+            from,
+            [0u8; 20],
+            NATIVE_TOKEN_ID,
+            TRANSFER_FEE,
+            Some("Transfer fee"),
+            timestamp,
+        );
 
         // Persist
         if let Some(ref store) = self.state_store {
@@ -1650,13 +1709,25 @@ mod tests {
         let bob = test_address(2);
         sm.register_thread(alice, test_pubkey(1));
         sm.register_thread(bob, test_pubkey(2));
-        sm.credit(alice, NATIVE_TOKEN_ID, 1000).unwrap();
+        sm.credit(alice, NATIVE_TOKEN_ID, 2 * ONE_NORN).unwrap();
 
-        sm.apply_transfer(alice, bob, NATIVE_TOKEN_ID, 400, [0u8; 32], None, 1000)
-            .unwrap();
+        let transfer_amount = ONE_NORN / 2;
+        sm.apply_transfer(
+            alice,
+            bob,
+            NATIVE_TOKEN_ID,
+            transfer_amount,
+            [0u8; 32],
+            None,
+            1000,
+        )
+        .unwrap();
 
-        assert_eq!(sm.get_balance(&alice, &NATIVE_TOKEN_ID), 600);
-        assert_eq!(sm.get_balance(&bob, &NATIVE_TOKEN_ID), 400);
+        assert_eq!(
+            sm.get_balance(&alice, &NATIVE_TOKEN_ID),
+            2 * ONE_NORN - transfer_amount - TRANSFER_FEE
+        );
+        assert_eq!(sm.get_balance(&bob, &NATIVE_TOKEN_ID), transfer_amount);
     }
 
     #[test]
@@ -1666,12 +1737,14 @@ mod tests {
         let bob = test_address(2);
         sm.register_thread(alice, test_pubkey(1));
         sm.register_thread(bob, test_pubkey(2));
-        sm.credit(alice, NATIVE_TOKEN_ID, 100).unwrap();
+        // Credit exactly ONE_NORN — transfer of ONE_NORN should fail because fee makes total > balance.
+        sm.credit(alice, NATIVE_TOKEN_ID, ONE_NORN).unwrap();
 
-        let result = sm.apply_transfer(alice, bob, NATIVE_TOKEN_ID, 200, [0u8; 32], None, 1000);
+        let result =
+            sm.apply_transfer(alice, bob, NATIVE_TOKEN_ID, ONE_NORN, [0u8; 32], None, 1000);
         assert!(result.is_err());
         // Balances unchanged
-        assert_eq!(sm.get_balance(&alice, &NATIVE_TOKEN_ID), 100);
+        assert_eq!(sm.get_balance(&alice, &NATIVE_TOKEN_ID), ONE_NORN);
         assert_eq!(sm.get_balance(&bob, &NATIVE_TOKEN_ID), 0);
     }
 
@@ -1694,21 +1767,115 @@ mod tests {
         let bob = test_address(2);
         sm.register_thread(alice, test_pubkey(1));
         sm.register_thread(bob, test_pubkey(2));
-        sm.credit(alice, NATIVE_TOKEN_ID, 1000).unwrap();
+        sm.credit(alice, NATIVE_TOKEN_ID, 10 * ONE_NORN).unwrap();
 
-        sm.apply_transfer(alice, bob, NATIVE_TOKEN_ID, 100, [1u8; 32], None, 1000)
-            .unwrap();
-        sm.apply_transfer(alice, bob, NATIVE_TOKEN_ID, 200, [2u8; 32], None, 2000)
-            .unwrap();
+        sm.apply_transfer(
+            alice,
+            bob,
+            NATIVE_TOKEN_ID,
+            ONE_NORN / 10,
+            [1u8; 32],
+            None,
+            1000,
+        )
+        .unwrap();
+        sm.apply_transfer(
+            alice,
+            bob,
+            NATIVE_TOKEN_ID,
+            ONE_NORN / 5,
+            [2u8; 32],
+            None,
+            2000,
+        )
+        .unwrap();
 
+        // Each transfer produces 2 log entries: the transfer + the fee burn synthetic.
         let history = sm.get_history(&alice, 10, 0);
-        assert_eq!(history.len(), 2);
-        // Most recent first
-        assert_eq!(history[0].amount, 200);
-        assert_eq!(history[1].amount, 100);
+        assert_eq!(history.len(), 4);
+        // Most recent first: fee burn, transfer, fee burn, transfer
+        assert_eq!(history[0].amount, TRANSFER_FEE); // fee burn for 2nd transfer
+        assert_eq!(history[1].amount, ONE_NORN / 5); // 2nd transfer
+        assert_eq!(history[2].amount, TRANSFER_FEE); // fee burn for 1st transfer
+        assert_eq!(history[3].amount, ONE_NORN / 10); // 1st transfer
 
+        // Bob receives 2 transfers (fee burns are from alice to 0x0, not involving bob).
         let bob_history = sm.get_history(&bob, 10, 0);
         assert_eq!(bob_history.len(), 2);
+    }
+
+    #[test]
+    fn test_transfer_fee_burns_supply() {
+        let mut sm = StateManager::new();
+        let alice = test_address(1);
+        let bob = test_address(2);
+        sm.register_thread(alice, test_pubkey(1));
+        sm.register_thread(bob, test_pubkey(2));
+        sm.credit(alice, NATIVE_TOKEN_ID, 5 * ONE_NORN).unwrap();
+        let supply_before = sm.total_supply();
+
+        sm.apply_transfer(alice, bob, NATIVE_TOKEN_ID, ONE_NORN, [0u8; 32], None, 1000)
+            .unwrap();
+
+        // Total supply should decrease by the transfer fee (burned).
+        assert_eq!(sm.total_supply(), supply_before - TRANSFER_FEE);
+    }
+
+    #[test]
+    fn test_transfer_fee_with_custom_token() {
+        let mut sm = StateManager::new();
+        let alice = test_address(1);
+        let bob = test_address(2);
+        sm.register_thread(alice, test_pubkey(1));
+        sm.register_thread(bob, test_pubkey(2));
+        // Give alice NORN for fees and custom tokens to transfer.
+        sm.credit(alice, NATIVE_TOKEN_ID, 100 * ONE_NORN).unwrap();
+        let token_id = sm
+            .create_token("Test", "TST", 8, 1_000_000, 500, alice, 100)
+            .unwrap();
+
+        let norn_before = sm.get_balance(&alice, &NATIVE_TOKEN_ID);
+        let token_before = sm.get_balance(&alice, &token_id);
+
+        sm.apply_transfer(alice, bob, token_id, 100, [0u8; 32], None, 1000)
+            .unwrap();
+
+        // Custom token balance decreases by amount only.
+        assert_eq!(sm.get_balance(&alice, &token_id), token_before - 100);
+        assert_eq!(sm.get_balance(&bob, &token_id), 100);
+        // NORN balance decreases by transfer fee only.
+        assert_eq!(
+            sm.get_balance(&alice, &NATIVE_TOKEN_ID),
+            norn_before - TRANSFER_FEE
+        );
+    }
+
+    #[test]
+    fn test_transfer_fee_insufficient_norn_for_custom_token() {
+        let mut sm = StateManager::new();
+        let alice = test_address(1);
+        let bob = test_address(2);
+        sm.register_thread(alice, test_pubkey(1));
+        sm.register_thread(bob, test_pubkey(2));
+        // Give alice NORN for token creation but will drain most of it.
+        sm.credit(alice, NATIVE_TOKEN_ID, 100 * ONE_NORN).unwrap();
+        let token_id = sm
+            .create_token("Test", "TST", 8, 1_000_000, 500, alice, 100)
+            .unwrap();
+
+        // Drain alice's NORN balance to 0.
+        let remaining_norn = sm.get_balance(&alice, &NATIVE_TOKEN_ID);
+        let drain_addr = test_address(99);
+        sm.register_thread(drain_addr, test_pubkey(99));
+        sm.credit(drain_addr, NATIVE_TOKEN_ID, remaining_norn)
+            .unwrap();
+        // Manually debit alice's NORN.
+        let alice_state = sm.thread_states.get_mut(&alice).unwrap();
+        alice_state.debit(&NATIVE_TOKEN_ID, remaining_norn);
+
+        // Alice has custom tokens but no NORN for fee — should fail.
+        let result = sm.apply_transfer(alice, bob, token_id, 100, [0u8; 32], None, 1000);
+        assert!(result.is_err());
     }
 
     #[test]

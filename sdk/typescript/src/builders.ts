@@ -21,6 +21,9 @@ const NAME_REGISTRATION_FEE = BigInt(10) ** BigInt(NORN_DECIMALS);
 /** Token creation fee: 10 NORN. */
 const TOKEN_CREATION_FEE = BigInt(10) * BigInt(10) ** BigInt(NORN_DECIMALS);
 
+/** Transfer fee: 0.001 NORN (burned). */
+export const TRANSFER_FEE = BigInt(10) ** BigInt(NORN_DECIMALS) / BigInt(1000);
+
 /** Maximum u128 value (2^128 - 1). */
 const MAX_U128 = (1n << 128n) - 1n;
 

@@ -1,5 +1,5 @@
 const stats = [
-  { value: "$0", label: "Transfer fees" },
+  { value: "<$0.01", label: "Transfer fee" },
   { value: "~3s", label: "Block finality" },
   { value: "~2 GB", label: "RAM to start a full node" },
   { value: "3s", label: "Block time" },

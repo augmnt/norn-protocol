@@ -171,6 +171,8 @@ pub struct FeeEstimateInfo {
     pub base_fee: String,
     /// Current fee multiplier (scaled by 1000).
     pub fee_multiplier: u64,
+    /// Flat fee per transfer in nits (burned).
+    pub transfer_fee: String,
 }
 
 /// Merkle proof for a thread commitment.

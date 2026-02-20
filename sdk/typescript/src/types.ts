@@ -100,6 +100,8 @@ export interface FeeEstimateInfo {
   fee_per_commitment: string;
   base_fee: string;
   fee_multiplier: number;
+  /** Flat fee per transfer in nits (burned). */
+  transfer_fee: string;
 }
 
 /** Commitment proof. */

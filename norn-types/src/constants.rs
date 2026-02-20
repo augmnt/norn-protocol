@@ -12,6 +12,9 @@ pub const ONE_NORN: Amount = 1_000_000_000_000;
 /// Maximum supply of NORN tokens (in base units).
 pub const MAX_SUPPLY: Amount = 1_000_000_000 * ONE_NORN; // 1 billion NORN
 
+/// Fee per transfer (0.001 NORN), burned as anti-spam measure.
+pub const TRANSFER_FEE: Amount = ONE_NORN / 1_000; // = 1_000_000_000 nits
+
 // ─── Knot Parameters ─────────────────────────────────────────────────────────
 
 /// Maximum size of a memo field in bytes.

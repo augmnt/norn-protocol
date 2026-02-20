@@ -1,3 +1,4 @@
+use norn_types::constants::TRANSFER_FEE;
 use norn_types::primitives::NATIVE_TOKEN_ID;
 
 use crate::wallet::config::WalletConfig;
@@ -46,6 +47,10 @@ pub async fn run(json: bool, rpc_url: Option<&str>) -> Result<(), WalletError> {
     table.add_row(vec![
         "Per commitment",
         &format_amount_with_symbol(fee_per_commitment, &NATIVE_TOKEN_ID),
+    ]);
+    table.add_row(vec![
+        "Transfer fee",
+        &format_amount_with_symbol(TRANSFER_FEE, &NATIVE_TOKEN_ID),
     ]);
 
     print_table(&table);

@@ -235,7 +235,7 @@ export default async function Image() {
             }}
           >
             A thread-centric blockchain where users own their state.
-            Zero-fee transfers, fast finality, cryptographic state verification.
+            Near-zero fee transfers, fast finality, cryptographic state verification.
           </div>
         </div>
 

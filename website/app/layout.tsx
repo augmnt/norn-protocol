@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     template: "%s | Norn Protocol",
   },
   description:
-    "Norn is a thread-centric blockchain where users own their state. Zero-fee transfers, fast finality, cryptographic state verification.",
+    "Norn is a thread-centric blockchain where users own their state. Near-zero fee transfers, fast finality, cryptographic state verification.",
   icons: { icon: "/icon.svg" },
   keywords: [
     "norn",
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     "blockchain",
     "layer 1",
     "cryptocurrency",
-    "zero fee blockchain",
+    "near-zero fee blockchain",
     "instant finality",
     "private blockchain",
     "thread-centric",
@@ -44,7 +44,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Norn Protocol — You hold the thread",
     description:
-      "A thread-centric blockchain where users own their state. Zero-fee transfers, fast finality.",
+      "A thread-centric blockchain where users own their state. Near-zero fee transfers, fast finality.",
     siteName: "Norn Protocol",
     url: "https://norn.network",
     type: "website",
@@ -54,7 +54,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Norn Protocol",
     description:
-      "A thread-centric blockchain where users own their state. Zero-fee transfers, fast finality.",
+      "A thread-centric blockchain where users own their state. Near-zero fee transfers, fast finality.",
   },
   robots: {
     index: true,

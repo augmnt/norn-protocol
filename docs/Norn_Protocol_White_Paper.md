@@ -30,7 +30,7 @@
 
 ## 1. Abstract
 
-Norn is a thread-centric blockchain protocol that reimagines the relationship between users and the chain. Rather than treating accounts as entries in a global ledger, Norn gives every user a personal cryptographic chain with sovereign control. You hold the thread. Every account is a *Thread* -- a personal cryptographic chain that only you can sign. Your state is replicated across the network for availability, but only your signature can authorize changes. Transfers are signed by the sender and validated by the network. Clients can independently verify their balances using Merkle proofs against the on-chain state root. This architecture achieves what no existing protocol can deliver simultaneously: zero-fee transfers, fast finality in ~3 second blocks, lightweight full nodes with minimal storage requirements, and cryptographic state verification that lets clients prove their balances without trusting the node. For complex multi-party logic, WASM smart contracts called *Looms* provide WebAssembly-powered programmability with fraud proof guarantees. The result is a protocol where the chain is a lightweight validator and arbiter -- it validates state transitions and guarantees correctness, but only your key controls your state.
+Norn is a thread-centric blockchain protocol that reimagines the relationship between users and the chain. Rather than treating accounts as entries in a global ledger, Norn gives every user a personal cryptographic chain with sovereign control. You hold the thread. Every account is a *Thread* -- a personal cryptographic chain that only you can sign. Your state is replicated across the network for availability, but only your signature can authorize changes. Transfers are signed by the sender and validated by the network. Clients can independently verify their balances using Merkle proofs against the on-chain state root. This architecture achieves what no existing protocol can deliver simultaneously: near-zero fee transfers, fast finality in ~3 second blocks, lightweight full nodes with minimal storage requirements, and cryptographic state verification that lets clients prove their balances without trusting the node. For complex multi-party logic, WASM smart contracts called *Looms* provide WebAssembly-powered programmability with fraud proof guarantees. The result is a protocol where the chain is a lightweight validator and arbiter -- it validates state transitions and guarantees correctness, but only your key controls your state.
 
 ---
 
@@ -62,7 +62,7 @@ Norn applies this insight to digital value. The protocol separates state ownersh
 
 By inverting the traditional blockchain architecture, Norn achieves properties that are impossible under the global-consensus model:
 
-- **Zero-fee transfers.** Transfers carry no protocol fee. Only operations like name registration, token creation, and contract deployment carry a small fee.
+- **Near-zero fee transfers.** Each transfer incurs a flat 0.001 NORN fee that is burned, preventing spam while keeping costs negligible. Operations like name registration, token creation, and contract deployment carry additional fees.
 
 - **Fast finality.** Transactions confirm in ~3 second blocks on the Weave. No probabilistic finality, no extended confirmation wait.
 
@@ -100,7 +100,7 @@ Clarity about what Norn is *not* is as important as clarity about what it is.
 
 **Norn is not a heavy-chain protocol.** While the Weave does contain full transaction data (transfers, token operations, contract deployments), memory-bounded data structures and efficient state management keep the chain lightweight compared to protocols like Ethereum or Solana.
 
-**Norn is not a blockchain for speculation.** The protocol is designed for real economic activity: payments, commerce, contracts. The fee structure -- zero for transfers, minimal for chain commitments -- discourages the rent-seeking that dominates existing blockchains and encourages genuine use.
+**Norn is not a blockchain for speculation.** The protocol is designed for real economic activity: payments, commerce, contracts. The fee structure -- near-zero for transfers, minimal for chain commitments -- discourages the rent-seeking that dominates existing blockchains and encourages genuine use.
 
 ---
 
@@ -115,7 +115,7 @@ flowchart TB
         B["Thread B<br/>(Bob)"]
     end
 
-    A <-->|"Signed Transfers<br/>(zero-fee, fast finality)"| B
+    A <-->|"Signed Transfers<br/>(near-zero fees, fast finality)"| B
 
     A -->|"Transactions<br/>(transfers, operations)"| W
     B -->|"Transactions<br/>(transfers, operations)"| W
@@ -289,12 +289,13 @@ The native token is identified by a special 32-byte zero identifier (`[0x00; 32]
 
 Norn's fee model is radically different from existing blockchains.
 
-**Transfers are free.** Transfers incur zero protocol fees. There is no gas, no base fee, no tip. Alice can send Bob 10 NORN at zero cost. This is possible because the chain's validation overhead for transfers is minimal -- it validates the signature, checks the balance, and updates the state.
+**Transfers carry a near-zero fee.** Each transfer incurs a flat 0.001 NORN fee that is burned, preventing spam while keeping costs negligible. There is no gas, no base fee, no tip. Alice can send Bob 10 NORN for 0.001 NORN. This is possible because the chain's validation overhead for transfers is minimal -- it validates the signature, checks the balance, deducts the fee, and updates the state.
 
-**Certain operations carry fees.** Operations that create persistent on-chain state carry fees:
+**Operations carry fees.** Transfers and operations that create persistent on-chain state carry fees:
 
 | Operation | Fee | Destination |
 |-----------|-----|-------------|
+| Transfer | 0.001 NORN | Burned |
 | Name registration | 1 NORN | Burned |
 | Token creation | 10 NORN | Burned |
 | Loom deployment | 50 NORN | Burned |
@@ -364,11 +365,12 @@ The genesis allocation distributes the supply across seven categories, each desi
 
 **Vesting rationale.** The founder allocation's 4-year linear vesting with a 1-year cliff ensures sustained alignment with the protocol's long-term success. No founder tokens are accessible in the first year, and thereafter tokens unlock gradually over the remaining three years. The ecosystem fund releases over five years, providing sustained resources for developer grants, partnerships, and infrastructure without creating sell pressure.
 
-**Deflationary mechanics.** Three mechanisms reduce the circulating supply over time:
+**Deflationary mechanics.** Four mechanisms reduce the circulating supply over time:
 
-1. **NornNames burn.** Each name registration permanently burns 1 NORN, creating deflationary pressure proportional to network adoption.
-2. **Token creation burn.** Each NT-1 token creation permanently burns 10 NORN, creating a meaningful cost for token issuance and further reducing supply.
-3. **Validator fee redistribution.** Commitment fees collected each epoch are redistributed to validators proportional to their stake, rewarding network participants while maintaining deflationary pressure from name and token burns above.
+1. **Transfer fee burn.** Each transfer permanently burns 0.001 NORN, creating deflationary pressure proportional to transaction volume.
+2. **NornNames burn.** Each name registration permanently burns 1 NORN, creating deflationary pressure proportional to network adoption.
+3. **Token creation burn.** Each NT-1 token creation permanently burns 10 NORN, creating a meaningful cost for token issuance and further reducing supply.
+4. **Validator fee redistribution.** Commitment fees collected each epoch are redistributed to validators proportional to their stake, rewarding network participants while maintaining deflationary pressure from burns above.
 
 Because there is no block reward inflation and the supply cap is enforced at the protocol level, NORN's supply can only decrease over time through burn mechanisms. This makes the token model structurally deflationary.
 
@@ -673,13 +675,13 @@ State grows linearly with the number of accounts. Memory-bounded collections (bl
 
 | Operation | Cost |
 |-----------|------|
-| Transfer | **$0.00** (free) |
+| Transfer | **~$0.001** (0.001 NORN, burned) |
 | Name registration | 1 NORN (burned) |
 | Token creation | 10 NORN (burned) |
 | Loom deployment | 50 NORN (burned) |
 | Loom execution/query | Free (gas metered but no fee) |
 
-In practice, the cost of using Norn for everyday payments is effectively zero. Fees apply only to operations that create persistent on-chain state.
+In practice, the cost of using Norn for everyday payments is effectively zero (0.001 NORN per transfer). Additional fees apply to operations that create persistent on-chain state.
 
 ---
 
@@ -689,7 +691,7 @@ In practice, the cost of using Norn for everyday payments is effectively zero. F
 |----------|---------|----------|--------|-------------------|------|
 | **Transfer TPS** | ~7 | ~30 | ~5,000 | ~1,000,000+ | **~5,000-10,000** |
 | **Finality** | ~60 min | ~15 min | ~0.4 sec | Instant (channel) | **~3 sec** (block) |
-| **Transfer cost** | $1-50 | $0.50-50 | $0.001 | ~$0 | **$0** |
+| **Transfer cost** | $1-50 | $0.50-50 | $0.001 | ~$0 | **~$0.001** |
 | **Lightweight node** | No | No | No | Partial | **Yes** |
 | **State verification** | Full node | Full node | Full node | N/A | **Merkle proofs** |
 | **Smart contracts** | Limited (Script) | Yes (EVM) | Yes (SVM) | Limited (HTLCs) | **Yes (Wasm Looms)** |
@@ -699,7 +701,7 @@ In practice, the cost of using Norn for everyday payments is effectively zero. F
 
 ### Key Differentiators
 
-**Versus Bitcoin and Ethereum:** Norn achieves higher throughput and lower cost through its thread-centric architecture and zero-fee transfers. The lightweight validation model (signature check, balance check, state update) enables fast block processing.
+**Versus Bitcoin and Ethereum:** Norn achieves higher throughput and lower cost through its thread-centric architecture and near-zero fee transfers. The lightweight validation model (signature check, balance check, state update) enables fast block processing.
 
 **Versus Solana:** Norn achieves comparable performance without requiring data-center hardware. Solana's approach (faster global consensus) demands expensive infrastructure. Norn's lightweight design keeps hardware requirements accessible.
 

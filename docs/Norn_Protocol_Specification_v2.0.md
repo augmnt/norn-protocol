@@ -846,7 +846,18 @@ Where:
 - All arithmetic is integer-only (`utilized: u64`, `capacity: u64`).
 - The multiplier is clamped to [100, 10000], representing [0.1x, 10.0x].
 
-### 16.3 Fee State Tracking
+### 16.3 Transfer Fee
+
+Every transfer incurs a flat fee of **0.001 NORN** (`TRANSFER_FEE = ONE_NORN / 1_000`), which is **burned** (deducted from the sender and not credited to any address). This fee:
+
+- Prevents spam by imposing a small cost on every transfer.
+- Contributes to deflationary tokenomics by permanently removing NORN from circulation.
+- Is applied in both `apply_transfer()` (solo block production) and `apply_peer_transfer()` (peer block application).
+- Uses a "warn but don't fail" pattern: if the sender has insufficient balance for the fee after the transfer amount is deducted, the fee is skipped with a warning log rather than failing the transfer.
+
+The transfer fee is distinct from the dynamic commitment fee (section 16.1). The commitment fee applies to operations that create persistent on-chain state (name registrations, token creations, loom deployments), while the transfer fee applies to every NORN or NT-1 token transfer.
+
+### 16.4 Fee State Tracking
 
 The `FeeState` tracks `epoch_fees` (total fees collected in the current epoch) for redistribution to validators. At block production time:
 
@@ -2651,6 +2662,10 @@ All constants are defined in `norn-types/src/constants.rs`.
 | `NORN_DECIMALS` | `u32` | `12` | Decimal places for the native token |
 | `ONE_NORN` | `Amount` | `1_000_000_000_000` (10^12) | One NORN in base units (nits) |
 | `MAX_SUPPLY` | `Amount` | `1_000_000_000 * ONE_NORN` (10^21) | Maximum supply in nits |
+| `TRANSFER_FEE` | `Amount` | `ONE_NORN / 1_000` (10^9 nits) | Fee burned per transfer (0.001 NORN) |
+| `NAME_REGISTRATION_FEE` | `Amount` | `ONE_NORN` (10^12 nits) | Fee burned on name registration (1 NORN) |
+| `TOKEN_CREATION_FEE` | `Amount` | `10 * ONE_NORN` (10^13 nits) | Fee burned on token creation (10 NORN) |
+| `LOOM_DEPLOY_FEE` | `Amount` | `50 * ONE_NORN` (5 * 10^13 nits) | Fee burned on loom deployment (50 NORN) |
 
 ### 29.2 Knot Parameters
 
@@ -2744,11 +2759,11 @@ For mainnet, the genesis file encodes the initial distribution:
 
 ### 30.4 Deflationary Mechanics
 
+**Transfer fee burn:** Each transfer burns 0.001 NORN (`TRANSFER_FEE`). The fee is deducted from the sender and not credited to any address, permanently reducing the circulating supply. This creates deflationary pressure proportional to transaction volume.
+
 **NornNames burn:** Each NornName registration burns 1 NORN (`NAME_REGISTRATION_FEE`). The fee is debited from the registrant and not credited to any address, permanently reducing the circulating supply.
 
 **Token creation burn:** Each NT-1 token creation burns 10 NORN (`TOKEN_CREATION_FEE`). This creates a meaningful cost for token issuance and further reduces the circulating supply.
-
-**Future: Fee burning.** An EIP-1559-style base fee burning mechanism is planned, where a portion of commitment fees is burned rather than distributed to validators.
 
 ### 30.5 Network Identity
 

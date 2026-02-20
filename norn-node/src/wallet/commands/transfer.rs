@@ -1,3 +1,4 @@
+use norn_types::constants::TRANSFER_FEE;
 use norn_types::primitives::NATIVE_TOKEN_ID;
 
 use crate::wallet::config::WalletConfig;
@@ -74,25 +75,47 @@ pub async fn run(
     let balance_str = rpc.get_balance(&addr_hex, &token_hex).await?;
     let current_balance: u128 = balance_str.parse().unwrap_or(0);
 
-    if current_balance < amount {
-        return Err(WalletError::InsufficientBalance {
-            available: format_token_amount_with_name(
-                current_balance,
-                token_decimals,
-                &token_symbol,
-            ),
-            required: format_token_amount_with_name(amount, token_decimals, &token_symbol),
-        });
+    if token_id == NATIVE_TOKEN_ID {
+        // Native token: need amount + transfer fee.
+        if current_balance < amount + TRANSFER_FEE {
+            return Err(WalletError::InsufficientBalance {
+                available: format_token_amount_with_name(
+                    current_balance,
+                    token_decimals,
+                    &token_symbol,
+                ),
+                required: format_token_amount_with_name(
+                    amount + TRANSFER_FEE,
+                    token_decimals,
+                    &token_symbol,
+                ),
+            });
+        }
+    } else {
+        // Custom token: check token amount.
+        if current_balance < amount {
+            return Err(WalletError::InsufficientBalance {
+                available: format_token_amount_with_name(
+                    current_balance,
+                    token_decimals,
+                    &token_symbol,
+                ),
+                required: format_token_amount_with_name(amount, token_decimals, &token_symbol),
+            });
+        }
+        // Also check NORN balance for fee.
+        let norn_hex = hex::encode(NATIVE_TOKEN_ID);
+        let norn_balance_str = rpc.get_balance(&addr_hex, &norn_hex).await?;
+        let norn_balance: u128 = norn_balance_str.parse().unwrap_or(0);
+        if norn_balance < TRANSFER_FEE {
+            return Err(WalletError::InsufficientBalance {
+                available: format_amount_with_symbol(norn_balance, &NATIVE_TOKEN_ID),
+                required: format_amount_with_symbol(TRANSFER_FEE, &NATIVE_TOKEN_ID),
+            });
+        }
     }
 
-    // Fetch the current fee estimate (best-effort: don't block transfer on failure).
-    let fee_display = match rpc.get_fee_estimate().await {
-        Ok(info) => {
-            let fee: u128 = info.fee_per_commitment.parse().unwrap_or(0);
-            Some(format_amount_with_symbol(fee, &NATIVE_TOKEN_ID))
-        }
-        Err(_) => None,
-    };
+    let fee_display = Some(format_amount_with_symbol(TRANSFER_FEE, &NATIVE_TOKEN_ID));
 
     // Show confirmation
     if !yes {
@@ -188,7 +211,13 @@ pub async fn run(
             style_info().apply_to(hex::encode(signed_knot.id))
         );
         // Show post-transfer balance hint.
-        let remaining = current_balance - amount;
+        let remaining = if token_id == NATIVE_TOKEN_ID {
+            current_balance
+                .saturating_sub(amount)
+                .saturating_sub(TRANSFER_FEE)
+        } else {
+            current_balance.saturating_sub(amount)
+        };
         println!(
             "  {}",
             style_dim().apply_to(format!(

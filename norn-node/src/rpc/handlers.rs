@@ -25,7 +25,7 @@ use crate::metrics::NodeMetrics;
 use crate::rpc::chat_store::{ChatEventStore, ChatHistoryFilter};
 use crate::rpc::server::RpcBroadcasters;
 use crate::state_manager::StateManager;
-use norn_types::constants::{MAX_SUPPLY, NORN_DECIMALS};
+use norn_types::constants::{MAX_SUPPLY, NORN_DECIMALS, TRANSFER_FEE};
 use norn_types::primitives::NATIVE_TOKEN_ID;
 
 use crate::wallet::format::{format_address, format_amount_with_symbol, format_token_amount};
@@ -1074,6 +1074,7 @@ impl NornRpcServer for NornRpcImpl {
             fee_per_commitment: fee.to_string(),
             base_fee: state.fee_state.base_fee.to_string(),
             fee_multiplier: state.fee_state.fee_multiplier,
+            transfer_fee: TRANSFER_FEE.to_string(),
         })
     }
 
