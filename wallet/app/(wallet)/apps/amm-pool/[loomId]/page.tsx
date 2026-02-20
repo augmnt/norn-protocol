@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useAmm } from "@/hooks/use-amm";
 import { useLoomRefresh } from "@/hooks/use-loom-refresh";
-import { formatAmount, truncateAddress, truncateHash } from "@/lib/format";
+import { useTokenSymbol } from "@/hooks/use-token-symbol";
+import { formatAmount, truncateHash } from "@/lib/format";
 import type { AmmPool } from "@/lib/borsh-amm";
 import {
   Plus,
@@ -20,9 +21,7 @@ import {
 } from "lucide-react";
 
 function PoolCard({ pool, loomId }: { pool: AmmPool; loomId: string }) {
-  const tokenDisplay = pool.token === "0".repeat(64)
-    ? "NORN"
-    : truncateAddress("0x" + pool.token.slice(0, 40));
+  const tokenDisplay = useTokenSymbol(pool.token);
 
   const price =
     pool.reserveToken > 0n

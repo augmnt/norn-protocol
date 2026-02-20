@@ -10,7 +10,8 @@ import { FormButton } from "@/components/ui/form-button";
 import { useAmm } from "@/hooks/use-amm";
 import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
-import { formatAmount, truncateAddress, truncateHash } from "@/lib/format";
+import { useTokenSymbol } from "@/hooks/use-token-symbol";
+import { formatAmount, truncateHash } from "@/lib/format";
 import type { AmmPool, AmmConfig } from "@/lib/borsh-amm";
 import { ArrowDownUp, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -48,11 +49,7 @@ export default function SwapPage() {
   const [quoting, setQuoting] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const tokenDisplay = pool
-    ? pool.token === "0".repeat(64)
-      ? "NORN"
-      : truncateAddress("0x" + pool.token.slice(0, 40))
-    : "...";
+  const tokenDisplay = useTokenSymbol(pool?.token);
 
   const fetchPoolData = useCallback(async () => {
     const [p, c] = await Promise.all([getPool(poolId), getConfig()]);

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useQueries } from "@tanstack/react-query";
 import { PageContainer } from "@/components/ui/page-container";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,10 @@ import { FormButton } from "@/components/ui/form-button";
 import { useAmm } from "@/hooks/use-amm";
 import { useWallet } from "@/hooks/use-wallet";
 import { useTokenBalances } from "@/hooks/use-token-balances";
+import { rpcCall } from "@/lib/rpc";
+import { QUERY_KEYS, STALE_TIMES } from "@/lib/constants";
 import { formatAmount, strip0x, truncateAddress, truncateHash } from "@/lib/format";
+import type { TokenInfo } from "@/types";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,6 +44,28 @@ export default function CreatePoolPage() {
   const tokenBalances = (threadState?.balances ?? []).filter(
     (b) => strip0x(b.token_id) !== NORN_TOKEN_ID
   );
+
+  const tokenIds = useMemo(
+    () => tokenBalances.map((b) => strip0x(b.token_id)),
+    [tokenBalances]
+  );
+
+  const tokenInfoQueries = useQueries({
+    queries: tokenIds.map((id) => ({
+      queryKey: QUERY_KEYS.tokenInfo(id),
+      queryFn: () => rpcCall<TokenInfo>("norn_getTokenInfo", [id]),
+      staleTime: STALE_TIMES.semiStatic,
+    })),
+  });
+
+  const symbolMap = useMemo(() => {
+    const map = new Map<string, string>();
+    tokenIds.forEach((id, i) => {
+      const sym = tokenInfoQueries[i]?.data?.symbol;
+      if (sym) map.set(id, sym);
+    });
+    return map;
+  }, [tokenIds, tokenInfoQueries]);
 
   const nornParsed = parseTokenAmount(nornAmount);
   const tokenParsed = parseTokenAmount(tokenAmount);
@@ -95,12 +121,15 @@ export default function CreatePoolPage() {
                 className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm font-mono"
               >
                 <option value="">Select a token...</option>
-                {tokenBalances.map((b) => (
-                  <option key={b.token_id} value={strip0x(b.token_id)}>
-                    {truncateAddress(b.token_id)} (
-                    {formatAmount(b.amount)})
-                  </option>
-                ))}
+                {tokenBalances.map((b) => {
+                  const id = strip0x(b.token_id);
+                  const label = symbolMap.get(id) || truncateAddress(b.token_id);
+                  return (
+                    <option key={b.token_id} value={id}>
+                      {label} ({formatAmount(b.amount)})
+                    </option>
+                  );
+                })}
               </select>
             </div>
 

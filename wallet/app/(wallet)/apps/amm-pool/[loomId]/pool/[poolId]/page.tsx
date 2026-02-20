@@ -10,7 +10,8 @@ import { FormButton } from "@/components/ui/form-button";
 import { useAmm } from "@/hooks/use-amm";
 import { useLoomRefresh } from "@/hooks/use-loom-refresh";
 import { useWallet } from "@/hooks/use-wallet";
-import { formatAmount, truncateAddress, truncateHash } from "@/lib/format";
+import { useTokenSymbol } from "@/hooks/use-token-symbol";
+import { formatAmount, truncateHash } from "@/lib/format";
 import type { AmmPool } from "@/lib/borsh-amm";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -44,11 +45,7 @@ export default function LiquidityPage() {
   // Remove liquidity input
   const [lpAmount, setLpAmount] = useState("");
 
-  const tokenDisplay = pool
-    ? pool.token === "0".repeat(64)
-      ? "NORN"
-      : truncateAddress("0x" + pool.token.slice(0, 40))
-    : "...";
+  const tokenDisplay = useTokenSymbol(pool?.token);
 
   const fetchData = useCallback(async () => {
     const p = await getPool(poolId);

@@ -23,13 +23,13 @@ import {
   decodeQuote,
 } from "@/lib/borsh-amm";
 import type { AmmPool } from "@/lib/borsh-amm";
-import { formatAmount, strip0x, truncateAddress } from "@/lib/format";
+import { useTokenSymbol } from "@/hooks/use-token-symbol";
+import { formatAmount } from "@/lib/format";
 import { Waves, ArrowDownUp, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const DECIMALS = 12;
 const SLIPPAGE_BPS = 50;
-const NORN_TOKEN_ID = "0".repeat(64);
 
 function parseTokenAmount(value: string): bigint {
   if (!value || value === "0") return 0n;
@@ -41,6 +41,15 @@ function parseTokenAmount(value: string): bigint {
 
 interface PoolWithLoom extends AmmPool {
   loomId: string;
+}
+
+function PoolOption({ pool }: { pool: PoolWithLoom }) {
+  const symbol = useTokenSymbol(pool.token);
+  return (
+    <option value={`${pool.loomId}:${pool.id}`}>
+      Pool #{pool.id.toString()} — {symbol}
+    </option>
+  );
 }
 
 export default function SwapLandingPage() {
@@ -58,6 +67,7 @@ export default function SwapLandingPage() {
   const [outputAmount, setOutputAmount] = useState<bigint>(0n);
   const [quoting, setQuoting] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const tokenDisplay = useTokenSymbol(selectedPool?.token);
 
   // Discover all pools across all AMM instances
   useEffect(() => {
@@ -157,12 +167,6 @@ export default function SwapLandingPage() {
     }
   };
 
-  const tokenDisplay = selectedPool
-    ? selectedPool.token === NORN_TOKEN_ID
-      ? "NORN"
-      : truncateAddress("0x" + selectedPool.token.slice(0, 40))
-    : "Token";
-
   const fromLabel = isNornInput ? "NORN" : tokenDisplay;
   const toLabel = isNornInput ? tokenDisplay : "NORN";
 
@@ -215,15 +219,7 @@ export default function SwapLandingPage() {
               className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm font-mono"
             >
               {allPools.map((p) => (
-                <option
-                  key={`${p.loomId}:${p.id}`}
-                  value={`${p.loomId}:${p.id}`}
-                >
-                  Pool #{p.id.toString()} —{" "}
-                  {p.token === NORN_TOKEN_ID
-                    ? "NORN"
-                    : truncateAddress("0x" + p.token.slice(0, 40))}
-                </option>
+                <PoolOption key={`${p.loomId}:${p.id}`} pool={p} />
               ))}
             </select>
           </div>
