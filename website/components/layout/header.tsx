@@ -12,6 +12,7 @@ const navItems = [
   { href: "https://explorer.norn.network", label: "Explorer", external: true },
   { href: "https://wallet.norn.network", label: "Wallet", external: true },
   { href: "https://github.com/augmnt/norn-protocol", label: "GitHub", external: true },
+  { href: "https://discord.gg/CKR7gEvQFJ", label: "Discord", external: true },
 ];
 
 export function Header() {

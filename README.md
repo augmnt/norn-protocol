@@ -7,6 +7,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-stable-orange.svg" alt="Rust"></a>
   <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.20.0"><img src="https://img.shields.io/badge/version-0.20.0-green.svg" alt="Version"></a>
+  <a href="https://discord.gg/CKR7gEvQFJ"><img src="https://img.shields.io/badge/Discord-Join-5865F2.svg?logo=discord&logoColor=white" alt="Discord"></a>
 </p>
 
 ---
