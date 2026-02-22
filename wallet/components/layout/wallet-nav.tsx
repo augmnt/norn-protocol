@@ -7,6 +7,12 @@ import { cn } from "@/lib/utils";
 import { useNetwork } from "@/hooks/use-network";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   LayoutDashboard,
   ArrowUpRight,
   QrCode,
@@ -42,7 +48,7 @@ const navItems: NavItem[] = [
   { href: "/swap", label: "Swap", icon: ArrowLeftRight },
   { href: "/names", label: "Names", icon: AtSign },
   { href: "/discover", label: "Apps", icon: Blocks, matchPrefixes: ["/apps", "/contracts"] },
-  // { href: "/chat", label: "Chat", icon: MessageSquare },
+  { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/faucet", label: "Faucet", icon: Droplets, testnetOnly: true },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
@@ -81,55 +87,73 @@ export function WalletNav() {
   return (
     <>
       {/* Desktop sidebar */}
-      <nav
-        className={cn(
-          "hidden md:flex flex-col border-r p-3 gap-0.5 transition-all duration-200",
-          collapsed ? "w-14" : "w-52"
-        )}
-      >
-        {filteredItems.map((item) => {
-          const active = isNavActive(item, pathname);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              title={collapsed ? item.label : undefined}
-              className={cn(
-                "flex items-center rounded-md transition-colors",
-                collapsed ? "justify-center px-0 py-2" : "gap-2.5 px-3 py-2",
-                active
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50",
-                "text-sm"
-              )}
-            >
-              <item.icon className="h-4 w-4 shrink-0" />
-              {!collapsed && item.label}
-            </Link>
-          );
-        })}
+      <TooltipProvider delayDuration={0}>
+        <nav
+          className={cn(
+            "hidden md:flex flex-col border-r p-3 gap-0.5 transition-all duration-200",
+            collapsed ? "w-14" : "w-52"
+          )}
+        >
+          {filteredItems.map((item) => {
+            const active = isNavActive(item, pathname);
+            const link = (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex items-center rounded-md transition-colors",
+                  collapsed ? "justify-center px-0 py-2" : "gap-2.5 px-3 py-2",
+                  active
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent/50",
+                  "text-sm"
+                )}
+              >
+                <item.icon className="h-4 w-4 shrink-0" />
+                {!collapsed && item.label}
+              </Link>
+            );
 
-        {/* Collapse toggle at bottom */}
-        <div className="mt-auto pt-2 border-t border-border">
-          <button
-            onClick={toggleSidebar}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className={cn(
-              "flex items-center rounded-md py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors w-full",
-              collapsed ? "justify-center px-0" : "gap-2.5 px-3"
-            )}
-          >
+            if (collapsed) {
+              return (
+                <Tooltip key={item.href}>
+                  <TooltipTrigger asChild>{link}</TooltipTrigger>
+                  <TooltipContent side="right">{item.label}</TooltipContent>
+                </Tooltip>
+              );
+            }
+            return link;
+          })}
+
+          {/* Collapse toggle at bottom */}
+          <div className="mt-auto pt-2 border-t border-border">
             {collapsed ? (
-              <PanelLeft className="h-4 w-4 shrink-0" />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={toggleSidebar}
+                    className={cn(
+                      "flex items-center rounded-md py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors w-full",
+                      "justify-center px-0"
+                    )}
+                  >
+                    <PanelLeft className="h-4 w-4 shrink-0" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">Expand sidebar</TooltipContent>
+              </Tooltip>
             ) : (
-              <>
+              <button
+                onClick={toggleSidebar}
+                className="flex items-center rounded-md py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors w-full gap-2.5 px-3"
+              >
                 <PanelLeftClose className="h-4 w-4 shrink-0" />
                 Collapse
-              </>
+              </button>
             )}
-          </button>
-        </div>
-      </nav>
+          </div>
+        </nav>
+      </TooltipProvider>
 
       {/* Mobile: More menu overlay */}
       {moreOpen && (

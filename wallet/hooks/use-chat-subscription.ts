@@ -10,6 +10,7 @@ import {
 import { toast } from "sonner";
 import { useNetworkStore } from "@/stores/network-store";
 import { useChatStore } from "@/stores/chat-store";
+import { useWalletStore } from "@/stores/wallet-store";
 import { useWallet } from "@/hooks/use-wallet";
 import {
   appendChatMessage,
@@ -20,6 +21,7 @@ import {
   type StoredMessage,
   type StoredChannel,
 } from "@/lib/chat-storage";
+import { decryptDmMessage } from "@/lib/chat-signer";
 import { rpcCall } from "@/lib/rpc";
 import { truncateAddress } from "@/lib/format";
 
@@ -105,6 +107,7 @@ export function useChatSubscription() {
         await appendChatMessage(channelId, msg);
         store.updateLastMessage(channelId, event.content.slice(0, 50), event.created_at);
         store.incrementUnread(channelId);
+        store.bumpMessageVersion();
         return;
       }
 
@@ -119,6 +122,10 @@ export function useChatSubscription() {
         const peerPubkey = isIncoming ? event.pubkey : recipientPubkey;
         const dmConversationId = `dm:${peerPubkey}`;
 
+        // Fetch profile early for decryption key
+        const profile = await getChatProfile(peerPubkey);
+        const nonceTag = event.tags.find((t) => t[0] === "nonce");
+
         const msg: StoredMessage = {
           id: event.id,
           pubkey: event.pubkey,
@@ -128,22 +135,43 @@ export function useChatSubscription() {
           content: event.content,
           sig: event.sig,
         };
+
+        // Attempt decryption
+        let preview = "(encrypted)";
+        if (profile?.x25519PublicKey && nonceTag?.[1]) {
+          try {
+            const walletStore = useWalletStore.getState();
+            const meta = walletStore.meta;
+            const pw = walletStore.sessionPassword ?? undefined;
+            if (meta) {
+              const decrypted = await decryptDmMessage(
+                meta,
+                profile.x25519PublicKey,
+                event.content,
+                nonceTag[1],
+                0,
+                pw
+              );
+              msg.decryptedContent = decrypted;
+              preview = decrypted.slice(0, 50);
+            }
+          } catch {
+            // Decryption failed — show as encrypted
+          }
+        }
+
         await appendChatMessage(dmConversationId, msg);
 
         // Ensure conversation exists
-        const profile = await getChatProfile(peerPubkey);
         store.addConversation({
           id: dmConversationId,
           type: "dm",
           name: profile?.displayName ?? truncateAddress(`0x${peerPubkey.slice(0, 40)}`),
           peerPubkey,
         });
-        store.updateLastMessage(
-          dmConversationId,
-          "(encrypted)",
-          event.created_at
-        );
+        store.updateLastMessage(dmConversationId, preview, event.created_at);
         store.incrementUnread(dmConversationId);
+        store.bumpMessageVersion();
 
         // Toast for incoming DMs
         if (isIncoming && store.activeConversationId !== dmConversationId) {

@@ -40,7 +40,7 @@ export function MessageList({ conversationId }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
-  const unreadCounts = useChatStore((s) => s.unreadCounts);
+  const messageVersion = useChatStore((s) => s.messageVersion);
 
   const loadMessages = useCallback(async () => {
     const msgs = await getChatMessages(conversationId);
@@ -59,10 +59,10 @@ export function MessageList({ conversationId }: MessageListProps) {
     }
   }, [conversationId]);
 
-  // Load messages on mount and when unread changes (new message arrived)
+  // Load messages on mount and when new messages arrive
   useEffect(() => {
     loadMessages();
-  }, [loadMessages, unreadCounts[conversationId]]);
+  }, [loadMessages, messageVersion]);
 
   // Auto-scroll to bottom when messages change (if near bottom)
   useEffect(() => {

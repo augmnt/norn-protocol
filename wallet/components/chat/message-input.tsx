@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { Send } from "lucide-react";
+import { ArrowUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useWallet } from "@/hooks/use-wallet";
@@ -112,7 +112,7 @@ export function MessageInput({ conversationId, conversationType, peerPubkey }: M
 
   return (
     <div className="p-3 border-t shrink-0">
-      <div className="flex items-end gap-2 bg-secondary rounded-lg border border-border p-2">
+      <div className="flex items-end gap-1.5 bg-secondary rounded-lg border border-border p-2">
         <Textarea
           ref={textareaRef}
           value={text}
@@ -125,13 +125,13 @@ export function MessageInput({ conversationId, conversationType, peerPubkey }: M
           rows={1}
         />
         <Button
-          variant="ghost"
+          variant="default"
           size="icon"
-          className="h-8 w-8 shrink-0"
+          className="h-8 w-8 shrink-0 rounded-full"
           onClick={handleSend}
           disabled={!text.trim() || sending}
         >
-          <Send className="h-4 w-4" />
+          <ArrowUp className="h-4 w-4" />
         </Button>
       </div>
     </div>

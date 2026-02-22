@@ -18,6 +18,7 @@ interface ChatState {
   activeConversationType: "channel" | "dm" | null;
   conversations: ConversationSummary[];
   unreadCounts: Record<string, number>;
+  messageVersion: number;
 
   setActiveConversation: (id: string | null, type: "channel" | "dm" | null) => void;
   addConversation: (summary: ConversationSummary) => void;
@@ -25,6 +26,7 @@ interface ChatState {
   incrementUnread: (conversationId: string) => void;
   clearUnread: (conversationId: string) => void;
   removeConversation: (conversationId: string) => void;
+  bumpMessageVersion: () => void;
 }
 
 export const useChatStore = create<ChatState>()(
@@ -34,6 +36,7 @@ export const useChatStore = create<ChatState>()(
       activeConversationType: null,
       conversations: [],
       unreadCounts: {},
+      messageVersion: 0,
 
       setActiveConversation: (id, type) => {
         set({ activeConversationId: id, activeConversationType: type });
@@ -89,6 +92,9 @@ export const useChatStore = create<ChatState>()(
             Object.entries(state.unreadCounts).filter(([k]) => k !== conversationId)
           ),
         })),
+
+      bumpMessageVersion: () =>
+        set((state) => ({ messageVersion: state.messageVersion + 1 })),
     }),
     {
       name: "norn-wallet-chat",

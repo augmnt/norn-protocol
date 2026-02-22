@@ -3,8 +3,10 @@
 import {
   createChatEvent,
   encryptDmContent,
+  decryptDmContent,
   ed25519ToX25519Public,
   toHex,
+  fromHex,
   type ChatEvent,
 } from "@norn-protocol/sdk";
 import { zeroBytes } from "./passkey-crypto";
@@ -81,5 +83,38 @@ export async function getX25519PublicKey(
     return toHex(ed25519ToX25519Public(wallet.privateKey));
   } finally {
     cleanupWallet(wallet);
+  }
+}
+
+// Cached Ed25519 private key for DM decryption (avoids repeated biometric/password prompts)
+let cachedPrivateKey: Uint8Array | null = null;
+
+/** Decrypt an incoming DM message. Caches the private key for the session. */
+export async function decryptDmMessage(
+  meta: StoredWalletMeta,
+  peerX25519PublicHex: string,
+  encryptedContent: string,
+  nonceHex: string,
+  accountIndex = 0,
+  password?: string
+): Promise<string> {
+  if (!cachedPrivateKey) {
+    const wallet = await getWallet(meta, accountIndex, password);
+    cachedPrivateKey = new Uint8Array(wallet.privateKey);
+    cleanupWallet(wallet);
+  }
+  return decryptDmContent(
+    cachedPrivateKey,
+    fromHex(peerX25519PublicHex),
+    encryptedContent,
+    nonceHex
+  );
+}
+
+/** Clear the cached decryption key. Call on wallet lock. */
+export function clearChatKeyCache(): void {
+  if (cachedPrivateKey) {
+    cachedPrivateKey.fill(0);
+    cachedPrivateKey = null;
   }
 }

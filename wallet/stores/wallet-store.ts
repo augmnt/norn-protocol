@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import type { StoredAccount, StoredWalletMeta, WalletState } from "@/types/passkey";
+import { clearChatKeyCache } from "@/lib/chat-signer";
 
 const SESSION_PW_KEY = "norn-session-pw";
 const SESSION_STATE_KEY = "norn-session-state";
@@ -88,8 +89,9 @@ export const useWalletStore = create<WalletStoreState>((set, get) => ({
   setState: (state) => {
     persistSessionState(state);
     if (state !== "unlocked") {
-      // Clear session password when locking or going to uninitialized
+      // Clear session password and chat key cache when locking
       persistSessionPassword(null);
+      clearChatKeyCache();
       set({ state, sessionPassword: null });
     } else {
       set({ state });
@@ -109,6 +111,7 @@ export const useWalletStore = create<WalletStoreState>((set, get) => ({
   reset: () => {
     persistSessionState("uninitialized");
     persistSessionPassword(null);
+    clearChatKeyCache();
     set({
       state: "uninitialized",
       meta: null,
