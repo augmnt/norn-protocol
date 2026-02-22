@@ -48,7 +48,7 @@ const navItems: NavItem[] = [
   { href: "/swap", label: "Swap", icon: ArrowLeftRight },
   { href: "/names", label: "Names", icon: AtSign },
   { href: "/discover", label: "Apps", icon: Blocks, matchPrefixes: ["/apps", "/contracts"] },
-  { href: "/chat", label: "Chat", icon: MessageSquare },
+  // { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/faucet", label: "Faucet", icon: Droplets, testnetOnly: true },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
