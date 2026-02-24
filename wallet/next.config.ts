@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https:",
               "font-src 'self'",
-              "connect-src 'self' wss://*.norn.network https://*.norn.network ws://localhost:* http://localhost:*",
+              "connect-src 'self' wss://*.norn.network https://*.norn.network https: ws://localhost:* http://localhost:*",
               "worker-src 'self'",
               "manifest-src 'self'",
               "frame-ancestors 'none'",
