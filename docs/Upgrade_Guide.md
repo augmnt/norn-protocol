@@ -21,6 +21,7 @@
 | v0.17.x     | v0.18.0    | Yes            | Yes              | Restart node (explorer, wallet extension, no protocol/schema bump) |
 | v0.18.x     | v0.19.0    | Yes            | Yes              | Restart node + state reset recommended (fee economics changed) |
 | v0.19.0     | v0.19.1    | Yes            | Yes              | No action required (wallet-only changes) |
+| v0.19.x     | v0.21.0    | No             | No               | `--reset-state` (PROTOCOL_VERSION 10→11, SCHEMA_VERSION 7→8) |
 
 \* Within a minor version line, compatibility depends on whether PROTOCOL_VERSION or SCHEMA_VERSION was bumped. Check the release notes.
 
@@ -102,8 +103,8 @@ The protocol uses three version constants to detect incompatibilities:
 
 | Constant | Location | Current | Purpose |
 |----------|----------|---------|---------|
-| `PROTOCOL_VERSION` | `norn-relay/src/protocol.rs` | 9 | P2P wire format version. Mismatch = messages rejected. |
-| `SCHEMA_VERSION` | `norn-node/src/state_store.rs` | 7 | Borsh state schema version. Mismatch = node refuses to start (suggests `--reset-state`). |
+| `PROTOCOL_VERSION` | `norn-relay/src/protocol.rs` | 11 | P2P wire format version. Mismatch = messages rejected. |
+| `SCHEMA_VERSION` | `norn-node/src/state_store.rs` | 8 | Borsh state schema version. Mismatch = node refuses to start (suggests `--reset-state`). |
 | `GENESIS_CONFIG_VERSION` | `norn-types/src/genesis.rs` | 1 | Genesis config format version. Included in genesis hash computation. |
 
 ## Multi-Node P2P Requirements
@@ -796,3 +797,92 @@ norn run --dev --reset-state
 - Submit buttons show contextual hints when disabled (e.g., "Enter a governance name")
 - Address inputs show inline validation errors for invalid hex
 - Invalid inputs get red border highlighting
+
+---
+
+## Changelog: v0.21.0 (Security Hardening + Norn Name Service — NNS)
+
+### Upgrading from v0.19.x/v0.20.0 to v0.21.0
+
+This is a **breaking upgrade**. PROTOCOL_VERSION changed from 10 to 11, and SCHEMA_VERSION changed from 7 to 8.
+
+1. **Stop the node.**
+
+2. **Build the new version:**
+   ```bash
+   cargo install --path norn-node
+   ```
+
+3. **Start with `--reset-state`:**
+   ```bash
+   norn run --dev --reset-state
+   ```
+
+4. **Re-register NornNames, re-create tokens, and re-deploy looms:**
+   ```bash
+   norn wallet register-name --name your-name
+   norn wallet set-name-record --name your-name --key avatar --value "https://example.com/avatar.png"
+   ```
+
+5. **All peers must be running v0.21.0.** The new `NornMessage` variants (discriminants 22-23) are not supported by older nodes.
+
+### New Features
+
+- **Name transfers** — Name owners can transfer names to any address via `norn wallet transfer-name --name alice --to 0x...`
+- **Reverse resolution** — Look up the primary NNS name for any address via `norn wallet reverse-name --address 0x...`
+- **Name records** — Attach metadata records to names (avatar, url, description, twitter, github, email, discord) via `norn wallet set-name-record`
+- **NNS explorer integration** — Address pages show primary NNS name and records; block detail pages show name transfers and record updates
+- **NNS web wallet** — Transfer names, manage records, and reverse-resolve addresses from the web wallet UI
+
+### WeaveBlock Schema Change
+
+Four new fields added to `WeaveBlock`:
+- `name_transfers: Vec<NameTransfer>`
+- `name_transfers_root: Hash`
+- `name_record_updates: Vec<NameRecordUpdate>`
+- `name_record_updates_root: Hash`
+
+`NameRecord` struct gains `records: HashMap<String, String>` field for NNS records.
+
+This changes the borsh serialization layout, hence SCHEMA_VERSION bump from 7 to 8.
+
+### P2P Protocol Change
+
+Two new `NornMessage` variants:
+- `NameTransfer(NameTransfer)` — discriminant 22
+- `NameRecordUpdate(NameRecordUpdate)` — discriminant 23
+
+These are only supported over the v11+ envelope protocol. PROTOCOL_VERSION bumped from 10 to 11.
+
+### New RPC Endpoints
+
+Four new RPC methods:
+- `norn_transferName(name, from_hex, transfer_hex)` — transfer a name (auth required)
+- `norn_reverseName(address_hex)` — reverse-resolve address to primary name (read-only)
+- `norn_setNameRecord(name, key, value, owner_hex, update_hex)` — set a name record (auth required)
+- `norn_getNameRecords(name)` — get all records for a name (read-only)
+
+`norn_reverseName` and `norn_getNameRecords` are added to the unauthenticated whitelist.
+
+### New Wallet Commands
+
+Four new wallet subcommands:
+- `transfer-name` — Transfer a name to another address
+- `reverse-name` — Reverse-resolve an address to its primary NNS name
+- `set-name-record` — Set a record on a name (allowed keys: avatar, url, description, twitter, github, email, discord)
+- `name-records` — Display NNS records for a name
+
+### TypeScript SDK
+
+New exports:
+- `buildNameTransfer(wallet, { name, to })` — build and sign a name transfer
+- `buildNameRecordUpdate(wallet, { name, key, value })` — build and sign a record update
+- `nameTransferSigningData()` / `nameRecordUpdateSigningData()` — signing data builders
+- `transferName()` / `setNameRecord()` / `reverseName()` / `getNameRecords()` — client methods
+- `BlockNameTransferInfo` / `BlockNameRecordUpdateInfo` — block detail types
+
+### Name Record Constraints
+
+- **Allowed keys:** `avatar`, `url`, `description`, `twitter`, `github`, `email`, `discord`
+- **Max value length:** 256 bytes
+- **Max records per name:** 16

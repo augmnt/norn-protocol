@@ -2,6 +2,7 @@ use crate::wallet::config::WalletConfig;
 use crate::wallet::error::WalletError;
 use crate::wallet::format::{print_error, print_success, style_dim};
 use crate::wallet::keystore::Keystore;
+use crate::wallet::prompt::prompt_password;
 use crate::wallet::rpc_client::RpcClient;
 use crate::wallet::ui::{cell, cell_bold, info_table, print_table};
 
@@ -13,12 +14,33 @@ pub async fn run(loom_id: &str, input_hex: &str, rpc_url: Option<&str>) -> Resul
     let url = rpc_url.unwrap_or(&config.rpc_url);
     let rpc = RpcClient::new(url)?;
 
-    let sender_hex = hex::encode(ks.address);
-
     // Validate input is valid hex.
-    hex::decode(input_hex).map_err(|e| WalletError::Other(format!("invalid input hex: {}", e)))?;
+    let input_bytes = hex::decode(input_hex)
+        .map_err(|e| WalletError::Other(format!("invalid input hex: {}", e)))?;
 
-    let result = rpc.execute_loom(loom_id, input_hex, &sender_hex).await?;
+    let password = prompt_password("Enter password")?;
+    let keypair = ks.decrypt_keypair(&password)?;
+
+    let sender = norn_crypto::address::pubkey_to_address(&keypair.public_key());
+    let sender_hex = hex::encode(sender);
+    let pubkey_hex = hex::encode(keypair.public_key());
+
+    // Parse loom_id for signing message.
+    let loom_id_bytes = hex::decode(loom_id.strip_prefix("0x").unwrap_or(loom_id))
+        .map_err(|e| WalletError::Other(format!("invalid loom_id hex: {}", e)))?;
+
+    let signing_msg = norn_crypto::hash::blake3_hash_multi(&[
+        b"norn_execute_loom",
+        &loom_id_bytes,
+        &input_bytes,
+        &sender,
+    ]);
+    let signature = keypair.sign(&signing_msg);
+    let signature_hex = hex::encode(signature);
+
+    let result = rpc
+        .execute_loom(loom_id, input_hex, &sender_hex, &signature_hex, &pubkey_hex)
+        .await?;
 
     println!();
     if result.success {

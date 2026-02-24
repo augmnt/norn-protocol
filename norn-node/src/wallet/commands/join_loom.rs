@@ -29,8 +29,16 @@ pub async fn run(loom_id: &str, rpc_url: Option<&str>) -> Result<(), WalletError
     let participant_hex = hex::encode(ks.address);
     let pubkey_hex = hex::encode(keypair.public_key());
 
+    // Sign: blake3(b"norn_join_loom" || loom_id || address)
+    let loom_id_bytes = hex::decode(loom_id)
+        .map_err(|e| WalletError::Other(format!("invalid loom_id hex: {}", e)))?;
+    let signing_msg =
+        norn_crypto::hash::blake3_hash_multi(&[b"norn_join_loom", &loom_id_bytes, &ks.address]);
+    let signature = keypair.sign(&signing_msg);
+    let signature_hex = hex::encode(signature);
+
     let result = rpc
-        .join_loom(loom_id, &participant_hex, &pubkey_hex)
+        .join_loom(loom_id, &participant_hex, &pubkey_hex, &signature_hex)
         .await?;
 
     if result.success {

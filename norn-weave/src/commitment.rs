@@ -1,7 +1,8 @@
+use norn_crypto::address::pubkey_to_address;
 use norn_crypto::hash::blake3_hash;
 use norn_crypto::keys::verify;
 use norn_crypto::merkle::SparseMerkleTree;
-use norn_types::constants::MAX_COMMITMENT_AGE;
+use norn_types::constants::{MAX_COMMITMENT_AGE, MAX_TIMESTAMP_DRIFT};
 use norn_types::primitives::*;
 use norn_types::weave::{CommitmentUpdate, WeaveState};
 
@@ -23,6 +24,14 @@ pub fn validate_commitment(
         }
     })?;
 
+    // Verify the owner pubkey actually derives the claimed thread_id.
+    let expected_address = pubkey_to_address(&commitment.owner);
+    if commitment.thread_id != expected_address {
+        return Err(WeaveError::InvalidCommitment {
+            reason: "owner pubkey does not derive thread_id".to_string(),
+        });
+    }
+
     // Check version monotonicity.
     if let Some(cv) = current_version {
         if commitment.version <= cv {
@@ -33,6 +42,13 @@ pub fn validate_commitment(
                 ),
             });
         }
+    }
+
+    // Reject future-dated commitments.
+    if commitment.timestamp > current_time + MAX_TIMESTAMP_DRIFT {
+        return Err(WeaveError::InvalidCommitment {
+            reason: "commitment timestamp too far in the future".to_string(),
+        });
     }
 
     // Staleness check.
@@ -160,6 +176,34 @@ mod tests {
         // Current time far in the future.
         let stale_time = 1000 + MAX_COMMITMENT_AGE + 1;
         assert!(validate_commitment(&c, None, stale_time).is_err());
+    }
+
+    #[test]
+    fn test_thread_id_mismatch() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        // Sign with key A but set thread_id to key B's address.
+        let wrong_thread_id = pubkey_to_address(&kp_b.public_key());
+        let mut c = CommitmentUpdate {
+            thread_id: wrong_thread_id,
+            owner: kp_a.public_key(),
+            version: 1,
+            state_hash: [1u8; 32],
+            prev_commitment_hash: [0u8; 32],
+            knot_count: 1,
+            timestamp: 1000,
+            signature: [0u8; 64],
+        };
+        let sig_data = commitment_signing_data(&c);
+        c.signature = kp_a.sign(&sig_data);
+        let result = validate_commitment(&c, None, 1000);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("owner pubkey does not derive thread_id"),
+            "expected thread_id mismatch error, got: {}",
+            err_msg
+        );
     }
 
     #[test]

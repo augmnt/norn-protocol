@@ -28,6 +28,8 @@ export interface BlockInfo {
   token_burn_count: number;
   loom_deploy_count: number;
   stake_operation_count: number;
+  name_transfer_count: number;
+  name_record_update_count: number;
   state_root: HashHex;
   /** Block production time in microseconds (only present for blocks produced by the connected node). */
   production_us?: number | null;
@@ -133,6 +135,8 @@ export interface NameResolution {
   owner: AddressHex;
   registered_at: number;
   fee_paid: string;
+  /** NNS records (avatar, url, description, etc). */
+  records?: Record<string, string>;
 }
 
 /** Name info. */
@@ -248,6 +252,8 @@ export interface BlockTransactionsInfo {
   token_mints: BlockTokenMintInfo[];
   token_burns: BlockTokenBurnInfo[];
   name_registrations: BlockNameRegistrationInfo[];
+  name_transfers: BlockNameTransferInfo[];
+  name_record_updates: BlockNameRecordUpdateInfo[];
   loom_deploys: BlockLoomDeployInfo[];
 }
 
@@ -300,6 +306,23 @@ export interface BlockNameRegistrationInfo {
   name: string;
   owner: AddressHex;
   fee_paid: string;
+  timestamp: number;
+}
+
+/** A name transfer within a block. */
+export interface BlockNameTransferInfo {
+  name: string;
+  from: AddressHex;
+  to: AddressHex;
+  timestamp: number;
+}
+
+/** A name record update within a block. */
+export interface BlockNameRecordUpdateInfo {
+  name: string;
+  key: string;
+  value: string;
+  owner: AddressHex;
   timestamp: number;
 }
 

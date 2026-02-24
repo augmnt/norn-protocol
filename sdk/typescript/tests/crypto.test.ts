@@ -123,4 +123,15 @@ describe("hex utilities", () => {
   it("fromHex rejects odd-length", () => {
     expect(() => fromHex("abc")).toThrow("odd length");
   });
+
+  it("fromHex rejects non-hex characters", () => {
+    expect(() => fromHex("zzzz")).toThrow("non-hex characters");
+    expect(() => fromHex("00gg")).toThrow("non-hex characters");
+    expect(() => fromHex("0x00gg")).toThrow("non-hex characters");
+  });
+
+  it("fromHex accepts valid hex (case-insensitive)", () => {
+    expect(() => fromHex("aAbBcCdDeEfF")).not.toThrow();
+    expect(() => fromHex("0x0123456789")).not.toThrow();
+  });
 });

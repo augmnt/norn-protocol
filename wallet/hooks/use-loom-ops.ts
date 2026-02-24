@@ -4,12 +4,14 @@ import { useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { rpcCall } from "@/lib/rpc";
 import { strip0x } from "@/lib/format";
+import * as signer from "@/lib/secure-signer";
 
 import { useWallet } from "./use-wallet";
+import { useWalletStore } from "@/stores/wallet-store";
 import type { ExecutionResult, QueryResult } from "@/types";
 
 export function useLoomOps() {
-  const { activeAddress } = useWallet();
+  const { meta, activeAddress, activeAccountIndex } = useWallet();
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,14 +34,25 @@ export function useLoomOps() {
 
   const executeLoom = useCallback(
     async (loomId: string, inputHex: string): Promise<ExecutionResult> => {
-      if (!activeAddress) throw new Error("No active address");
+      if (!activeAddress || !meta) throw new Error("No active wallet");
       setLoading(true);
       setError(null);
       try {
+        const pw = useWalletStore.getState().sessionPassword ?? undefined;
+        const { signatureHex, pubkeyHex, senderHex } =
+          await signer.signExecuteLoom(
+            meta,
+            strip0x(loomId),
+            inputHex,
+            activeAccountIndex,
+            pw
+          );
         const result = await rpcCall<ExecutionResult>("norn_executeLoom", [
           strip0x(loomId),
           inputHex,
-          strip0x(activeAddress),
+          senderHex,
+          signatureHex,
+          pubkeyHex,
         ]);
         if (!result.success) {
           throw new Error(result.reason || "Execution failed");
@@ -56,7 +69,7 @@ export function useLoomOps() {
         setLoading(false);
       }
     },
-    [activeAddress, queryClient]
+    [meta, activeAddress, activeAccountIndex, queryClient]
   );
 
   return { queryLoom, executeLoom, loading, error };

@@ -211,6 +211,61 @@ pub enum WalletCommand {
         #[arg(long)]
         rpc_url: Option<String>,
     },
+    /// Transfer a name to another address (NNS)
+    TransferName {
+        /// Name to transfer
+        #[arg(long)]
+        name: String,
+        /// Recipient address (hex)
+        #[arg(long)]
+        to: String,
+        /// Skip confirmation prompt
+        #[arg(long)]
+        yes: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
+    /// Reverse-resolve an address to its primary NNS name
+    ReverseName {
+        /// Address to look up (hex)
+        address: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
+    /// Set a record on a name (NNS)
+    SetNameRecord {
+        /// Name to update
+        #[arg(long)]
+        name: String,
+        /// Record key (avatar, url, description, twitter, github, email, discord)
+        #[arg(long)]
+        key: String,
+        /// Record value
+        #[arg(long)]
+        value: String,
+        /// Skip confirmation prompt
+        #[arg(long)]
+        yes: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
+    /// Display NNS records for a name
+    NameRecords {
+        /// Name to look up
+        name: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Override RPC URL for this command
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
     /// List names owned by the active wallet
     Names {
         /// Output as JSON

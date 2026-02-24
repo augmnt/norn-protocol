@@ -190,6 +190,16 @@ export class NornClient {
     return this.call("norn_listNames", [address]);
   }
 
+  /** Reverse-resolve an address to its primary NNS name. */
+  async reverseName(address: AddressHex): Promise<string | null> {
+    return this.call("norn_reverseName", [address]);
+  }
+
+  /** Get NNS records for a name. */
+  async getNameRecords(name: string): Promise<Record<string, string>> {
+    return this.call("norn_getNameRecords", [name]);
+  }
+
   /** Get Prometheus-style metrics. */
   async getMetrics(): Promise<string> {
     return this.call("norn_getMetrics");
@@ -281,6 +291,32 @@ export class NornClient {
     return this.call("norn_registerName", [name, ownerHex, knotHex]);
   }
 
+  /** Transfer a name to a new owner. */
+  async transferName(
+    name: string,
+    fromHex: string,
+    transferHex: string,
+  ): Promise<SubmitResult> {
+    return this.call("norn_transferName", [name, fromHex, transferHex]);
+  }
+
+  /** Set a record on a name. */
+  async setNameRecord(
+    name: string,
+    key: string,
+    value: string,
+    ownerHex: string,
+    updateHex: string,
+  ): Promise<SubmitResult> {
+    return this.call("norn_setNameRecord", [
+      name,
+      key,
+      value,
+      ownerHex,
+      updateHex,
+    ]);
+  }
+
   /** Create a token. */
   async createToken(definitionHex: string): Promise<SubmitResult> {
     return this.call("norn_createToken", [definitionHex]);
@@ -301,24 +337,38 @@ export class NornClient {
     return this.call("norn_deployLoom", [registrationHex]);
   }
 
-  /** Upload bytecode to a loom. */
+  /** Upload bytecode to a loom (requires operator signature). */
   async uploadBytecode(
     loomId: HashHex,
     bytecodeHex: string,
-    initMsgHex?: string,
+    initMsgHex: string | null,
+    operatorSignatureHex: string,
+    operatorPubkeyHex: string,
   ): Promise<SubmitResult> {
-    const params: unknown[] = [loomId, bytecodeHex];
-    if (initMsgHex) params.push(initMsgHex);
-    return this.call("norn_uploadLoomBytecode", params);
+    return this.call("norn_uploadLoomBytecode", [
+      loomId,
+      bytecodeHex,
+      initMsgHex,
+      operatorSignatureHex,
+      operatorPubkeyHex,
+    ]);
   }
 
-  /** Execute a loom contract. */
+  /** Execute a loom contract (requires sender signature). */
   async executeLoom(
     loomId: HashHex,
     inputHex: string,
     senderHex: AddressHex,
+    signatureHex: string,
+    pubkeyHex: string,
   ): Promise<ExecutionResult> {
-    return this.call("norn_executeLoom", [loomId, inputHex, senderHex]);
+    return this.call("norn_executeLoom", [
+      loomId,
+      inputHex,
+      senderHex,
+      signatureHex,
+      pubkeyHex,
+    ]);
   }
 
   /** Join a loom as a participant. */
@@ -326,13 +376,29 @@ export class NornClient {
     loomId: string,
     participant: string,
     pubkey: string,
+    signatureHex: string,
   ): Promise<SubmitResult> {
-    return this.call("norn_joinLoom", [loomId, participant, pubkey]);
+    return this.call("norn_joinLoom", [
+      loomId,
+      participant,
+      pubkey,
+      signatureHex,
+    ]);
   }
 
   /** Leave a loom. */
-  async leaveLoom(loomId: string, participant: string): Promise<SubmitResult> {
-    return this.call("norn_leaveLoom", [loomId, participant]);
+  async leaveLoom(
+    loomId: string,
+    participant: string,
+    signatureHex: string,
+    pubkeyHex: string,
+  ): Promise<SubmitResult> {
+    return this.call("norn_leaveLoom", [
+      loomId,
+      participant,
+      signatureHex,
+      pubkeyHex,
+    ]);
   }
 
   /** Submit a commitment. */

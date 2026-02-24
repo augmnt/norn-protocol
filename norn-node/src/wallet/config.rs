@@ -69,7 +69,25 @@ impl WalletConfig {
         std::fs::create_dir_all(&dir)?;
         let path = Self::config_path()?;
         let data = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, data)?;
+
+        #[cfg(unix)]
+        {
+            use std::io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(&path)?;
+            file.write_all(data.as_bytes())?;
+        }
+
+        #[cfg(not(unix))]
+        {
+            std::fs::write(path, data)?;
+        }
+
         Ok(())
     }
 

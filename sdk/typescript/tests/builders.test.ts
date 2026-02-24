@@ -3,6 +3,8 @@ import { Wallet } from "../src/wallet.js";
 import {
   buildTransfer,
   buildNameRegistration,
+  buildNameTransfer,
+  buildNameRecordUpdate,
   buildTokenDefinition,
   buildTokenMint,
   buildTokenBurn,
@@ -172,6 +174,100 @@ describe("buildNameRegistration", () => {
     const hex = buildNameRegistration(wallet, "alice");
     expect(hex.length).toBeGreaterThan(0);
     expect(() => fromHex(hex)).not.toThrow();
+  });
+});
+
+describe("buildNameTransfer", () => {
+  it("produces valid hex", () => {
+    const wallet = Wallet.fromPrivateKey(new Uint8Array(32).fill(1));
+    const hex = buildNameTransfer(wallet, {
+      name: "alice",
+      to: "0x" + "02".repeat(20),
+    });
+    expect(hex.length).toBeGreaterThan(0);
+    expect(() => fromHex(hex)).not.toThrow();
+  });
+
+  it("contains correct borsh structure", () => {
+    const wallet = Wallet.fromPrivateKey(new Uint8Array(32).fill(1));
+    const hex = buildNameTransfer(wallet, {
+      name: "alice",
+      to: "0x" + "02".repeat(20),
+    });
+    const bytes = fromHex(hex);
+    const r = new BorshReader(bytes);
+
+    // name: String (borsh: u32 len + utf8)
+    const name = r.readString();
+    expect(name).toBe("alice");
+
+    // from: [u8; 20]
+    const from = r.readFixedBytes(20);
+    expect(toHex(from)).toBe(toHex(wallet.address));
+
+    // from_pubkey: [u8; 32]
+    const pubkey = r.readFixedBytes(32);
+    expect(toHex(pubkey)).toBe(toHex(wallet.publicKey));
+
+    // to: [u8; 20]
+    const to = r.readFixedBytes(20);
+    expect(toHex(to)).toBe("02".repeat(20));
+
+    // timestamp: u64
+    const ts = r.readU64();
+    expect(ts).toBeGreaterThan(0n);
+
+    // signature: [u8; 64]
+    const sig = r.readFixedBytes(64);
+    expect(sig.length).toBe(64);
+
+    expect(r.remaining()).toBe(0);
+  });
+});
+
+describe("buildNameRecordUpdate", () => {
+  it("produces valid hex", () => {
+    const wallet = Wallet.fromPrivateKey(new Uint8Array(32).fill(1));
+    const hex = buildNameRecordUpdate(wallet, {
+      name: "alice",
+      key: "avatar",
+      value: "https://example.com/avatar.png",
+    });
+    expect(hex.length).toBeGreaterThan(0);
+    expect(() => fromHex(hex)).not.toThrow();
+  });
+
+  it("contains correct borsh structure", () => {
+    const wallet = Wallet.fromPrivateKey(new Uint8Array(32).fill(1));
+    const hex = buildNameRecordUpdate(wallet, {
+      name: "alice",
+      key: "twitter",
+      value: "@alice",
+    });
+    const bytes = fromHex(hex);
+    const r = new BorshReader(bytes);
+
+    expect(r.readString()).toBe("alice"); // name
+    expect(r.readString()).toBe("twitter"); // key
+    expect(r.readString()).toBe("@alice"); // value
+
+    // owner: [u8; 20]
+    const owner = r.readFixedBytes(20);
+    expect(toHex(owner)).toBe(toHex(wallet.address));
+
+    // owner_pubkey: [u8; 32]
+    const pubkey = r.readFixedBytes(32);
+    expect(toHex(pubkey)).toBe(toHex(wallet.publicKey));
+
+    // timestamp: u64
+    const ts = r.readU64();
+    expect(ts).toBeGreaterThan(0n);
+
+    // signature: [u8; 64]
+    const sig = r.readFixedBytes(64);
+    expect(sig.length).toBe(64);
+
+    expect(r.remaining()).toBe(0);
   });
 });
 

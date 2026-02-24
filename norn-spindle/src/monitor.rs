@@ -23,6 +23,9 @@ pub enum MonitorAlert {
     },
 }
 
+/// Maximum number of versions tracked per thread before evicting the oldest.
+const MAX_VERSIONS_PER_THREAD: usize = 1_000;
+
 /// Tracks thread state for fraud detection.
 struct ThreadWatch {
     thread_id: ThreadId,
@@ -100,6 +103,13 @@ impl ThreadMonitor {
                         knot_a: Box::new(entries[0].1.clone()),
                         knot_b: Box::new(entries[1].1.clone()),
                     });
+                }
+
+                // Evict oldest versions if the map grows too large.
+                if watch.knots_by_version.len() > MAX_VERSIONS_PER_THREAD {
+                    if let Some(&min_version) = watch.knots_by_version.keys().min() {
+                        watch.knots_by_version.remove(&min_version);
+                    }
                 }
             }
         }

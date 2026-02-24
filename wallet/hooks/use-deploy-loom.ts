@@ -74,19 +74,23 @@ export function useDeployLoom() {
         // Step 3: Wait for the loom to appear in state (block confirmation)
         await waitForLoom(loomId);
 
-        // Step 4: Upload bytecode + init
+        // Step 4: Upload bytecode + init (signed by operator)
         const bytecodeHex = Array.from(params.wasmBytes)
           .map((b) => b.toString(16).padStart(2, "0"))
           .join("");
 
-        const uploadParams: unknown[] = [loomId, bytecodeHex];
-        if (params.initMsgHex) {
-          uploadParams.push(params.initMsgHex);
-        }
+        const { signatureHex: opSig, pubkeyHex: opPubkey } =
+          await signer.signBytecodeUpload(
+            meta,
+            loomId,
+            params.wasmBytes,
+            activeAccountIndex,
+            pw
+          );
 
         const uploadResult = await rpcCall<SubmitResult>(
           "norn_uploadLoomBytecode",
-          uploadParams
+          [loomId, bytecodeHex, params.initMsgHex ?? null, opSig, opPubkey]
         );
         if (!uploadResult.success) {
           throw new Error(uploadResult.reason || "Bytecode upload failed");

@@ -26,6 +26,8 @@ pub fn build_block(
     let registrations_root = compute_merkle_root_borsh(&contents.registrations);
     let anchors_root = compute_merkle_root_borsh(&contents.anchors);
     let name_registrations_root = compute_merkle_root_borsh(&contents.name_registrations);
+    let name_transfers_root = compute_merkle_root_borsh(&contents.name_transfers);
+    let name_record_updates_root = compute_merkle_root_borsh(&contents.name_record_updates);
     let fraud_proofs_root = compute_merkle_root_borsh(&contents.fraud_proofs);
     let transfers_root = compute_merkle_root_borsh(&contents.transfers);
     let token_definitions_root = compute_merkle_root_borsh(&contents.token_definitions);
@@ -46,6 +48,10 @@ pub fn build_block(
         anchors: contents.anchors,
         name_registrations: contents.name_registrations,
         name_registrations_root,
+        name_transfers: contents.name_transfers,
+        name_transfers_root,
+        name_record_updates: contents.name_record_updates,
+        name_record_updates_root,
         fraud_proofs: contents.fraud_proofs,
         fraud_proofs_root,
         transfers: contents.transfers,
@@ -88,6 +94,8 @@ pub fn compute_block_hash(block: &WeaveBlock) -> Hash {
     data.extend_from_slice(&block.registrations_root);
     data.extend_from_slice(&block.anchors_root);
     data.extend_from_slice(&block.name_registrations_root);
+    data.extend_from_slice(&block.name_transfers_root);
+    data.extend_from_slice(&block.name_record_updates_root);
     data.extend_from_slice(&block.fraud_proofs_root);
     data.extend_from_slice(&block.transfers_root);
     data.extend_from_slice(&block.token_definitions_root);
@@ -111,6 +119,12 @@ pub fn compute_block_hash(block: &WeaveBlock) -> Hash {
     }
     if let Ok(nr_bytes) = borsh::to_vec(&block.name_registrations) {
         data.extend_from_slice(&blake3_hash(&nr_bytes));
+    }
+    if let Ok(nt_bytes) = borsh::to_vec(&block.name_transfers) {
+        data.extend_from_slice(&blake3_hash(&nt_bytes));
+    }
+    if let Ok(nru_bytes) = borsh::to_vec(&block.name_record_updates) {
+        data.extend_from_slice(&blake3_hash(&nru_bytes));
     }
     if let Ok(f_bytes) = borsh::to_vec(&block.fraud_proofs) {
         data.extend_from_slice(&blake3_hash(&f_bytes));
@@ -139,7 +153,14 @@ pub fn compute_block_hash(block: &WeaveBlock) -> Hash {
 
 /// Verify a block's hash, proposer membership, Merkle roots, and validator signatures.
 pub fn verify_block(block: &WeaveBlock, validator_set: &ValidatorSet) -> Result<(), WeaveError> {
-    // 0. Reject oversized blocks.
+    // 0. Reject oversized blocks — enforce per-category limits.
+    const MAX_REGISTRATIONS: usize = 1_000;
+    const MAX_TRANSFERS: usize = 10_000;
+    const MAX_TOKEN_OPS: usize = 1_000;
+    const MAX_LOOM_DEPLOYS: usize = 100;
+    const MAX_STAKE_OPS: usize = 100;
+    const MAX_NAME_REGS: usize = 1_000;
+
     if block.commitments.len() > MAX_COMMITMENTS_PER_BLOCK {
         return Err(WeaveError::InvalidBlock {
             reason: format!(
@@ -147,6 +168,24 @@ pub fn verify_block(block: &WeaveBlock, validator_set: &ValidatorSet) -> Result<
                 block.commitments.len(),
                 MAX_COMMITMENTS_PER_BLOCK
             ),
+        });
+    }
+    const MAX_NAME_TRANSFERS: usize = 1_000;
+    const MAX_NAME_RECORD_UPDATES: usize = 1_000;
+
+    if block.registrations.len() > MAX_REGISTRATIONS
+        || block.transfers.len() > MAX_TRANSFERS
+        || block.token_definitions.len() > MAX_TOKEN_OPS
+        || block.token_mints.len() > MAX_TOKEN_OPS
+        || block.token_burns.len() > MAX_TOKEN_OPS
+        || block.loom_deploys.len() > MAX_LOOM_DEPLOYS
+        || block.stake_operations.len() > MAX_STAKE_OPS
+        || block.name_registrations.len() > MAX_NAME_REGS
+        || block.name_transfers.len() > MAX_NAME_TRANSFERS
+        || block.name_record_updates.len() > MAX_NAME_RECORD_UPDATES
+    {
+        return Err(WeaveError::InvalidBlock {
+            reason: "block content exceeds per-category size limit".to_string(),
         });
     }
 
@@ -191,6 +230,20 @@ pub fn verify_block(block: &WeaveBlock, validator_set: &ValidatorSet) -> Result<
     if block.name_registrations_root != expected_name_registrations_root {
         return Err(WeaveError::InvalidBlock {
             reason: "name registrations merkle root mismatch".to_string(),
+        });
+    }
+
+    let expected_name_transfers_root = compute_merkle_root_borsh(&block.name_transfers);
+    if block.name_transfers_root != expected_name_transfers_root {
+        return Err(WeaveError::InvalidBlock {
+            reason: "name transfers merkle root mismatch".to_string(),
+        });
+    }
+
+    let expected_name_record_updates_root = compute_merkle_root_borsh(&block.name_record_updates);
+    if block.name_record_updates_root != expected_name_record_updates_root {
+        return Err(WeaveError::InvalidBlock {
+            reason: "name record updates merkle root mismatch".to_string(),
         });
     }
 
@@ -320,6 +373,8 @@ mod tests {
             registrations: vec![],
             anchors: vec![],
             name_registrations: vec![],
+            name_transfers: vec![],
+            name_record_updates: vec![],
             fraud_proofs: vec![],
             transfers: vec![],
             token_definitions: vec![],
@@ -348,6 +403,8 @@ mod tests {
             registrations: vec![],
             anchors: vec![],
             name_registrations: vec![],
+            name_transfers: vec![],
+            name_record_updates: vec![],
             fraud_proofs: vec![],
             transfers: vec![],
             token_definitions: vec![],
@@ -371,6 +428,8 @@ mod tests {
             registrations: vec![],
             anchors: vec![],
             name_registrations: vec![],
+            name_transfers: vec![],
+            name_record_updates: vec![],
             fraud_proofs: vec![],
             transfers: vec![],
             token_definitions: vec![],
@@ -395,6 +454,8 @@ mod tests {
             registrations: vec![],
             anchors: vec![],
             name_registrations: vec![],
+            name_transfers: vec![],
+            name_record_updates: vec![],
             fraud_proofs: vec![],
             transfers: vec![],
             token_definitions: vec![],
@@ -429,6 +490,8 @@ mod tests {
             registrations: vec![],
             anchors: vec![],
             name_registrations: vec![],
+            name_transfers: vec![],
+            name_record_updates: vec![],
             fraud_proofs: vec![],
             transfers: vec![],
             token_definitions: vec![],
@@ -452,6 +515,8 @@ mod tests {
             registrations: vec![],
             anchors: vec![],
             name_registrations: vec![],
+            name_transfers: vec![],
+            name_record_updates: vec![],
             fraud_proofs: vec![],
             transfers: vec![],
             token_definitions: vec![],

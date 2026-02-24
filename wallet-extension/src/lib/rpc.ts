@@ -92,6 +92,23 @@ export const rpc = {
   async getTokenBySymbol(symbol: string): Promise<TokenInfo | null> {
     return rawRpc<TokenInfo | null>("norn_getTokenBySymbol", [symbol]);
   },
+
+  async transferName(name: string, ownerHex: string, transferHex: string): Promise<SubmitResult> {
+    return rawRpc<SubmitResult>("norn_transferName", [name, strip0x(ownerHex), transferHex]);
+  },
+
+  async reverseName(addressHex: string): Promise<string | null> {
+    return rawRpc<string | null>("norn_reverseName", [strip0x(addressHex)]);
+  },
+
+  async setNameRecord(name: string, key: string, value: string, ownerHex: string, updateHex: string): Promise<SubmitResult> {
+    return rawRpc<SubmitResult>("norn_setNameRecord", [name, key, value, strip0x(ownerHex), updateHex]);
+  },
+
+  async getNameRecords(name: string): Promise<Record<string, string>> {
+    const result = await rawRpc<Record<string, string> | null>("norn_getNameRecords", [name]);
+    return result ?? {};
+  },
 };
 
 export function resetClient(): void {

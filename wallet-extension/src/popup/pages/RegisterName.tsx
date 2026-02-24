@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { AtSign, Check } from "lucide-react";
+import { AtSign, Check, ArrowRightLeft, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import { buildNameRegistration } from "@norn-protocol/sdk";
 import { useWalletStore } from "@/stores/wallet-store";
@@ -29,6 +29,7 @@ export function RegisterName() {
   const activeWallet = useWalletStore((s) => s.activeWallet);
   const getActiveAddress = useWalletStore((s) => s.getActiveAddress);
   const reset = useNavigationStore((s) => s.reset);
+  const navigate = useNavigationStore((s) => s.navigate);
   const address = getActiveAddress() ?? "";
 
   useEffect(() => {
@@ -222,7 +223,25 @@ export function RegisterName() {
                   style={{ animationDelay: `${i * 50}ms`, animationFillMode: "backwards" }}
                 >
                   <Check className="h-3.5 w-3.5 text-emerald-500" />
-                  <span className="text-sm font-medium">{n.name}</span>
+                  <span className="flex-1 text-sm font-medium">{n.name}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    title="Transfer"
+                    onClick={() => navigate("transfer-name", { name: n.name })}
+                  >
+                    <ArrowRightLeft className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    title="Records"
+                    onClick={() => navigate("name-records", { name: n.name })}
+                  >
+                    <Settings2 className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
               ))}
             </div>

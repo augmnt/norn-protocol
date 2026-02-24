@@ -67,6 +67,9 @@ impl TokenBucket {
     }
 }
 
+/// Maximum number of tracked peer buckets before eviction.
+const MAX_PEERS: usize = 10_000;
+
 /// Rate limiter that enforces both per-peer and global rate limits.
 pub struct RateLimiter {
     per_peer: HashMap<String, TokenBucket>,
@@ -101,6 +104,22 @@ impl RateLimiter {
     /// Returns true if both the peer-level and global-level budgets allow
     /// the requested number of tokens. Consumes from both if allowed.
     pub fn check_rate_limit(&mut self, peer_id: &str, tokens: u64) -> bool {
+        // Evict a full (idle) peer bucket if we're at the limit and this is a new peer.
+        if !self.per_peer.contains_key(peer_id) && self.per_peer.len() >= MAX_PEERS {
+            // Find a peer whose bucket is full (idle) and remove it.
+            let idle_peer = self
+                .per_peer
+                .iter()
+                .find(|(_, b)| b.available() == self.peer_capacity)
+                .map(|(k, _)| k.clone());
+            if let Some(key) = idle_peer {
+                self.per_peer.remove(&key);
+            } else {
+                // All peers are active; reject the new peer.
+                return false;
+            }
+        }
+
         // Get or create the peer bucket.
         let peer_bucket = self
             .per_peer

@@ -4,8 +4,8 @@ use norn_types::fraud::FraudProofSubmission;
 use norn_types::loom::LoomRegistration;
 use norn_types::primitives::ThreadId;
 use norn_types::weave::{
-    BlockTransfer, CommitmentUpdate, LoomAnchor, NameRegistration, Registration, StakeOperation,
-    TokenBurn, TokenDefinition, TokenMint,
+    BlockTransfer, CommitmentUpdate, LoomAnchor, NameRecordUpdate, NameRegistration, NameTransfer,
+    Registration, StakeOperation, TokenBurn, TokenDefinition, TokenMint,
 };
 
 use crate::error::WeaveError;
@@ -17,6 +17,8 @@ pub struct BlockContents {
     pub registrations: Vec<Registration>,
     pub anchors: Vec<LoomAnchor>,
     pub name_registrations: Vec<NameRegistration>,
+    pub name_transfers: Vec<NameTransfer>,
+    pub name_record_updates: Vec<NameRecordUpdate>,
     pub fraud_proofs: Vec<FraudProofSubmission>,
     pub transfers: Vec<BlockTransfer>,
     pub token_definitions: Vec<TokenDefinition>,
@@ -36,6 +38,10 @@ pub struct Mempool {
     anchors: Vec<LoomAnchor>,
     /// Pending name registrations.
     name_registrations: Vec<NameRegistration>,
+    /// Pending name transfers.
+    name_transfers: Vec<NameTransfer>,
+    /// Pending name record updates.
+    name_record_updates: Vec<NameRecordUpdate>,
     /// Pending fraud proof submissions.
     fraud_proofs: Vec<FraudProofSubmission>,
     /// Pending transfers (from verified knots, for inclusion in blocks).
@@ -62,6 +68,8 @@ impl Mempool {
             registrations: Vec::new(),
             anchors: Vec::new(),
             name_registrations: Vec::new(),
+            name_transfers: Vec::new(),
+            name_record_updates: Vec::new(),
             fraud_proofs: Vec::new(),
             transfers: Vec::new(),
             token_definitions: Vec::new(),
@@ -79,6 +87,8 @@ impl Mempool {
             + self.registrations.len()
             + self.anchors.len()
             + self.name_registrations.len()
+            + self.name_transfers.len()
+            + self.name_record_updates.len()
             + self.fraud_proofs.len()
             + self.transfers.len()
             + self.token_definitions.len()
@@ -122,6 +132,24 @@ impl Mempool {
             return Err(WeaveError::MempoolFull);
         }
         self.name_registrations.push(nr);
+        Ok(())
+    }
+
+    /// Add a name transfer.
+    pub fn add_name_transfer(&mut self, nt: NameTransfer) -> Result<(), WeaveError> {
+        if self.total_size() >= self.max_size {
+            return Err(WeaveError::MempoolFull);
+        }
+        self.name_transfers.push(nt);
+        Ok(())
+    }
+
+    /// Add a name record update.
+    pub fn add_name_record_update(&mut self, nru: NameRecordUpdate) -> Result<(), WeaveError> {
+        if self.total_size() >= self.max_size {
+            return Err(WeaveError::MempoolFull);
+        }
+        self.name_record_updates.push(nru);
         Ok(())
     }
 
@@ -211,6 +239,8 @@ impl Mempool {
         let registrations = std::mem::take(&mut self.registrations);
         let anchors = std::mem::take(&mut self.anchors);
         let name_registrations = std::mem::take(&mut self.name_registrations);
+        let name_transfers = std::mem::take(&mut self.name_transfers);
+        let name_record_updates = std::mem::take(&mut self.name_record_updates);
         let fraud_proofs = std::mem::take(&mut self.fraud_proofs);
         let transfers = std::mem::take(&mut self.transfers);
         let token_definitions = std::mem::take(&mut self.token_definitions);
@@ -224,6 +254,8 @@ impl Mempool {
             registrations,
             anchors,
             name_registrations,
+            name_transfers,
+            name_record_updates,
             fraud_proofs,
             transfers,
             token_definitions,

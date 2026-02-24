@@ -13,13 +13,14 @@ use norn_weave::engine::WeaveEngine;
 use norn_loom::lifecycle::LoomManager;
 
 use super::types::{
-    AttributeInfo, BlockInfo, BlockLoomDeployInfo, BlockNameRegistrationInfo, BlockTokenBurnInfo,
-    BlockTokenDefinitionInfo, BlockTokenMintInfo, BlockTransactionsInfo, BlockTransferInfo,
-    ChatEvent, CommitmentProofInfo, EventInfo, ExecutionResult, FeeEstimateInfo, HealthInfo,
-    LoomExecutionEvent, LoomInfo, NameInfo, NameResolution, PendingTransactionEvent, QueryResult,
-    StakingInfo, StateProofInfo, SubmitResult, ThreadInfo, ThreadStateInfo, TokenEvent, TokenInfo,
-    TransactionHistoryEntry, TransferEvent, ValidatorInfo, ValidatorRewardInfo,
-    ValidatorRewardsInfo, ValidatorSetInfo, ValidatorStakeInfo, WeaveStateInfo,
+    AttributeInfo, BlockInfo, BlockLoomDeployInfo, BlockNameRecordUpdateInfo,
+    BlockNameRegistrationInfo, BlockNameTransferInfo, BlockTokenBurnInfo, BlockTokenDefinitionInfo,
+    BlockTokenMintInfo, BlockTransactionsInfo, BlockTransferInfo, ChatEvent, CommitmentProofInfo,
+    EventInfo, ExecutionResult, FeeEstimateInfo, HealthInfo, LoomExecutionEvent, LoomInfo,
+    NameInfo, NameResolution, PendingTransactionEvent, QueryResult, StakingInfo, StateProofInfo,
+    SubmitResult, ThreadInfo, ThreadStateInfo, TokenEvent, TokenInfo, TransactionHistoryEntry,
+    TransferEvent, ValidatorInfo, ValidatorRewardInfo, ValidatorRewardsInfo, ValidatorSetInfo,
+    ValidatorStakeInfo, WeaveStateInfo,
 };
 use crate::metrics::NodeMetrics;
 use crate::rpc::chat_store::{ChatEventStore, ChatHistoryFilter};
@@ -192,6 +193,37 @@ pub trait NornRpc {
     #[method(name = "norn_listNames")]
     async fn list_names(&self, address_hex: String) -> Result<Vec<NameInfo>, ErrorObjectOwned>;
 
+    /// Transfer a name to a new owner (requires signed knot for authentication).
+    #[method(name = "norn_transferName")]
+    async fn transfer_name(
+        &self,
+        name: String,
+        from_hex: String,
+        transfer_hex: String,
+    ) -> Result<SubmitResult, ErrorObjectOwned>;
+
+    /// Reverse-resolve an address to its primary name.
+    #[method(name = "norn_reverseName")]
+    async fn reverse_name(&self, address_hex: String) -> Result<Option<String>, ErrorObjectOwned>;
+
+    /// Set a record on a name (requires signed knot for authentication).
+    #[method(name = "norn_setNameRecord")]
+    async fn set_name_record(
+        &self,
+        name: String,
+        key: String,
+        value: String,
+        owner_hex: String,
+        knot_hex: String,
+    ) -> Result<SubmitResult, ErrorObjectOwned>;
+
+    /// Get the records for a name.
+    #[method(name = "norn_getNameRecords")]
+    async fn get_name_records(
+        &self,
+        name: String,
+    ) -> Result<Option<std::collections::HashMap<String, String>>, ErrorObjectOwned>;
+
     /// Get node metrics in Prometheus text exposition format.
     #[method(name = "norn_getMetrics")]
     async fn get_metrics(&self) -> Result<String, ErrorObjectOwned>;
@@ -254,21 +286,26 @@ pub trait NornRpc {
 
     /// Upload bytecode to a deployed loom and initialize it.
     /// Optionally pass init_msg_hex for typed constructor parameters.
+    /// Requires operator signature for authorization.
     #[method(name = "norn_uploadLoomBytecode")]
     async fn upload_loom_bytecode(
         &self,
         loom_id_hex: String,
         bytecode_hex: String,
         init_msg_hex: Option<String>,
+        operator_signature_hex: String,
+        operator_pubkey_hex: String,
     ) -> Result<SubmitResult, ErrorObjectOwned>;
 
-    /// Execute a loom contract (state-mutating).
+    /// Execute a loom contract (state-mutating). Requires sender signature.
     #[method(name = "norn_executeLoom")]
     async fn execute_loom(
         &self,
         loom_id_hex: String,
         input_hex: String,
         sender_hex: String,
+        signature_hex: String,
+        pubkey_hex: String,
     ) -> Result<ExecutionResult, ErrorObjectOwned>;
 
     /// Query a loom contract (read-only).
@@ -286,6 +323,7 @@ pub trait NornRpc {
         loom_id_hex: String,
         participant_hex: String,
         pubkey_hex: String,
+        signature_hex: String,
     ) -> Result<SubmitResult, ErrorObjectOwned>;
 
     /// Leave a loom.
@@ -294,6 +332,8 @@ pub trait NornRpc {
         &self,
         loom_id_hex: String,
         participant_hex: String,
+        signature_hex: String,
+        pubkey_hex: String,
     ) -> Result<SubmitResult, ErrorObjectOwned>;
 
     /// Submit a stake operation (hex-encoded borsh StakeOperation).
@@ -419,6 +459,8 @@ impl NornRpcServer for NornRpcImpl {
                 anchor_count: block.anchors.len(),
                 fraud_proof_count: block.fraud_proofs.len(),
                 name_registration_count: block.name_registrations.len(),
+                name_transfer_count: block.name_transfers.len(),
+                name_record_update_count: block.name_record_updates.len(),
                 transfer_count: block.transfers.len(),
                 token_definition_count: block.token_definitions.len(),
                 token_mint_count: block.token_mints.len(),
@@ -451,6 +493,8 @@ impl NornRpcServer for NornRpcImpl {
                 anchor_count: block.anchors.len(),
                 fraud_proof_count: block.fraud_proofs.len(),
                 name_registration_count: block.name_registrations.len(),
+                name_transfer_count: block.name_transfers.len(),
+                name_record_update_count: block.name_record_updates.len(),
                 transfer_count: block.transfers.len(),
                 token_definition_count: block.token_definitions.len(),
                 token_mint_count: block.token_mints.len(),
@@ -479,6 +523,8 @@ impl NornRpcServer for NornRpcImpl {
                     anchor_count: block.anchors.len(),
                     fraud_proof_count: block.fraud_proofs.len(),
                     name_registration_count: block.name_registrations.len(),
+                    name_transfer_count: block.name_transfers.len(),
+                    name_record_update_count: block.name_record_updates.len(),
                     transfer_count: block.transfers.len(),
                     token_definition_count: block.token_definitions.len(),
                     token_mint_count: block.token_mints.len(),
@@ -556,15 +602,16 @@ impl NornRpcServer for NornRpcImpl {
                 ErrorObjectOwned::owned(-32602, format!("invalid registration: {}", e), None::<()>)
             })?;
 
-        // Also register in StateManager.
-        {
-            let mut sm = self.state_manager.write().await;
-            sm.register_thread(registration.thread_id, registration.owner);
-        }
-
+        // Validate via engine FIRST, then register in StateManager on success.
         let mut engine = self.weave_engine.write().await;
         match engine.add_registration(registration.clone()) {
             Ok(_) => {
+                drop(engine);
+                // Only register in StateManager after engine validation succeeds.
+                {
+                    let mut sm = self.state_manager.write().await;
+                    sm.register_thread(registration.thread_id, registration.owner);
+                }
                 if let Some(ref handle) = self.relay_handle {
                     let h = handle.clone();
                     let msg = NornMessage::Registration(registration);
@@ -927,6 +974,15 @@ impl NornRpcServer for NornRpcImpl {
             }
         }
 
+        // Verify the sender's pubkey actually derives the claimed `from` address.
+        let sender_pubkey = knot.before_states[0].pubkey;
+        if norn_crypto::address::pubkey_to_address(&sender_pubkey) != from {
+            return Ok(SubmitResult {
+                success: false,
+                reason: Some("sender pubkey does not derive the claimed from address".to_string()),
+            });
+        }
+
         // Validate before-state hash (non-zero means the client is providing a
         // real state snapshot — reject if it doesn't match the current thread).
         let submitted_state_hash = knot.before_states[0].state_hash;
@@ -947,8 +1003,7 @@ impl NornRpcServer for NornRpcImpl {
             drop(sm_read);
         }
 
-        // Apply transfer via StateManager.
-        let sender_pubkey = knot.before_states[0].pubkey;
+        // Apply transfer via StateManager (sender_pubkey already extracted above).
         let mut sm = self.state_manager.write().await;
         sm.auto_register_with_pubkey(from, sender_pubkey);
         sm.auto_register_if_needed(to);
@@ -1221,6 +1276,41 @@ impl NornRpcServer for NornRpcImpl {
     }
 
     async fn publish_chat_event(&self, event: ChatEvent) -> Result<SubmitResult, ErrorObjectOwned> {
+        // Validate content and tag sizes to prevent memory exhaustion.
+        const MAX_CONTENT_SIZE: usize = 64 * 1024;
+        const MAX_TAGS: usize = 50;
+        const MAX_TAG_VALUES: usize = 10;
+        const MAX_TAG_VALUE_LEN: usize = 1024;
+
+        if event.content.len() > MAX_CONTENT_SIZE {
+            return Ok(SubmitResult {
+                success: false,
+                reason: Some("content exceeds maximum size".to_string()),
+            });
+        }
+        if event.tags.len() > MAX_TAGS {
+            return Ok(SubmitResult {
+                success: false,
+                reason: Some("too many tags".to_string()),
+            });
+        }
+        for tag in &event.tags {
+            if tag.len() > MAX_TAG_VALUES {
+                return Ok(SubmitResult {
+                    success: false,
+                    reason: Some("tag has too many values".to_string()),
+                });
+            }
+            for val in tag {
+                if val.len() > MAX_TAG_VALUE_LEN {
+                    return Ok(SubmitResult {
+                        success: false,
+                        reason: Some("tag value too long".to_string()),
+                    });
+                }
+            }
+        }
+
         // Verify event ID: recompute BLAKE3 hash of [pubkey, created_at, kind, tags_json, content]
         let tags_json = serde_json::to_string(&event.tags).unwrap_or_default();
         let preimage = format!(
@@ -1258,10 +1348,27 @@ impl NornRpcServer for NornRpcImpl {
             });
         }
 
-        // Store in bounded in-memory cache
+        // Reject events with timestamps too far from current time (10 minute window).
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        if event.created_at > now + 60 || now.saturating_sub(event.created_at) > 600 {
+            return Ok(SubmitResult {
+                success: false,
+                reason: Some("event timestamp out of acceptable range".to_string()),
+            });
+        }
+
+        // Store in bounded in-memory cache (with dedup)
         {
             let mut store = self.chat_store.write().unwrap();
-            store.insert(event.clone());
+            if !store.insert(event.clone()) {
+                return Ok(SubmitResult {
+                    success: false,
+                    reason: Some("duplicate event ID".to_string()),
+                });
+            }
         }
 
         // Broadcast to subscribers
@@ -1324,9 +1431,6 @@ impl NornRpcServer for NornRpcImpl {
             return Ok(None);
         }
 
-        // Need write access for Merkle proof generation (caches).
-        drop(engine);
-        let mut engine = self.weave_engine.write().await;
         let proof = engine.commitment_proof(&thread_id);
 
         Ok(Some(CommitmentProofInfo {
@@ -1542,6 +1646,7 @@ impl NornRpcServer for NornRpcImpl {
             owner: format_address(&record.owner),
             registered_at: record.registered_at,
             fee_paid: record.fee_paid.to_string(),
+            records: record.records.clone(),
         }))
     }
 
@@ -1559,6 +1664,137 @@ impl NornRpcServer for NornRpcImpl {
             })
             .collect();
         Ok(infos)
+    }
+
+    async fn transfer_name(
+        &self,
+        name: String,
+        from_hex: String,
+        transfer_hex: String,
+    ) -> Result<SubmitResult, ErrorObjectOwned> {
+        let bytes = hex::decode(&transfer_hex).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>)
+        })?;
+
+        let name_transfer: norn_types::weave::NameTransfer =
+            borsh::from_slice(&bytes).map_err(|e| {
+                ErrorObjectOwned::owned(-32602, format!("invalid name transfer: {}", e), None::<()>)
+            })?;
+
+        let from_address = parse_address_hex(&from_hex)?;
+        if name_transfer.from != from_address {
+            return Ok(SubmitResult {
+                success: false,
+                reason: Some("from address mismatch".to_string()),
+            });
+        }
+
+        if name_transfer.name != name {
+            return Ok(SubmitResult {
+                success: false,
+                reason: Some("name mismatch".to_string()),
+            });
+        }
+
+        let mut engine = self.weave_engine.write().await;
+        match engine.add_name_transfer(name_transfer.clone()) {
+            Ok(_) => {
+                if let Some(ref handle) = self.relay_handle {
+                    let h = handle.clone();
+                    let msg = NornMessage::NameTransfer(name_transfer);
+                    tokio::spawn(async move {
+                        let _ = h.broadcast(msg).await;
+                    });
+                }
+                Ok(SubmitResult {
+                    success: true,
+                    reason: Some(format!(
+                        "name '{}' transfer submitted (will be included in next block)",
+                        name
+                    )),
+                })
+            }
+            Err(e) => Ok(SubmitResult {
+                success: false,
+                reason: Some(e.to_string()),
+            }),
+        }
+    }
+
+    async fn reverse_name(&self, address_hex: String) -> Result<Option<String>, ErrorObjectOwned> {
+        let address = parse_address_hex(&address_hex)?;
+        let sm = self.state_manager.read().await;
+        let names = sm.names_for_address(&address);
+        Ok(names.first().map(|n| n.to_string()))
+    }
+
+    async fn set_name_record(
+        &self,
+        name: String,
+        key: String,
+        value: String,
+        owner_hex: String,
+        knot_hex: String,
+    ) -> Result<SubmitResult, ErrorObjectOwned> {
+        let bytes = hex::decode(&knot_hex).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>)
+        })?;
+
+        let record_update: norn_types::weave::NameRecordUpdate = borsh::from_slice(&bytes)
+            .map_err(|e| {
+                ErrorObjectOwned::owned(
+                    -32602,
+                    format!("invalid name record update: {}", e),
+                    None::<()>,
+                )
+            })?;
+
+        let owner_address = parse_address_hex(&owner_hex)?;
+        if record_update.owner != owner_address {
+            return Ok(SubmitResult {
+                success: false,
+                reason: Some("owner address mismatch".to_string()),
+            });
+        }
+
+        if record_update.name != name || record_update.key != key || record_update.value != value {
+            return Ok(SubmitResult {
+                success: false,
+                reason: Some("name/key/value mismatch".to_string()),
+            });
+        }
+
+        let mut engine = self.weave_engine.write().await;
+        match engine.add_name_record_update(record_update.clone()) {
+            Ok(_) => {
+                if let Some(ref handle) = self.relay_handle {
+                    let h = handle.clone();
+                    let msg = NornMessage::NameRecordUpdate(record_update);
+                    tokio::spawn(async move {
+                        let _ = h.broadcast(msg).await;
+                    });
+                }
+                Ok(SubmitResult {
+                    success: true,
+                    reason: Some(format!(
+                        "name record update for '{}' submitted (will be included in next block)",
+                        name
+                    )),
+                })
+            }
+            Err(e) => Ok(SubmitResult {
+                success: false,
+                reason: Some(e.to_string()),
+            }),
+        }
+    }
+
+    async fn get_name_records(
+        &self,
+        name: String,
+    ) -> Result<Option<std::collections::HashMap<String, String>>, ErrorObjectOwned> {
+        let sm = self.state_manager.read().await;
+        Ok(sm.get_name_records(&name).cloned())
     }
 
     async fn get_metrics(&self) -> Result<String, ErrorObjectOwned> {
@@ -1997,6 +2233,8 @@ impl NornRpcServer for NornRpcImpl {
         loom_id_hex: String,
         bytecode_hex: String,
         init_msg_hex: Option<String>,
+        operator_signature_hex: String,
+        operator_pubkey_hex: String,
     ) -> Result<SubmitResult, ErrorObjectOwned> {
         let loom_id = parse_loom_hex(&loom_id_hex)?;
         let bytecode = hex::decode(&bytecode_hex).map_err(|e| {
@@ -2009,15 +2247,83 @@ impl NornRpcServer for NornRpcImpl {
             None => None,
         };
 
-        // Verify loom exists in StateManager.
+        // Parse operator pubkey.
+        let op_pubkey_bytes = hex::decode(&operator_pubkey_hex).map_err(|e| {
+            ErrorObjectOwned::owned(
+                -32602,
+                format!("invalid operator pubkey hex: {}", e),
+                None::<()>,
+            )
+        })?;
+        if op_pubkey_bytes.len() != 32 {
+            return Err(ErrorObjectOwned::owned(
+                -32602,
+                format!(
+                    "operator pubkey must be 32 bytes, got {}",
+                    op_pubkey_bytes.len()
+                ),
+                None::<()>,
+            ));
+        }
+        let mut op_pubkey = [0u8; 32];
+        op_pubkey.copy_from_slice(&op_pubkey_bytes);
+
+        // Verify loom exists and the provided pubkey matches the stored operator.
         {
             let sm = self.state_manager.read().await;
-            if sm.get_loom(&loom_id).is_none() {
-                return Ok(SubmitResult {
-                    success: false,
-                    reason: Some(format!("loom {} not found", loom_id_hex)),
-                });
+            match sm.get_loom(&loom_id) {
+                None => {
+                    return Ok(SubmitResult {
+                        success: false,
+                        reason: Some(format!("loom {} not found", loom_id_hex)),
+                    });
+                }
+                Some(record) => {
+                    if record.operator != op_pubkey {
+                        return Err(ErrorObjectOwned::owned(
+                            -32602,
+                            "provided pubkey does not match loom operator",
+                            None::<()>,
+                        ));
+                    }
+                }
             }
+        }
+
+        // Verify operator signature over blake3(b"norn_upload_bytecode" || loom_id || blake3(bytecode)).
+        let bytecode_hash = norn_crypto::hash::blake3_hash(&bytecode);
+        let signing_msg = norn_crypto::hash::blake3_hash_multi(&[
+            b"norn_upload_bytecode",
+            &loom_id,
+            &bytecode_hash,
+        ]);
+
+        let op_sig_bytes = hex::decode(&operator_signature_hex).map_err(|e| {
+            ErrorObjectOwned::owned(
+                -32602,
+                format!("invalid operator signature hex: {}", e),
+                None::<()>,
+            )
+        })?;
+        if op_sig_bytes.len() != 64 {
+            return Err(ErrorObjectOwned::owned(
+                -32602,
+                format!(
+                    "operator signature must be 64 bytes, got {}",
+                    op_sig_bytes.len()
+                ),
+                None::<()>,
+            ));
+        }
+        let mut op_sig = [0u8; 64];
+        op_sig.copy_from_slice(&op_sig_bytes);
+
+        if let Err(e) = norn_crypto::keys::verify(&signing_msg, &op_sig, &op_pubkey) {
+            return Err(ErrorObjectOwned::owned(
+                -32602,
+                format!("invalid operator signature: {}", e),
+                None::<()>,
+            ));
         }
 
         let mut loom_mgr = self.loom_manager.write().await;
@@ -2054,12 +2360,63 @@ impl NornRpcServer for NornRpcImpl {
         loom_id_hex: String,
         input_hex: String,
         sender_hex: String,
+        signature_hex: String,
+        pubkey_hex: String,
     ) -> Result<ExecutionResult, ErrorObjectOwned> {
         let loom_id = parse_loom_hex(&loom_id_hex)?;
         let input = hex::decode(&input_hex).map_err(|e| {
             ErrorObjectOwned::owned(-32602, format!("invalid input hex: {}", e), None::<()>)
         })?;
         let sender = parse_address_hex(&sender_hex)?;
+
+        // Parse and verify sender pubkey + signature.
+        let pubkey_bytes = hex::decode(&pubkey_hex).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid pubkey hex: {}", e), None::<()>)
+        })?;
+        if pubkey_bytes.len() != 32 {
+            return Err(ErrorObjectOwned::owned(
+                -32602,
+                format!("pubkey must be 32 bytes, got {}", pubkey_bytes.len()),
+                None::<()>,
+            ));
+        }
+        let mut pubkey = [0u8; 32];
+        pubkey.copy_from_slice(&pubkey_bytes);
+
+        if norn_crypto::address::pubkey_to_address(&pubkey) != sender {
+            return Err(ErrorObjectOwned::owned(
+                -32602,
+                "pubkey does not derive the claimed sender address",
+                None::<()>,
+            ));
+        }
+
+        let sig_bytes = hex::decode(&signature_hex).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid signature hex: {}", e), None::<()>)
+        })?;
+        if sig_bytes.len() != 64 {
+            return Err(ErrorObjectOwned::owned(
+                -32602,
+                format!("signature must be 64 bytes, got {}", sig_bytes.len()),
+                None::<()>,
+            ));
+        }
+        let mut sig = [0u8; 64];
+        sig.copy_from_slice(&sig_bytes);
+
+        let signing_msg = norn_crypto::hash::blake3_hash_multi(&[
+            b"norn_execute_loom",
+            &loom_id,
+            &input,
+            &sender,
+        ]);
+        if let Err(e) = norn_crypto::keys::verify(&signing_msg, &sig, &pubkey) {
+            return Err(ErrorObjectOwned::owned(
+                -32602,
+                format!("invalid execute_loom signature: {}", e),
+                None::<()>,
+            ));
+        }
 
         // Get current block context.
         let (block_height, timestamp) = {
@@ -2078,7 +2435,7 @@ impl NornRpcServer for NornRpcImpl {
 
         // Auto-join the sender as a participant if not already one.
         // Loom contracts are permissionless — anyone can interact.
-        let _ = loom_mgr.join(&loom_id, [0u8; 32], sender, timestamp);
+        let _ = loom_mgr.join(&loom_id, pubkey, sender, timestamp);
 
         match loom_mgr.execute(&loom_id, &input, sender, block_height, timestamp) {
             Ok(outcome) => {
@@ -2237,6 +2594,7 @@ impl NornRpcServer for NornRpcImpl {
         loom_id_hex: String,
         participant_hex: String,
         pubkey_hex: String,
+        signature_hex: String,
     ) -> Result<SubmitResult, ErrorObjectOwned> {
         let loom_id = parse_loom_hex(&loom_id_hex)?;
         let address = parse_address_hex(&participant_hex)?;
@@ -2252,6 +2610,39 @@ impl NornRpcServer for NornRpcImpl {
         }
         let mut pubkey = [0u8; 32];
         pubkey.copy_from_slice(&pubkey_bytes);
+
+        // Verify the pubkey actually derives the claimed participant address.
+        if norn_crypto::address::pubkey_to_address(&pubkey) != address {
+            return Err(ErrorObjectOwned::owned(
+                -32602,
+                "pubkey does not derive the claimed participant address",
+                None::<()>,
+            ));
+        }
+
+        // Parse and verify signature over blake3(b"norn_join_loom" || loom_id || address).
+        let sig_bytes = hex::decode(&signature_hex).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid signature hex: {}", e), None::<()>)
+        })?;
+        if sig_bytes.len() != 64 {
+            return Err(ErrorObjectOwned::owned(
+                -32602,
+                format!("signature must be 64 bytes, got {}", sig_bytes.len()),
+                None::<()>,
+            ));
+        }
+        let mut sig = [0u8; 64];
+        sig.copy_from_slice(&sig_bytes);
+
+        let signing_msg =
+            norn_crypto::hash::blake3_hash_multi(&[b"norn_join_loom", &loom_id, &address]);
+        if let Err(e) = norn_crypto::keys::verify(&signing_msg, &sig, &pubkey) {
+            return Err(ErrorObjectOwned::owned(
+                -32602,
+                format!("invalid join_loom signature: {}", e),
+                None::<()>,
+            ));
+        }
 
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -2275,9 +2666,59 @@ impl NornRpcServer for NornRpcImpl {
         &self,
         loom_id_hex: String,
         participant_hex: String,
+        signature_hex: String,
+        pubkey_hex: String,
     ) -> Result<SubmitResult, ErrorObjectOwned> {
         let loom_id = parse_loom_hex(&loom_id_hex)?;
         let address = parse_address_hex(&participant_hex)?;
+
+        // Parse and validate pubkey.
+        let pubkey_bytes = hex::decode(&pubkey_hex).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid pubkey hex: {}", e), None::<()>)
+        })?;
+        if pubkey_bytes.len() != 32 {
+            return Err(ErrorObjectOwned::owned(
+                -32602,
+                format!("pubkey must be 32 bytes, got {}", pubkey_bytes.len()),
+                None::<()>,
+            ));
+        }
+        let mut pubkey = [0u8; 32];
+        pubkey.copy_from_slice(&pubkey_bytes);
+
+        // Verify the pubkey derives the claimed participant address.
+        if norn_crypto::address::pubkey_to_address(&pubkey) != address {
+            return Err(ErrorObjectOwned::owned(
+                -32602,
+                "pubkey does not derive the claimed participant address",
+                None::<()>,
+            ));
+        }
+
+        // Parse and validate signature.
+        let sig_bytes = hex::decode(&signature_hex).map_err(|e| {
+            ErrorObjectOwned::owned(-32602, format!("invalid signature hex: {}", e), None::<()>)
+        })?;
+        if sig_bytes.len() != 64 {
+            return Err(ErrorObjectOwned::owned(
+                -32602,
+                format!("signature must be 64 bytes, got {}", sig_bytes.len()),
+                None::<()>,
+            ));
+        }
+        let mut sig = [0u8; 64];
+        sig.copy_from_slice(&sig_bytes);
+
+        // Verify signature over blake3(b"norn_leave_loom" || loom_id || address).
+        let signing_msg =
+            norn_crypto::hash::blake3_hash_multi(&[b"norn_leave_loom", &loom_id, &address]);
+        if let Err(e) = norn_crypto::keys::verify(&signing_msg, &sig, &pubkey) {
+            return Err(ErrorObjectOwned::owned(
+                -32602,
+                format!("invalid leave_loom signature: {}", e),
+                None::<()>,
+            ));
+        }
 
         let mut loom_mgr = self.loom_manager.write().await;
         match loom_mgr.leave(&loom_id, &address) {
@@ -2433,7 +2874,7 @@ impl NornRpcServer for NornRpcImpl {
     }
 
     async fn get_state_root(&self) -> Result<String, ErrorObjectOwned> {
-        let mut sm = self.state_manager.write().await;
+        let sm = self.state_manager.read().await;
         let root = sm.state_root();
         Ok(hex::encode(root))
     }
@@ -2474,7 +2915,7 @@ impl NornRpcServer for NornRpcImpl {
             NATIVE_TOKEN_ID
         };
 
-        let mut sm = self.state_manager.write().await;
+        let sm = self.state_manager.read().await;
         let balance = sm.get_balance(&address, &token_id);
         let proof = sm.state_proof(&address, &token_id);
         let root = sm.state_root();
@@ -2596,6 +3037,29 @@ impl NornRpcServer for NornRpcImpl {
             })
             .collect();
 
+        let name_transfers = block
+            .name_transfers
+            .iter()
+            .map(|nt| BlockNameTransferInfo {
+                name: nt.name.clone(),
+                from: format_address(&nt.from),
+                to: format_address(&nt.to),
+                timestamp: nt.timestamp,
+            })
+            .collect();
+
+        let name_record_updates = block
+            .name_record_updates
+            .iter()
+            .map(|nru| BlockNameRecordUpdateInfo {
+                name: nru.name.clone(),
+                key: nru.key.clone(),
+                value: nru.value.clone(),
+                owner: format_address(&nru.owner),
+                timestamp: nru.timestamp,
+            })
+            .collect();
+
         let loom_deploys = block
             .loom_deploys
             .iter()
@@ -2615,6 +3079,8 @@ impl NornRpcServer for NornRpcImpl {
             token_mints,
             token_burns,
             name_registrations,
+            name_transfers,
+            name_record_updates,
             loom_deploys,
         }))
     }
@@ -2639,6 +3105,8 @@ mod tests {
             anchor_count: 0,
             fraud_proof_count: 0,
             name_registration_count: 0,
+            name_transfer_count: 0,
+            name_record_update_count: 0,
             transfer_count: 0,
             token_definition_count: 0,
             token_mint_count: 0,

@@ -109,6 +109,29 @@ pub async fn run(command: WalletCommand) -> Result<(), WalletError> {
             json,
             rpc_url,
         } => commands::resolve::run(&name, json, rpc_url.as_deref()).await,
+        WalletCommand::TransferName {
+            name,
+            to,
+            yes,
+            rpc_url,
+        } => commands::transfer_name::run(&name, &to, yes, rpc_url.as_deref()).await,
+        WalletCommand::ReverseName {
+            address,
+            json,
+            rpc_url,
+        } => commands::reverse_resolve::run(&address, json, rpc_url.as_deref()).await,
+        WalletCommand::SetNameRecord {
+            name,
+            key,
+            value,
+            yes,
+            rpc_url,
+        } => commands::set_name_record::run(&name, &key, &value, yes, rpc_url.as_deref()).await,
+        WalletCommand::NameRecords {
+            name,
+            json,
+            rpc_url,
+        } => commands::name_records::run(&name, json, rpc_url.as_deref()).await,
         WalletCommand::Names { json, rpc_url } => {
             commands::names::run(json, rpc_url.as_deref()).await
         }

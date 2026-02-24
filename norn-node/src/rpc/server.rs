@@ -216,6 +216,8 @@ mod auth_middleware {
         "norn_getRecentTransfers",
         "norn_resolveName",
         "norn_listNames",
+        "norn_reverseName",
+        "norn_getNameRecords",
         "norn_getMetrics",
         "norn_getTokenInfo",
         "norn_getTokenBySymbol",
@@ -240,8 +242,7 @@ mod auth_middleware {
         "norn_unsubscribeLoomEvents",
         "norn_subscribePendingTransactions",
         "norn_unsubscribePendingTransactions",
-        // Chat relay.
-        "norn_publishChatEvent",
+        // Chat relay (read-only).
         "norn_getChatHistory",
         "norn_subscribeChatEvents",
         "norn_unsubscribeChatEvents",
@@ -278,27 +279,41 @@ mod auth_middleware {
         api_key: String,
     }
 
-    /// Extract the JSON-RPC method name from a request body (best-effort).
-    /// Looks for `"method":"..."` or `"method": "..."` patterns without
-    /// requiring a full JSON parse.
-    fn extract_method_name(body: &[u8]) -> Option<String> {
-        let text = std::str::from_utf8(body).ok()?;
-        // Fast path: find "method" key and extract its string value.
-        let method_idx = text.find("\"method\"")?;
-        let after_key = &text[method_idx + 8..];
-        // Skip whitespace and colon
-        let after_colon = after_key.find(':').map(|i| &after_key[i + 1..])?;
-        let trimmed = after_colon.trim_start();
-        if !trimmed.starts_with('"') {
-            return None;
+    /// Extract all JSON-RPC method names from a request body.
+    /// Handles both single requests and batch requests (JSON arrays).
+    fn extract_method_names(body: &[u8]) -> Vec<String> {
+        let v: serde_json::Value = match serde_json::from_slice(body) {
+            Ok(v) => v,
+            Err(_) => return vec![],
+        };
+        match &v {
+            serde_json::Value::Array(arr) => arr
+                .iter()
+                .filter_map(|item| item.get("method")?.as_str().map(|s| s.to_string()))
+                .collect(),
+            serde_json::Value::Object(_) => v
+                .get("method")
+                .and_then(|m| m.as_str())
+                .map(|s| vec![s.to_string()])
+                .unwrap_or_default(),
+            _ => vec![],
         }
-        let value_start = 1; // skip opening quote
-        let value_end = trimmed[value_start..].find('"')?;
-        Some(trimmed[value_start..value_start + value_end].to_string())
     }
 
     fn is_read_only(method: &str) -> bool {
         READ_ONLY_METHODS.contains(&method)
+    }
+
+    /// Constant-time string comparison to prevent timing side-channel attacks.
+    fn constant_time_eq(a: &str, b: &str) -> bool {
+        if a.len() != b.len() {
+            return false;
+        }
+        let mut result = 0u8;
+        for (x, y) in a.bytes().zip(b.bytes()) {
+            result |= x ^ y;
+        }
+        result == 0
     }
 
     impl<S, B> Service<Request<B>> for AuthService<S>
@@ -342,7 +357,7 @@ mod auth_middleware {
                     .get(AUTHORIZATION)
                     .and_then(|v| v.to_str().ok())
                     .and_then(|v| v.strip_prefix("Bearer "))
-                    .map(|token| token == api_key)
+                    .map(|token| constant_time_eq(token, &api_key))
                     .unwrap_or(false);
 
                 // If authorized, pass through immediately.
@@ -365,8 +380,9 @@ mod auth_middleware {
                     .map(|c| c.to_bytes())
                     .unwrap_or_default();
 
-                let method_name = extract_method_name(&collected);
-                let is_read = method_name.as_deref().map(is_read_only).unwrap_or(false);
+                let method_names = extract_method_names(&collected);
+                let is_read =
+                    !method_names.is_empty() && method_names.iter().all(|m| is_read_only(m));
 
                 if is_read {
                     // Read-only method — allow without auth.

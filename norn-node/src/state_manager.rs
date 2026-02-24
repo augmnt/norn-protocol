@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 
+use norn_crypto::address::pubkey_to_address;
 use norn_crypto::merkle::SparseMerkleTree;
 use norn_types::constants::{MAX_SUPPLY, TRANSFER_FEE};
 use norn_types::error::NornError;
@@ -21,6 +22,8 @@ pub struct NameRecord {
     pub owner: Address,
     pub registered_at: u64,
     pub fee_paid: Amount,
+    /// NNS records (avatar, url, description, twitter, github, email, discord).
+    pub records: HashMap<String, String>,
 }
 
 /// A record of a registered token (NT-1).
@@ -238,7 +241,16 @@ impl StateManager {
     }
 
     /// Auto-register a thread with a known public key if not already present.
+    /// If the pubkey is non-zero and does not derive the claimed address, skip
+    /// registration (defense-in-depth against spoofed sender pubkeys).
     pub fn auto_register_with_pubkey(&mut self, address: Address, pubkey: PublicKey) {
+        if pubkey != [0u8; 32] && pubkey_to_address(&pubkey) != address {
+            tracing::warn!(
+                "auto_register_with_pubkey: pubkey does not derive address {}; skipping",
+                hex::encode(address),
+            );
+            return;
+        }
         if !self.is_registered(&address) {
             self.register_thread(address, pubkey);
         }
@@ -256,13 +268,13 @@ impl StateManager {
     }
 
     /// Compute the current state root from the sparse Merkle tree.
-    pub fn state_root(&mut self) -> Hash {
+    pub fn state_root(&self) -> Hash {
         self.state_smt.root()
     }
 
     /// Generate a Merkle proof for a specific balance.
     pub fn state_proof(
-        &mut self,
+        &self,
         address: &Address,
         token_id: &TokenId,
     ) -> norn_crypto::merkle::MerkleProof {
@@ -371,10 +383,17 @@ impl StateManager {
             .ok_or(NornError::ThreadNotFound(from))?;
         if token_id == NATIVE_TOKEN_ID {
             // Native token: need amount + fee in a single token.
-            if !sender_state.has_balance(&token_id, amount + TRANSFER_FEE) {
+            let required =
+                amount
+                    .checked_add(TRANSFER_FEE)
+                    .ok_or_else(|| NornError::InsufficientBalance {
+                        available: sender_state.balance(&token_id),
+                        required: u128::MAX,
+                    })?;
+            if !sender_state.has_balance(&token_id, required) {
                 return Err(NornError::InsufficientBalance {
                     available: sender_state.balance(&token_id),
-                    required: amount + TRANSFER_FEE,
+                    required,
                 });
             }
         } else {
@@ -833,6 +852,12 @@ impl StateManager {
             self.block_archive.drain(..excess);
         }
 
+        // Evict old block production times to prevent unbounded growth.
+        if self.block_production_times.len() > MAX_BLOCK_ARCHIVE {
+            let min_height = self.block_archive.first().map(|b| b.height).unwrap_or(0);
+            self.block_production_times.retain(|&h, _| h >= min_height);
+        }
+
         // Evict oldest transfer records from memory.
         if self.transfer_log.len() > MAX_TRANSFER_LOG {
             let excess = self.transfer_log.len() - MAX_TRANSFER_LOG;
@@ -949,6 +974,7 @@ impl StateManager {
             owner,
             registered_at: timestamp,
             fee_paid: NAME_REGISTRATION_FEE,
+            records: HashMap::new(),
         };
         self.name_registry
             .insert(name.to_string(), name_record.clone());
@@ -1037,6 +1063,7 @@ impl StateManager {
             owner,
             registered_at: timestamp,
             fee_paid,
+            records: HashMap::new(),
         };
         self.name_registry
             .insert(name.to_string(), name_record.clone());
@@ -1089,6 +1116,13 @@ impl StateManager {
         self.name_registry.keys().map(|s| s.as_str())
     }
 
+    /// Iterate over all registered names with their owners.
+    pub fn name_owners(&self) -> impl Iterator<Item = (&str, Address)> + '_ {
+        self.name_registry
+            .iter()
+            .map(|(name, rec)| (name.as_str(), rec.owner))
+    }
+
     /// Iterate over all registered thread IDs (addresses).
     pub fn registered_thread_ids(&self) -> impl Iterator<Item = &Address> {
         self.thread_states.keys()
@@ -1100,6 +1134,141 @@ impl StateManager {
             .get(address)
             .map(|names| names.iter().map(|s| s.as_str()).collect())
             .unwrap_or_default()
+    }
+
+    /// Transfer a name from one address to another.
+    pub fn transfer_name(
+        &mut self,
+        name: &str,
+        from: Address,
+        to: Address,
+        timestamp: u64,
+    ) -> Result<(), NornError> {
+        // 1. Verify name exists and `from` is the current owner.
+        let record = self
+            .name_registry
+            .get(name)
+            .ok_or_else(|| NornError::NameNotFound(name.to_string()))?;
+        if record.owner != from {
+            return Err(NornError::NotNameOwner {
+                name: name.to_string(),
+                address: from,
+            });
+        }
+
+        // 2. Update owner (preserve registered_at, fee_paid, records).
+        let record = self.name_registry.get_mut(name).unwrap();
+        record.owner = to;
+
+        // 3. Update address_names for the old owner.
+        if let Some(old_names) = self.address_names.get_mut(&from) {
+            old_names.retain(|n| n != name);
+            if old_names.is_empty() {
+                self.address_names.remove(&from);
+            }
+        }
+
+        // 4. Update address_names for the new owner.
+        self.address_names
+            .entry(to)
+            .or_default()
+            .push(name.to_string());
+
+        // 5. Log synthetic transfer event.
+        self.log_synthetic_transfer(
+            from,
+            to,
+            NATIVE_TOKEN_ID,
+            0, // No fee for transfers
+            Some(&format!("NNS name transfer: {}", name)),
+            timestamp,
+        );
+
+        // 6. Persist if store is available.
+        if let Some(ref store) = self.state_store {
+            let updated_record = self.name_registry.get(name).unwrap();
+            if let Err(e) = store.save_name(name, updated_record) {
+                tracing::warn!("failed to persist name transfer for '{}': {}", name, e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Set a record (key-value pair) on a name.
+    pub fn set_name_record(
+        &mut self,
+        name: &str,
+        key: &str,
+        value: &str,
+        owner: Address,
+        _timestamp: u64,
+    ) -> Result<(), NornError> {
+        // 1. Verify name exists and owner matches.
+        let record = self
+            .name_registry
+            .get(name)
+            .ok_or_else(|| NornError::NameNotFound(name.to_string()))?;
+        if record.owner != owner {
+            return Err(NornError::NotNameOwner {
+                name: name.to_string(),
+                address: owner,
+            });
+        }
+
+        // 2. Validate key is allowed.
+        if !norn_types::name::ALLOWED_RECORD_KEYS.contains(&key) {
+            return Err(NornError::InvalidNameRecord {
+                reason: format!(
+                    "invalid key '{}'; allowed: {:?}",
+                    key,
+                    norn_types::name::ALLOWED_RECORD_KEYS
+                ),
+            });
+        }
+
+        // 3. Validate value length.
+        if value.len() > norn_types::name::MAX_RECORD_VALUE_LEN {
+            return Err(NornError::InvalidNameRecord {
+                reason: format!(
+                    "value too long: {} > {}",
+                    value.len(),
+                    norn_types::name::MAX_RECORD_VALUE_LEN
+                ),
+            });
+        }
+
+        // 4. Check record count limit (only for new keys).
+        let record = self.name_registry.get(name).unwrap();
+        if !record.records.contains_key(key)
+            && record.records.len() >= norn_types::name::MAX_RECORDS_PER_NAME
+        {
+            return Err(NornError::InvalidNameRecord {
+                reason: format!(
+                    "max records per name reached ({})",
+                    norn_types::name::MAX_RECORDS_PER_NAME
+                ),
+            });
+        }
+
+        // 5. Insert/update the record.
+        let record = self.name_registry.get_mut(name).unwrap();
+        record.records.insert(key.to_string(), value.to_string());
+
+        // 6. Persist if store is available.
+        if let Some(ref store) = self.state_store {
+            let updated_record = self.name_registry.get(name).unwrap();
+            if let Err(e) = store.save_name(name, updated_record) {
+                tracing::warn!("failed to persist name record update for '{}': {}", name, e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get the records for a name.
+    pub fn get_name_records(&self, name: &str) -> Option<&HashMap<String, String>> {
+        self.name_registry.get(name).map(|r| &r.records)
     }
 
     // ─── Token Operations (NT-1) ─────────────────────────────────────────────
@@ -1458,7 +1627,7 @@ impl StateManager {
     ) -> Result<(), NornError> {
         self.auto_register_with_pubkey(burner, burner_pubkey);
 
-        if let Some(state) = self.thread_states.get(&burner) {
+        let debited = if let Some(state) = self.thread_states.get(&burner) {
             if state.has_balance(&token_id, amount) {
                 let state = self.thread_states.get_mut(&burner).unwrap();
                 state.debit(&token_id, amount);
@@ -1471,18 +1640,24 @@ impl StateManager {
 
                 // Update SMT.
                 self.update_smt(&burner, &token_id);
+                true
             } else {
                 tracing::warn!(
                     "peer token burn: burner {} has insufficient balance for {}",
                     hex::encode(burner),
                     amount,
                 );
+                false
             }
-        }
+        } else {
+            false
+        };
 
-        // Update supply.
-        if let Some(record) = self.token_registry.get_mut(&token_id) {
-            record.current_supply = record.current_supply.saturating_sub(amount);
+        // Only update supply if the debit actually succeeded.
+        if debited {
+            if let Some(record) = self.token_registry.get_mut(&token_id) {
+                record.current_supply = record.current_supply.saturating_sub(amount);
+            }
         }
 
         Ok(())
@@ -1621,14 +1796,13 @@ impl StateManager {
             if let Err(e) = store.save_loom(&loom_id, &record) {
                 tracing::warn!("failed to persist peer loom: {}", e);
             }
-            if let Err(e) = store.save_thread_state(
-                &operator_address,
-                self.thread_states.get(&operator_address).unwrap(),
-            ) {
-                tracing::warn!(
-                    "failed to persist operator state after peer loom deploy: {}",
-                    e
-                );
+            if let Some(ts) = self.thread_states.get(&operator_address) {
+                if let Err(e) = store.save_thread_state(&operator_address, ts) {
+                    tracing::warn!(
+                        "failed to persist operator state after peer loom deploy: {}",
+                        e
+                    );
+                }
             }
         }
     }
@@ -1902,6 +2076,10 @@ mod tests {
             anchors: vec![],
             name_registrations: vec![],
             name_registrations_root: [0u8; 32],
+            name_transfers: vec![],
+            name_transfers_root: [0u8; 32],
+            name_record_updates: vec![],
+            name_record_updates_root: [0u8; 32],
             fraud_proofs: vec![],
             fraud_proofs_root: [0u8; 32],
             transfers: vec![],

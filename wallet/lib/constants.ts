@@ -10,6 +10,8 @@ export const QUERY_KEYS = {
     ["txHistory", address, page] as const,
   names: (address: string) => ["names", address] as const,
   resolveName: (name: string) => ["resolveName", name] as const,
+  reverseName: (address: string) => ["reverseName", address] as const,
+  nameRecords: (name: string) => ["nameRecords", name] as const,
   tokenInfo: (tokenId: string) => ["tokenInfo", tokenId] as const,
   tokenBySymbol: (symbol: string) => ["tokenBySymbol", symbol] as const,
   tokensList: (page: number) => ["tokensList", page] as const,

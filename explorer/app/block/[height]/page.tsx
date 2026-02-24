@@ -27,6 +27,8 @@ import type {
   BlockTokenMintInfo,
   BlockTokenBurnInfo,
   BlockNameRegistrationInfo,
+  BlockNameTransferInfo,
+  BlockNameRecordUpdateInfo,
   BlockLoomDeployInfo,
 } from "@/types";
 
@@ -197,6 +199,59 @@ const nameRegColumns = [
   },
 ];
 
+const nameTransferColumns = [
+  {
+    header: "Name",
+    key: "name",
+    render: (n: BlockNameTransferInfo) => (
+      <span className="font-medium text-sm">{n.name}</span>
+    ),
+  },
+  {
+    header: "From",
+    key: "from",
+    render: (n: BlockNameTransferInfo) => <AddressDisplay address={n.from} />,
+  },
+  {
+    header: "To",
+    key: "to",
+    render: (n: BlockNameTransferInfo) => <AddressDisplay address={n.to} />,
+  },
+];
+
+const nameRecordUpdateColumns = [
+  {
+    header: "Name",
+    key: "name",
+    render: (n: BlockNameRecordUpdateInfo) => (
+      <span className="font-medium text-sm">{n.name}</span>
+    ),
+  },
+  {
+    header: "Key",
+    key: "key",
+    render: (n: BlockNameRecordUpdateInfo) => (
+      <Badge variant="outline">{n.key}</Badge>
+    ),
+  },
+  {
+    header: "Value",
+    key: "value",
+    render: (n: BlockNameRecordUpdateInfo) => (
+      <span className="text-sm truncate max-w-[200px] inline-block">
+        {n.value}
+      </span>
+    ),
+  },
+  {
+    header: "Owner",
+    key: "owner",
+    render: (n: BlockNameRecordUpdateInfo) => (
+      <AddressDisplay address={n.owner} />
+    ),
+  },
+];
+
 const loomDeployColumns = [
   {
     header: "Name",
@@ -248,6 +303,8 @@ export default function BlockDetailPage({
   const activityCounts = [
     { label: "Transfers", count: block.transfer_count },
     { label: "Names", count: block.name_registration_count },
+    { label: "Name Transfers", count: block.name_transfer_count ?? 0 },
+    { label: "Record Updates", count: block.name_record_update_count ?? 0 },
     { label: "Token Defs", count: block.token_definition_count },
     { label: "Mints", count: block.token_mint_count },
     { label: "Burns", count: block.token_burn_count },
@@ -261,6 +318,8 @@ export default function BlockDetailPage({
     blockTxs.token_mints.length > 0 ||
     blockTxs.token_burns.length > 0 ||
     blockTxs.name_registrations.length > 0 ||
+    (blockTxs.name_transfers?.length ?? 0) > 0 ||
+    (blockTxs.name_record_updates?.length ?? 0) > 0 ||
     blockTxs.loom_deploys.length > 0
   );
 
@@ -479,6 +538,40 @@ export default function BlockDetailPage({
                     columns={nameRegColumns}
                     data={blockTxs.name_registrations}
                     keyExtractor={(n) => n.name}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
+            {(blockTxs.name_transfers?.length ?? 0) > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium">
+                    Name Transfers ({blockTxs.name_transfers!.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-0">
+                  <DataTable
+                    columns={nameTransferColumns}
+                    data={blockTxs.name_transfers!}
+                    keyExtractor={(n) => `${n.name}-${n.from}-${n.to}`}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
+            {(blockTxs.name_record_updates?.length ?? 0) > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium">
+                    Name Record Updates ({blockTxs.name_record_updates!.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-0">
+                  <DataTable
+                    columns={nameRecordUpdateColumns}
+                    data={blockTxs.name_record_updates!}
+                    keyExtractor={(n) => `${n.name}-${n.key}-${n.timestamp}`}
                   />
                 </CardContent>
               </Card>

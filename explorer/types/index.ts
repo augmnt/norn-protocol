@@ -9,6 +9,8 @@ export type {
   BlockTokenMintInfo,
   BlockTokenBurnInfo,
   BlockNameRegistrationInfo,
+  BlockNameTransferInfo,
+  BlockNameRecordUpdateInfo,
   BlockLoomDeployInfo,
   WeaveStateInfo,
   HealthInfo,

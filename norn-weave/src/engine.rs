@@ -7,8 +7,9 @@ use norn_types::loom::LoomRegistration;
 use norn_types::network::NornMessage;
 use norn_types::primitives::*;
 use norn_types::weave::{
-    BlockTransfer, CommitmentUpdate, NameRegistration, Registration, StakeOperation, TokenBurn,
-    TokenDefinition, TokenMint, ValidatorSet, WeaveBlock, WeaveState,
+    BlockTransfer, CommitmentUpdate, NameRecordUpdate, NameRegistration, NameTransfer,
+    Registration, StakeOperation, TokenBurn, TokenDefinition, TokenMint, ValidatorSet, WeaveBlock,
+    WeaveState,
 };
 use rayon::prelude::*;
 
@@ -31,6 +32,8 @@ pub struct WeaveEngine {
     known_threads: HashSet<[u8; 20]>,
     /// Known names for duplicate detection.
     known_names: HashSet<String>,
+    /// Known name owners for transfer and record update validation.
+    known_name_owners: HashMap<String, Address>,
     /// Known tokens for duplicate detection and validation.
     known_tokens: HashMap<TokenId, crate::token::TokenMeta>,
     /// Known token symbols for uniqueness enforcement.
@@ -69,6 +72,7 @@ impl WeaveEngine {
             keypair,
             known_threads: HashSet::new(),
             known_names: HashSet::new(),
+            known_name_owners: HashMap::new(),
             known_tokens: HashMap::new(),
             known_symbols: HashSet::new(),
             known_looms: HashSet::new(),
@@ -103,6 +107,20 @@ impl WeaveEngine {
             NornMessage::NameRegistration(nr) => {
                 if crate::name::validate_name_registration(&nr, &self.known_names).is_ok() {
                     let _ = self.mempool.add_name_registration(nr);
+                }
+                vec![]
+            }
+
+            NornMessage::NameTransfer(nt) => {
+                if crate::name::validate_name_transfer(&nt, &self.known_name_owners).is_ok() {
+                    let _ = self.mempool.add_name_transfer(nt);
+                }
+                vec![]
+            }
+
+            NornMessage::NameRecordUpdate(nru) => {
+                if crate::name::validate_name_record_update(&nru, &self.known_name_owners).is_ok() {
+                    let _ = self.mempool.add_name_record_update(nru);
                 }
                 vec![]
             }
@@ -149,7 +167,9 @@ impl WeaveEngine {
             }
 
             NornMessage::StakeOperation(op) => {
-                let _ = self.mempool.add_stake_operation(op);
+                if crate::staking::validate_stake_operation(&op, &self.staking).is_ok() {
+                    let _ = self.mempool.add_stake_operation(op);
+                }
                 vec![]
             }
 
@@ -164,13 +184,24 @@ impl WeaveEngine {
             }
 
             NornMessage::Block(weave_block) => {
-                // Validate block height is sequential (allow catch-up from any
-                // height above current, but reject blocks at or below current).
-                if weave_block.height <= self.weave_state.height && self.weave_state.height > 0 {
+                // Validate block height is strictly sequential.
+                let expected_height = self.weave_state.height + 1;
+                if weave_block.height != expected_height && self.weave_state.height > 0 {
                     tracing::debug!(
                         received = weave_block.height,
-                        current = self.weave_state.height,
-                        "rejecting peer block: height not ahead of current"
+                        expected = expected_height,
+                        "rejecting peer block: non-sequential height"
+                    );
+                    return vec![];
+                }
+                // Validate prev_hash continuity (skip for the first block).
+                if self.weave_state.height > 0
+                    && weave_block.prev_hash != self.weave_state.latest_hash
+                {
+                    tracing::debug!(
+                        received_prev = %hex::encode(weave_block.prev_hash),
+                        expected_prev = %hex::encode(self.weave_state.latest_hash),
+                        "rejecting peer block: prev_hash mismatch"
                     );
                     return vec![];
                 }
@@ -199,30 +230,90 @@ impl WeaveEngine {
                     }
                 }
 
-                // Reject entire block if ANY name registration is invalid.
-                for nr in &weave_block.name_registrations {
-                    if crate::name::validate_name_registration(nr, &self.known_names).is_err() {
+                // Reject entire block if ANY name registration is invalid or duplicated.
+                {
+                    let mut seen_names: HashSet<String> = HashSet::new();
+                    for nr in &weave_block.name_registrations {
+                        if !seen_names.insert(nr.name.clone()) {
+                            return vec![];
+                        }
+                        if crate::name::validate_name_registration(nr, &self.known_names).is_err() {
+                            return vec![];
+                        }
+                    }
+                }
+
+                // Reject block if any name transfer is invalid.
+                for nt in &weave_block.name_transfers {
+                    if crate::name::validate_name_transfer(nt, &self.known_name_owners).is_err() {
                         return vec![];
                     }
                 }
 
-                // Reject block if any token definition is invalid.
-                for td in &weave_block.token_definitions {
-                    if crate::token::validate_token_definition(
-                        td,
-                        &self.known_tokens,
-                        &self.known_symbols,
-                    )
-                    .is_err()
+                // Reject block if any name record update is invalid.
+                for nru in &weave_block.name_record_updates {
+                    if crate::name::validate_name_record_update(nru, &self.known_name_owners)
+                        .is_err()
                     {
                         return vec![];
                     }
                 }
 
-                // Reject block if any token mint is invalid.
-                for tm in &weave_block.token_mints {
-                    if crate::token::validate_token_mint(tm, &self.known_tokens).is_err() {
-                        return vec![];
+                // Reject block if any token definition is invalid or duplicated within block.
+                {
+                    let mut seen_token_ids: HashSet<TokenId> = HashSet::new();
+                    let mut seen_symbols: HashSet<String> = HashSet::new();
+                    for td in &weave_block.token_definitions {
+                        if crate::token::validate_token_definition(
+                            td,
+                            &self.known_tokens,
+                            &self.known_symbols,
+                        )
+                        .is_err()
+                        {
+                            return vec![];
+                        }
+                        let token_id = norn_types::token::compute_token_id(
+                            &td.creator,
+                            &td.name,
+                            &td.symbol,
+                            td.decimals,
+                            td.max_supply,
+                            td.timestamp,
+                        );
+                        if !seen_token_ids.insert(token_id)
+                            || !seen_symbols.insert(td.symbol.clone())
+                        {
+                            return vec![];
+                        }
+                    }
+                }
+
+                // Reject block if any token mint is invalid or intra-block supply exceeded.
+                {
+                    let mut mint_supply_deltas: HashMap<TokenId, Amount> = HashMap::new();
+                    for tm in &weave_block.token_mints {
+                        if crate::token::validate_token_mint(tm, &self.known_tokens).is_err() {
+                            return vec![];
+                        }
+                        if let Some(meta) = self.known_tokens.get(&tm.token_id) {
+                            if meta.max_supply > 0 {
+                                let accumulated =
+                                    mint_supply_deltas.entry(tm.token_id).or_insert(0);
+                                *accumulated = match accumulated.checked_add(tm.amount) {
+                                    Some(v) => v,
+                                    None => return vec![],
+                                };
+                                let projected = match meta.current_supply.checked_add(*accumulated)
+                                {
+                                    Some(v) => v,
+                                    None => return vec![],
+                                };
+                                if projected > meta.max_supply {
+                                    return vec![];
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -233,9 +324,23 @@ impl WeaveEngine {
                     }
                 }
 
-                // Reject block if any loom deploy is invalid.
-                for ld in &weave_block.loom_deploys {
-                    if crate::loom::validate_loom_registration(ld, &self.known_looms).is_err() {
+                // Reject block if any loom deploy is invalid or duplicated.
+                {
+                    let mut seen_loom_ids: HashSet<LoomId> = HashSet::new();
+                    for ld in &weave_block.loom_deploys {
+                        let loom_id = norn_types::loom::compute_loom_id(ld);
+                        if !seen_loom_ids.insert(loom_id) {
+                            return vec![];
+                        }
+                        if crate::loom::validate_loom_registration(ld, &self.known_looms).is_err() {
+                            return vec![];
+                        }
+                    }
+                }
+
+                // Reject block if any stake operation is invalid.
+                for so in &weave_block.stake_operations {
+                    if crate::staking::validate_stake_operation(so, &self.staking).is_err() {
                         return vec![];
                     }
                 }
@@ -275,6 +380,16 @@ impl WeaveEngine {
 
             let block_hash = weave_block.hash;
             let block_data = borsh::to_vec(&weave_block).unwrap_or_default();
+
+            // Evict stale pending blocks if too many accumulate (consensus stall).
+            const MAX_PENDING_BLOCKS: usize = 50;
+            if self.pending_blocks.len() >= MAX_PENDING_BLOCKS {
+                tracing::warn!(
+                    count = self.pending_blocks.len(),
+                    "clearing stale pending blocks due to consensus stall"
+                );
+                self.pending_blocks.clear();
+            }
 
             // Store the block so we can finalize it when CommitBlock arrives.
             self.pending_blocks.insert(block_hash, weave_block);
@@ -388,6 +503,11 @@ impl WeaveEngine {
         // Apply name registrations.
         for nr in &block.name_registrations {
             self.known_names.insert(nr.name.clone());
+            self.known_name_owners.insert(nr.name.clone(), nr.owner);
+        }
+        // Apply name transfers.
+        for nt in &block.name_transfers {
+            self.known_name_owners.insert(nt.name.clone(), nt.to);
         }
         // Apply token definitions.
         for td in &block.token_definitions {
@@ -422,7 +542,17 @@ impl WeaveEngine {
         // Apply token burns.
         for tb in &block.token_burns {
             if let Some(meta) = self.known_tokens.get_mut(&tb.token_id) {
-                meta.current_supply = meta.current_supply.saturating_sub(tb.amount);
+                match meta.current_supply.checked_sub(tb.amount) {
+                    Some(new_supply) => meta.current_supply = new_supply,
+                    None => {
+                        tracing::warn!(
+                            token = %hex::encode(tb.token_id),
+                            burn_amount = tb.amount,
+                            current_supply = meta.current_supply,
+                            "rejecting burn: amount exceeds current supply"
+                        );
+                    }
+                }
             }
         }
         // Apply loom deployments.
@@ -512,7 +642,7 @@ impl WeaveEngine {
         &mut self,
         c: CommitmentUpdate,
     ) -> Result<bool, crate::error::WeaveError> {
-        commitment::validate_commitment(&c, None, c.timestamp)?;
+        commitment::validate_commitment(&c, None, self.current_timestamp)?;
         self.mempool.add_commitment(c)?;
         Ok(true)
     }
@@ -524,6 +654,26 @@ impl WeaveEngine {
     ) -> Result<bool, crate::error::WeaveError> {
         crate::name::validate_name_registration(&nr, &self.known_names)?;
         self.mempool.add_name_registration(nr)?;
+        Ok(true)
+    }
+
+    /// Validate and add a name transfer directly to the mempool.
+    pub fn add_name_transfer(
+        &mut self,
+        nt: NameTransfer,
+    ) -> Result<bool, crate::error::WeaveError> {
+        crate::name::validate_name_transfer(&nt, &self.known_name_owners)?;
+        self.mempool.add_name_transfer(nt)?;
+        Ok(true)
+    }
+
+    /// Validate and add a name record update directly to the mempool.
+    pub fn add_name_record_update(
+        &mut self,
+        nru: NameRecordUpdate,
+    ) -> Result<bool, crate::error::WeaveError> {
+        crate::name::validate_name_record_update(&nru, &self.known_name_owners)?;
+        self.mempool.add_name_record_update(nru)?;
         Ok(true)
     }
 
@@ -556,6 +706,11 @@ impl WeaveEngine {
     /// Get the set of known names.
     pub fn known_names(&self) -> &HashSet<String> {
         &self.known_names
+    }
+
+    /// Get the known name owners map.
+    pub fn known_name_owners(&self) -> &HashMap<String, Address> {
+        &self.known_name_owners
     }
 
     /// Validate and add a token definition to the mempool.
@@ -593,14 +748,16 @@ impl WeaveEngine {
         &self.known_symbols
     }
 
-    /// Seed known names and threads from persisted state.
+    /// Seed known names, name owners, and threads from persisted state.
     /// Called once at startup so WeaveEngine is in sync with StateManager.
     pub fn seed_known_state(
         &mut self,
         names: impl IntoIterator<Item = String>,
+        name_owners: impl IntoIterator<Item = (String, Address)>,
         threads: impl IntoIterator<Item = [u8; 20]>,
     ) {
         self.known_names.extend(names);
+        self.known_name_owners.extend(name_owners);
         self.known_threads.extend(threads);
         // Reconcile thread_count with actual known threads after seeding
         self.weave_state.thread_count = self.known_threads.len() as u64;
@@ -675,7 +832,7 @@ impl WeaveEngine {
     }
 
     /// Get a Merkle inclusion proof for a thread.
-    pub fn commitment_proof(&mut self, thread_id: &[u8; 20]) -> norn_crypto::merkle::MerkleProof {
+    pub fn commitment_proof(&self, thread_id: &[u8; 20]) -> norn_crypto::merkle::MerkleProof {
         let key = norn_crypto::hash::blake3_hash(thread_id);
         self.merkle_tree.prove(&key)
     }

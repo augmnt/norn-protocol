@@ -13,6 +13,7 @@ use norn_storage::traits::KvStore;
 use norn_storage::weave_store::WeaveStore;
 use norn_types::constants::BLOCK_TIME_TARGET;
 use norn_types::network::{NetworkId, NornMessage};
+use norn_types::primitives::Address;
 use norn_types::weave::{BlockTransfer, FeeState, Validator, ValidatorSet, WeaveBlock, WeaveState};
 use norn_weave::engine::WeaveEngine;
 
@@ -266,9 +267,13 @@ impl Node {
         }
         sm.set_store(ss);
 
-        // Seed WeaveEngine with persisted names and threads from StateManager.
+        // Seed WeaveEngine with persisted names, name owners, and threads from StateManager.
         {
             let names: Vec<String> = sm.registered_names().map(|s| s.to_string()).collect();
+            let name_owners: Vec<(String, Address)> = sm
+                .name_owners()
+                .map(|(n, addr)| (n.to_string(), addr))
+                .collect();
             let threads: Vec<[u8; 20]> = sm.registered_thread_ids().copied().collect();
             if !names.is_empty() || !threads.is_empty() {
                 tracing::info!(
@@ -277,7 +282,7 @@ impl Node {
                     "seeding WeaveEngine with persisted state"
                 );
                 let mut engine = weave_engine.write().await;
-                engine.seed_known_state(names, threads);
+                engine.seed_known_state(names, name_owners, threads);
             }
         }
 
@@ -493,15 +498,20 @@ impl Node {
                     }
                 }
                 if registered > 0 {
-                    // Also seed WeaveEngine so it knows about genesis names.
+                    // Also seed WeaveEngine so it knows about genesis names and owners.
                     let names: Vec<String> = gc
                         .name_registrations
                         .iter()
                         .map(|gnr| gnr.name.clone())
                         .collect();
+                    let name_owners: Vec<(String, Address)> = gc
+                        .name_registrations
+                        .iter()
+                        .map(|gnr| (gnr.name.clone(), gnr.owner))
+                        .collect();
                     drop(sm);
                     let mut engine = weave_engine.write().await;
-                    engine.seed_known_state(names, std::iter::empty());
+                    engine.seed_known_state(names, name_owners, std::iter::empty());
                     tracing::info!(count = registered, "registered genesis names");
                 }
             }
@@ -713,6 +723,33 @@ impl Node {
                                     tracing::debug!("skipping known name registration: {}", e);
                                 }
                             }
+                            for nt in &block.name_transfers {
+                                sm.auto_register_if_needed(nt.to);
+                                if let Err(e) =
+                                    sm.transfer_name(&nt.name, nt.from, nt.to, nt.timestamp)
+                                {
+                                    tracing::warn!(
+                                        "failed to apply name transfer '{}': {}",
+                                        nt.name,
+                                        e
+                                    );
+                                }
+                            }
+                            for nru in &block.name_record_updates {
+                                if let Err(e) = sm.set_name_record(
+                                    &nru.name,
+                                    &nru.key,
+                                    &nru.value,
+                                    nru.owner,
+                                    nru.timestamp,
+                                ) {
+                                    tracing::warn!(
+                                        "failed to apply name record update '{}': {}",
+                                        nru.name,
+                                        e
+                                    );
+                                }
+                            }
                             // Apply token operations from synced block.
                             for td in &block.token_definitions {
                                 if let Err(e) = sm.apply_peer_token_creation(
@@ -889,6 +926,16 @@ impl Node {
                                     )
                                     .is_ok()
                                     {
+                                        // Verify pubkey derives the claimed sender address.
+                                        if norn_crypto::address::pubkey_to_address(&sender_pubkey)
+                                            != transfer.from
+                                        {
+                                            tracing::warn!(
+                                                "P2P knot: pubkey does not derive from address {}",
+                                                hex::encode(transfer.from),
+                                            );
+                                            continue;
+                                        }
                                         let mut sm = self.state_manager.write().await;
                                         // Dedup: skip if already applied (via RPC or prior gossip).
                                         if sm.has_transfer(&knot.id) {
@@ -941,6 +988,21 @@ impl Node {
                                 );
                                 continue;
                             }
+                            // Verify block integrity before applying to state.
+                            {
+                                let engine = self.weave_engine.read().await;
+                                let validator_set = engine.staking().active_validators();
+                                if let Err(e) =
+                                    norn_weave::block::verify_block(&block, &validator_set)
+                                {
+                                    tracing::warn!(
+                                        height = block.height,
+                                        "rejecting invalid peer block: {}",
+                                        e
+                                    );
+                                    continue;
+                                }
+                            }
                             // Apply block contents to StateManager.
                             {
                                 let mut sm = self.state_manager.write().await;
@@ -957,6 +1019,33 @@ impl Node {
                                         name_reg.fee_paid,
                                     ) {
                                         tracing::debug!("skipping known name registration: {}", e);
+                                    }
+                                }
+                                for nt in &block.name_transfers {
+                                    sm.auto_register_if_needed(nt.to);
+                                    if let Err(e) =
+                                        sm.transfer_name(&nt.name, nt.from, nt.to, nt.timestamp)
+                                    {
+                                        tracing::warn!(
+                                            "failed to apply name transfer '{}': {}",
+                                            nt.name,
+                                            e
+                                        );
+                                    }
+                                }
+                                for nru in &block.name_record_updates {
+                                    if let Err(e) = sm.set_name_record(
+                                        &nru.name,
+                                        &nru.key,
+                                        &nru.value,
+                                        nru.owner,
+                                        nru.timestamp,
+                                    ) {
+                                        tracing::warn!(
+                                            "failed to apply name record update '{}': {}",
+                                            nru.name,
+                                            e
+                                        );
                                     }
                                 }
                                 // Apply token operations from peer block.
@@ -1126,6 +1215,21 @@ impl Node {
                             }
                             // Apply synced blocks.
                             for block in blocks {
+                                // Verify block signatures before applying.
+                                {
+                                    let engine = self.weave_engine.read().await;
+                                    let validator_set = engine.staking().active_validators();
+                                    if let Err(e) =
+                                        norn_weave::block::verify_block(&block, &validator_set)
+                                    {
+                                        tracing::warn!(
+                                            height = block.height,
+                                            "rejecting invalid state-response block: {}",
+                                            e
+                                        );
+                                        continue;
+                                    }
+                                }
                                 {
                                     let mut sm = self.state_manager.write().await;
                                     for reg in &block.registrations {
@@ -1141,6 +1245,33 @@ impl Node {
                                         ) {
                                             tracing::debug!(
                                                 "skipping known name registration: {}",
+                                                e
+                                            );
+                                        }
+                                    }
+                                    for nt in &block.name_transfers {
+                                        sm.auto_register_if_needed(nt.to);
+                                        if let Err(e) =
+                                            sm.transfer_name(&nt.name, nt.from, nt.to, nt.timestamp)
+                                        {
+                                            tracing::warn!(
+                                                "failed to apply name transfer '{}': {}",
+                                                nt.name,
+                                                e
+                                            );
+                                        }
+                                    }
+                                    for nru in &block.name_record_updates {
+                                        if let Err(e) = sm.set_name_record(
+                                            &nru.name,
+                                            &nru.key,
+                                            &nru.value,
+                                            nru.owner,
+                                            nru.timestamp,
+                                        ) {
+                                            tracing::warn!(
+                                                "failed to apply name record update '{}': {}",
+                                                nru.name,
                                                 e
                                             );
                                         }
@@ -1247,6 +1378,41 @@ impl Node {
                                 amount = fc.amount,
                                 "received faucet credit from peer"
                             );
+
+                            // Verify knot_id is correctly derived from message content.
+                            let expected_knot_id = {
+                                let mut data = Vec::with_capacity(6 + 20 + 8);
+                                data.extend_from_slice(b"faucet");
+                                data.extend_from_slice(&fc.recipient);
+                                data.extend_from_slice(&fc.timestamp.to_le_bytes());
+                                norn_crypto::hash::blake3_hash(&data)
+                            };
+                            if fc.knot_id != expected_knot_id {
+                                tracing::warn!("rejecting faucet credit: knot_id mismatch");
+                                continue;
+                            }
+
+                            // Cap amount: reject credits larger than 100 NORN.
+                            let max_faucet = 100 * norn_types::constants::ONE_NORN;
+                            if fc.amount > max_faucet {
+                                tracing::warn!(
+                                    amount = fc.amount,
+                                    max = max_faucet,
+                                    "rejecting faucet credit: amount exceeds cap"
+                                );
+                                continue;
+                            }
+
+                            // Reject credits with timestamps more than 10 minutes old.
+                            let now = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs();
+                            if now.saturating_sub(fc.timestamp) > 600 || fc.timestamp > now + 60 {
+                                tracing::warn!("rejecting faucet credit: timestamp out of range");
+                                continue;
+                            }
+
                             // Apply faucet credit from a peer node.
                             let mut sm = self.state_manager.write().await;
                             if sm.has_transfer(&fc.knot_id) {
@@ -1282,6 +1448,10 @@ impl Node {
                                 }
                             }
                         }
+                        NornMessage::NameTransfer(_) | NornMessage::NameRecordUpdate(_) => {
+                            let mut engine = self.weave_engine.write().await;
+                            engine.on_network_message(msg);
+                        }
                         other => {
                             // Forward all other messages to WeaveEngine.
                             let mut engine = self.weave_engine.write().await;
@@ -1314,7 +1484,7 @@ impl Node {
                             // Solo mode: produce blocks directly, bypassing consensus.
                             // Compute state root from StateManager.
                             let state_root = {
-                                let mut sm = self.state_manager.write().await;
+                                let sm = self.state_manager.read().await;
                                 sm.state_root()
                             };
                             let production_start = std::time::Instant::now();
@@ -1355,6 +1525,17 @@ impl Node {
                                             name_reg.timestamp,
                                         ) {
                                             tracing::debug!("solo name registration skipped: {}", e);
+                                        }
+                                    }
+                                    for nt in &block.name_transfers {
+                                        sm.auto_register_if_needed(nt.to);
+                                        if let Err(e) = sm.transfer_name(&nt.name, nt.from, nt.to, nt.timestamp) {
+                                            tracing::warn!("failed to apply name transfer '{}': {}", nt.name, e);
+                                        }
+                                    }
+                                    for nru in &block.name_record_updates {
+                                        if let Err(e) = sm.set_name_record(&nru.name, &nru.key, &nru.value, nru.owner, nru.timestamp) {
+                                            tracing::warn!("failed to apply name record update '{}': {}", nru.name, e);
                                         }
                                     }
                                     // Apply token operations (solo — deduct creation fee locally).
@@ -1503,6 +1684,17 @@ impl Node {
                                                 name_reg.timestamp,
                                             ) {
                                                 tracing::debug!("consensus name registration skipped: {}", e);
+                                            }
+                                        }
+                                        for nt in &block.name_transfers {
+                                            sm.auto_register_if_needed(nt.to);
+                                            if let Err(e) = sm.transfer_name(&nt.name, nt.from, nt.to, nt.timestamp) {
+                                                tracing::warn!("failed to apply name transfer '{}': {}", nt.name, e);
+                                            }
+                                        }
+                                        for nru in &block.name_record_updates {
+                                            if let Err(e) = sm.set_name_record(&nru.name, &nru.key, &nru.value, nru.owner, nru.timestamp) {
+                                                tracing::warn!("failed to apply name record update '{}': {}", nru.name, e);
                                             }
                                         }
                                         for td in &block.token_definitions {
@@ -1711,6 +1903,8 @@ fn block_info_from_weave(
         anchor_count: block.anchors.len(),
         fraud_proof_count: block.fraud_proofs.len(),
         name_registration_count: block.name_registrations.len(),
+        name_transfer_count: block.name_transfers.len(),
+        name_record_update_count: block.name_record_updates.len(),
         transfer_count: block.transfers.len(),
         token_definition_count: block.token_definitions.len(),
         token_mint_count: block.token_mints.len(),

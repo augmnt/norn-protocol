@@ -10,6 +10,39 @@ use norn_types::primitives::Address;
 use super::config::WalletConfig;
 use super::error::WalletError;
 
+/// Validate a wallet name to prevent path traversal attacks.
+/// Rejects names containing path separators, "..", null bytes, or
+/// characters that are problematic on various filesystems.
+pub(crate) fn validate_wallet_name(name: &str) -> Result<(), WalletError> {
+    if name.is_empty() {
+        return Err(WalletError::Other(
+            "wallet name cannot be empty".to_string(),
+        ));
+    }
+    if name.len() > 64 {
+        return Err(WalletError::Other(
+            "wallet name too long (max 64 chars)".to_string(),
+        ));
+    }
+    if name.contains('/') || name.contains('\\') || name.contains('\0') {
+        return Err(WalletError::Other(
+            "wallet name contains invalid characters".to_string(),
+        ));
+    }
+    if name == "." || name == ".." || name.contains("..") {
+        return Err(WalletError::Other(
+            "wallet name contains path traversal sequence".to_string(),
+        ));
+    }
+    // Reject names that are just the config file stem.
+    if name == "config" {
+        return Err(WalletError::Other(
+            "wallet name 'config' is reserved".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 /// Decryption components extracted from an EncryptedBlob.
 type DecryptParts = ([u8; 32], [u8; 24], Vec<u8>);
 
@@ -92,6 +125,7 @@ impl Keystore {
         passphrase: &str,
         password: &str,
     ) -> Result<Self, WalletError> {
+        validate_wallet_name(name)?;
         let seed = norn_crypto::seed::mnemonic_to_seed(mnemonic, passphrase);
         let keypair = derive_default_keypair(&seed)?;
         let address = pubkey_to_address(&keypair.public_key());
@@ -142,6 +176,7 @@ impl Keystore {
         seed_bytes: &[u8; 32],
         password: &str,
     ) -> Result<Self, WalletError> {
+        validate_wallet_name(name)?;
         let keypair = Keypair::from_seed(seed_bytes);
         let address = pubkey_to_address(&keypair.public_key());
         let public_key = keypair.public_key();
@@ -196,13 +231,25 @@ impl Keystore {
 
         let path = dir.join(format!("{}.json", self.name));
         let data = serde_json::to_string_pretty(&self.file)?;
-        std::fs::write(&path, data)?;
 
-        // Set file permissions to 0o600 on Unix (owner read/write only).
+        // On Unix, create the file with restricted permissions atomically
+        // to avoid a window where the file is world-readable.
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+            use std::io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(&path)?;
+            file.write_all(data.as_bytes())?;
+        }
+
+        #[cfg(not(unix))]
+        {
+            std::fs::write(&path, data)?;
         }
 
         Ok(())
@@ -210,6 +257,7 @@ impl Keystore {
 
     /// Load a wallet from disk by name.
     pub fn load(name: &str) -> Result<Self, WalletError> {
+        validate_wallet_name(name)?;
         let path = WalletConfig::data_dir()?.join(format!("{}.json", name));
         if !path.exists() {
             return Err(WalletError::WalletNotFound(name.to_string()));
@@ -238,6 +286,7 @@ impl Keystore {
 
     /// Delete a wallet file from disk.
     pub fn delete(name: &str) -> Result<(), WalletError> {
+        validate_wallet_name(name)?;
         let path = WalletConfig::data_dir()?.join(format!("{}.json", name));
         if !path.exists() {
             return Err(WalletError::WalletNotFound(name.to_string()));
@@ -544,6 +593,43 @@ mod tests {
 
         let result = ks.change_password("wrong", "new-pass");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_path_traversal_rejected() {
+        let mnemonic = generate_mnemonic();
+
+        // Path separators
+        assert!(Keystore::create("../evil", &mnemonic, "", "pass").is_err());
+        assert!(Keystore::create("foo/bar", &mnemonic, "", "pass").is_err());
+        assert!(Keystore::create("foo\\bar", &mnemonic, "", "pass").is_err());
+
+        // Dotdot sequences
+        assert!(Keystore::create("..", &mnemonic, "", "pass").is_err());
+        assert!(Keystore::create("a..b", &mnemonic, "", "pass").is_err());
+
+        // Null byte
+        assert!(Keystore::create("evil\0name", &mnemonic, "", "pass").is_err());
+
+        // Empty and reserved names
+        assert!(Keystore::create("", &mnemonic, "", "pass").is_err());
+        assert!(Keystore::create("config", &mnemonic, "", "pass").is_err());
+
+        // Valid names should succeed
+        assert!(Keystore::create("my-wallet", &mnemonic, "", "pass").is_ok());
+        assert!(Keystore::create("wallet_v2", &mnemonic, "", "pass").is_ok());
+    }
+
+    #[test]
+    fn test_load_path_traversal_rejected() {
+        assert!(Keystore::load("../etc/passwd").is_err());
+        assert!(Keystore::load("foo/bar").is_err());
+    }
+
+    #[test]
+    fn test_delete_path_traversal_rejected() {
+        assert!(Keystore::delete("../etc/passwd").is_err());
+        assert!(Keystore::delete("foo/bar").is_err());
     }
 
     #[test]

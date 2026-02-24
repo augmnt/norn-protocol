@@ -401,19 +401,27 @@ impl RpcClient {
         Ok(result)
     }
 
-    /// Upload bytecode to a deployed loom.
+    /// Upload bytecode to a deployed loom with operator authentication.
     pub async fn upload_loom_bytecode(
         &self,
         loom_id_hex: &str,
         bytecode_hex: &str,
         init_msg_hex: Option<&str>,
+        operator_signature_hex: &str,
+        operator_pubkey_hex: &str,
     ) -> Result<SubmitResult, WalletError> {
         let pb = Self::spinner("Uploading bytecode...");
         let result: SubmitResult = self
             .client
             .request(
                 "norn_uploadLoomBytecode",
-                rpc_params![loom_id_hex, bytecode_hex, init_msg_hex],
+                rpc_params![
+                    loom_id_hex,
+                    bytecode_hex,
+                    init_msg_hex,
+                    operator_signature_hex,
+                    operator_pubkey_hex
+                ],
             )
             .await
             .map_err(|e| Self::map_rpc_error(&e))?;
@@ -421,19 +429,27 @@ impl RpcClient {
         Ok(result)
     }
 
-    /// Execute a loom contract.
+    /// Execute a loom contract with sender authentication.
     pub async fn execute_loom(
         &self,
         loom_id_hex: &str,
         input_hex: &str,
         sender_hex: &str,
+        signature_hex: &str,
+        pubkey_hex: &str,
     ) -> Result<ExecutionResult, WalletError> {
         let pb = Self::spinner("Executing loom...");
         let result: ExecutionResult = self
             .client
             .request(
                 "norn_executeLoom",
-                rpc_params![loom_id_hex, input_hex, sender_hex],
+                rpc_params![
+                    loom_id_hex,
+                    input_hex,
+                    sender_hex,
+                    signature_hex,
+                    pubkey_hex
+                ],
             )
             .await
             .map_err(|e| Self::map_rpc_error(&e))?;
@@ -463,13 +479,14 @@ impl RpcClient {
         loom_id_hex: &str,
         participant_hex: &str,
         pubkey_hex: &str,
+        signature_hex: &str,
     ) -> Result<SubmitResult, WalletError> {
         let pb = Self::spinner("Joining loom...");
         let result: SubmitResult = self
             .client
             .request(
                 "norn_joinLoom",
-                rpc_params![loom_id_hex, participant_hex, pubkey_hex],
+                rpc_params![loom_id_hex, participant_hex, pubkey_hex, signature_hex],
             )
             .await
             .map_err(|e| Self::map_rpc_error(&e))?;
@@ -482,11 +499,16 @@ impl RpcClient {
         &self,
         loom_id_hex: &str,
         participant_hex: &str,
+        signature_hex: &str,
+        pubkey_hex: &str,
     ) -> Result<SubmitResult, WalletError> {
         let pb = Self::spinner("Leaving loom...");
         let result: SubmitResult = self
             .client
-            .request("norn_leaveLoom", rpc_params![loom_id_hex, participant_hex])
+            .request(
+                "norn_leaveLoom",
+                rpc_params![loom_id_hex, participant_hex, signature_hex, pubkey_hex],
+            )
             .await
             .map_err(|e| Self::map_rpc_error(&e))?;
         pb.finish_and_clear();
@@ -515,6 +537,75 @@ impl RpcClient {
                 "norn_getStakingInfo",
                 rpc_params![pubkey_hex.map(|s| s.to_string())],
             )
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Transfer a name to a new owner.
+    pub async fn transfer_name(
+        &self,
+        name: &str,
+        from_hex: &str,
+        transfer_hex: &str,
+    ) -> Result<SubmitResult, WalletError> {
+        let pb = Self::spinner("Transferring name...");
+        let result: SubmitResult = self
+            .client
+            .request(
+                "norn_transferName",
+                rpc_params![name, from_hex, transfer_hex],
+            )
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Reverse-resolve an address to its primary name.
+    pub async fn reverse_name(&self, address_hex: &str) -> Result<Option<String>, WalletError> {
+        let pb = Self::spinner("Looking up name...");
+        let result: Option<String> = self
+            .client
+            .request("norn_reverseName", rpc_params![address_hex])
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Set a record on a name.
+    pub async fn set_name_record(
+        &self,
+        name: &str,
+        key: &str,
+        value: &str,
+        owner_hex: &str,
+        knot_hex: &str,
+    ) -> Result<SubmitResult, WalletError> {
+        let pb = Self::spinner("Setting name record...");
+        let result: SubmitResult = self
+            .client
+            .request(
+                "norn_setNameRecord",
+                rpc_params![name, key, value, owner_hex, knot_hex],
+            )
+            .await
+            .map_err(|e| Self::map_rpc_error(&e))?;
+        pb.finish_and_clear();
+        Ok(result)
+    }
+
+    /// Get all records for a name.
+    pub async fn get_name_records(
+        &self,
+        name: &str,
+    ) -> Result<std::collections::HashMap<String, String>, WalletError> {
+        let pb = Self::spinner("Fetching name records...");
+        let result: std::collections::HashMap<String, String> = self
+            .client
+            .request("norn_getNameRecords", rpc_params![name])
             .await
             .map_err(|e| Self::map_rpc_error(&e))?;
         pb.finish_and_clear();

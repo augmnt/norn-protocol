@@ -67,10 +67,14 @@ export function ContractInteract({ loomId }: ContractInteractProps) {
         inputHex = raw.startsWith("0x") ? strip0x(raw) : raw;
       }
       const senderHex = execSender ? strip0x(execSender) : "0".repeat(40);
+      // Execute requires sender signature — pass empty strings so the
+      // RPC returns a clear auth-required error for this read-only explorer.
       const result = await rpcCall<ExecutionResult>("norn_executeLoom", [
         strip0x(loomId),
         inputHex,
         senderHex,
+        "",
+        "",
       ]);
       setExecResult(result);
     } catch (e) {

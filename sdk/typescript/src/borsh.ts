@@ -233,6 +233,38 @@ export function tokenBurnSigningData(params: {
   return w.toBytes();
 }
 
+/** Signing data for a name transfer (matches Rust name_transfer_signing_data). */
+export function nameTransferSigningData(params: {
+  name: string;
+  from: Uint8Array;
+  to: Uint8Array;
+  timestamp: bigint;
+}): Uint8Array {
+  const w = new BorshWriter();
+  w.writeFixedBytes(new TextEncoder().encode(params.name));
+  w.writeFixedBytes(params.from); // 20 bytes
+  w.writeFixedBytes(params.to); // 20 bytes
+  w.writeU64(params.timestamp);
+  return w.toBytes();
+}
+
+/** Signing data for a name record update (matches Rust name_record_update_signing_data). */
+export function nameRecordUpdateSigningData(params: {
+  name: string;
+  key: string;
+  value: string;
+  owner: Uint8Array;
+  timestamp: bigint;
+}): Uint8Array {
+  const w = new BorshWriter();
+  w.writeFixedBytes(new TextEncoder().encode(params.name));
+  w.writeFixedBytes(new TextEncoder().encode(params.key));
+  w.writeFixedBytes(new TextEncoder().encode(params.value));
+  w.writeFixedBytes(params.owner); // 20 bytes
+  w.writeU64(params.timestamp);
+  return w.toBytes();
+}
+
 /** Signing data for a loom deployment (matches Rust loom_deploy_signing_data). */
 export function loomDeploySigningData(params: {
   name: string;

@@ -207,11 +207,11 @@ pub fn validate_token_burn(
     known_tokens: &HashMap<TokenId, TokenMeta>,
 ) -> Result<(), WeaveError> {
     // 1. Token exists.
-    if !known_tokens.contains_key(&burn.token_id) {
-        return Err(WeaveError::InvalidTokenBurn {
+    let meta = known_tokens
+        .get(&burn.token_id)
+        .ok_or_else(|| WeaveError::InvalidTokenBurn {
             reason: format!("token not found: {}", hex::encode(burn.token_id)),
-        });
-    }
+        })?;
 
     // 2. Pubkey matches burner.
     let expected_address = pubkey_to_address(&burn.burner_pubkey);
@@ -233,6 +233,16 @@ pub fn validate_token_burn(
     if burn.amount == 0 {
         return Err(WeaveError::InvalidTokenBurn {
             reason: "amount must be positive".to_string(),
+        });
+    }
+
+    // 5. Burn amount must not exceed current supply.
+    if burn.amount > meta.current_supply {
+        return Err(WeaveError::InvalidTokenBurn {
+            reason: format!(
+                "burn amount {} exceeds current supply {}",
+                burn.amount, meta.current_supply
+            ),
         });
     }
 

@@ -118,7 +118,7 @@ impl SparseMerkleTree {
     }
 
     /// Get the current root hash. O(1).
-    pub fn root(&mut self) -> Hash {
+    pub fn root(&self) -> Hash {
         if self.data.is_empty() {
             EMPTY_HASH
         } else {
@@ -161,7 +161,7 @@ impl SparseMerkleTree {
     }
 
     /// Generate a Merkle proof for a key. O(TREE_DEPTH) lookups.
-    pub fn prove(&mut self, key: &Hash) -> MerkleProof {
+    pub fn prove(&self, key: &Hash) -> MerkleProof {
         let value = self.data.get(key).cloned().unwrap_or_default();
         let mut siblings = Vec::with_capacity(TREE_DEPTH);
 

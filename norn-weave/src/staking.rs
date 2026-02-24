@@ -82,11 +82,13 @@ impl StakingState {
                 reason: "validator not found".to_string(),
             })?;
 
-        if amount == 0 || amount > entry.stake {
+        let pending = entry.pending_unstake.as_ref().map(|(a, _)| *a).unwrap_or(0);
+        let available = entry.stake.saturating_sub(pending);
+        if amount == 0 || amount > available {
             return Err(WeaveError::StakingError {
                 reason: format!(
-                    "invalid unstake amount {}: current stake {}",
-                    amount, entry.stake
+                    "invalid unstake amount {}: available {} (stake {} - pending {})",
+                    amount, available, entry.stake, pending
                 ),
             });
         }
@@ -199,6 +201,14 @@ impl StakingState {
         self.validators.get(pubkey).map(|v| v.stake)
     }
 
+    /// Get the pending unstake amount for a validator (0 if none).
+    pub fn validator_pending_unstake(&self, pubkey: &PublicKey) -> Amount {
+        self.validators
+            .get(pubkey)
+            .and_then(|v| v.pending_unstake.as_ref().map(|(a, _)| *a))
+            .unwrap_or(0)
+    }
+
     /// Get the minimum stake requirement.
     pub fn min_stake(&self) -> Amount {
         self.min_stake
@@ -299,9 +309,14 @@ pub fn validate_stake_operation(
                     .ok_or_else(|| WeaveError::StakingError {
                         reason: "validator not found".to_string(),
                     })?;
-            if *amount > current {
+            let pending = staking.validator_pending_unstake(pubkey);
+            let available = current.saturating_sub(pending);
+            if *amount > available {
                 return Err(WeaveError::StakingError {
-                    reason: format!("unstake amount {} exceeds stake {}", amount, current),
+                    reason: format!(
+                        "unstake amount {} exceeds available {} (stake {} - pending {})",
+                        amount, available, current, pending
+                    ),
                 });
             }
             Ok(())

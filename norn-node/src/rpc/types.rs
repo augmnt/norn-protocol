@@ -37,6 +37,12 @@ pub struct BlockInfo {
     /// Number of name registrations in this block.
     #[serde(default)]
     pub name_registration_count: usize,
+    /// Number of name transfers in this block.
+    #[serde(default)]
+    pub name_transfer_count: usize,
+    /// Number of name record updates in this block.
+    #[serde(default)]
+    pub name_record_update_count: usize,
     /// Number of transfers in this block.
     #[serde(default)]
     pub transfer_count: usize,
@@ -226,6 +232,9 @@ pub struct NameResolution {
     pub registered_at: u64,
     /// Fee paid for registration as string.
     pub fee_paid: String,
+    /// NNS records (avatar, url, description, etc).
+    #[serde(default)]
+    pub records: std::collections::HashMap<String, String>,
 }
 
 /// Information about a token.
@@ -496,6 +505,12 @@ pub struct BlockTransactionsInfo {
     pub token_burns: Vec<BlockTokenBurnInfo>,
     /// Name registrations in this block.
     pub name_registrations: Vec<BlockNameRegistrationInfo>,
+    /// Name transfers in this block.
+    #[serde(default)]
+    pub name_transfers: Vec<BlockNameTransferInfo>,
+    /// Name record updates in this block.
+    #[serde(default)]
+    pub name_record_updates: Vec<BlockNameRecordUpdateInfo>,
     /// Loom deployments in this block.
     pub loom_deploys: Vec<BlockLoomDeployInfo>,
 }
@@ -557,6 +572,25 @@ pub struct BlockNameRegistrationInfo {
     pub timestamp: u64,
 }
 
+/// A name transfer within a block.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockNameTransferInfo {
+    pub name: String,
+    pub from: String,
+    pub to: String,
+    pub timestamp: u64,
+}
+
+/// A name record update within a block.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockNameRecordUpdateInfo {
+    pub name: String,
+    pub key: String,
+    pub value: String,
+    pub owner: String,
+    pub timestamp: u64,
+}
+
 /// A loom deployment within a block.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockLoomDeployInfo {
@@ -602,6 +636,8 @@ mod tests {
             anchor_count: 1,
             fraud_proof_count: 0,
             name_registration_count: 3,
+            name_transfer_count: 1,
+            name_record_update_count: 2,
             transfer_count: 5,
             token_definition_count: 1,
             token_mint_count: 2,

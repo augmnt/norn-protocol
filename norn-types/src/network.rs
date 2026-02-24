@@ -7,8 +7,8 @@ use crate::knot::Knot;
 use crate::loom::{LoomRegistration, LoomStateTransition};
 use crate::primitives::*;
 use crate::weave::{
-    CommitmentUpdate, NameRegistration, Registration, StakeOperation, TokenBurn, TokenDefinition,
-    TokenMint, WeaveBlock,
+    CommitmentUpdate, NameRecordUpdate, NameRegistration, NameTransfer, Registration,
+    StakeOperation, TokenBurn, TokenDefinition, TokenMint, WeaveBlock,
 };
 
 /// A faucet credit for devnet/testnet token distribution.
@@ -267,6 +267,10 @@ pub enum NornMessage {
     StakeOperation(StakeOperation),
     /// A faucet credit (devnet/testnet only).
     FaucetCredit(FaucetCredit),
+    /// A name transfer (NNS — Norn Name Service).
+    NameTransfer(NameTransfer),
+    /// A name record update (NNS — Norn Name Service).
+    NameRecordUpdate(NameRecordUpdate),
 }
 
 impl NornMessage {
@@ -296,6 +300,8 @@ impl NornMessage {
             NornMessage::LoomExecution(_) => 19,
             NornMessage::StakeOperation(_) => 20,
             NornMessage::FaucetCredit(_) => 21,
+            NornMessage::NameTransfer(_) => 22,
+            NornMessage::NameRecordUpdate(_) => 23,
         }
     }
 }

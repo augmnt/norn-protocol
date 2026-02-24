@@ -27,6 +27,12 @@ pub enum WeaveError {
     #[error("duplicate name: {name}")]
     DuplicateName { name: String },
 
+    #[error("invalid name transfer: {reason}")]
+    InvalidNameTransfer { reason: String },
+
+    #[error("invalid name record update: {reason}")]
+    InvalidNameRecordUpdate { reason: String },
+
     #[error("invalid token definition: {reason}")]
     InvalidTokenDefinition { reason: String },
 

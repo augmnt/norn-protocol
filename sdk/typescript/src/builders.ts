@@ -1,6 +1,8 @@
 import {
   BorshWriter,
   nameRegistrationSigningData,
+  nameTransferSigningData,
+  nameRecordUpdateSigningData,
   tokenDefinitionSigningData,
   tokenMintSigningData,
   tokenBurnSigningData,
@@ -167,6 +169,86 @@ export function buildNameRegistration(
   w.writeFixedBytes(wallet.publicKey); // 32 bytes
   w.writeU64(timestamp);
   w.writeU128(feePaid);
+  w.writeFixedBytes(signature); // 64 bytes
+
+  return toHex(w.toBytes());
+}
+
+/**
+ * Build and sign a name transfer transaction.
+ *
+ * Returns hex-encoded borsh bytes ready to submit via `transferName`.
+ *
+ * Borsh layout matches Rust NameTransfer struct:
+ *   name: String, from: [u8;20], from_pubkey: [u8;32],
+ *   to: [u8;20], timestamp: u64, signature: [u8;64]
+ */
+export function buildNameTransfer(
+  wallet: Wallet,
+  params: {
+    name: string;
+    to: string;
+  },
+): string {
+  const from = wallet.address;
+  const to = fromHex(params.to); // 20 bytes
+  const timestamp = now();
+
+  const sigData = nameTransferSigningData({
+    name: params.name,
+    from,
+    to,
+    timestamp,
+  });
+  const signature = wallet.sign(sigData);
+
+  const w = new BorshWriter();
+  w.writeString(params.name);
+  w.writeFixedBytes(from); // 20 bytes
+  w.writeFixedBytes(wallet.publicKey); // 32 bytes
+  w.writeFixedBytes(to); // 20 bytes
+  w.writeU64(timestamp);
+  w.writeFixedBytes(signature); // 64 bytes
+
+  return toHex(w.toBytes());
+}
+
+/**
+ * Build and sign a name record update transaction.
+ *
+ * Returns hex-encoded borsh bytes ready to submit via `setNameRecord`.
+ *
+ * Borsh layout matches Rust NameRecordUpdate struct:
+ *   name: String, key: String, value: String, owner: [u8;20],
+ *   owner_pubkey: [u8;32], timestamp: u64, signature: [u8;64]
+ */
+export function buildNameRecordUpdate(
+  wallet: Wallet,
+  params: {
+    name: string;
+    key: string;
+    value: string;
+  },
+): string {
+  const owner = wallet.address;
+  const timestamp = now();
+
+  const sigData = nameRecordUpdateSigningData({
+    name: params.name,
+    key: params.key,
+    value: params.value,
+    owner,
+    timestamp,
+  });
+  const signature = wallet.sign(sigData);
+
+  const w = new BorshWriter();
+  w.writeString(params.name);
+  w.writeString(params.key);
+  w.writeString(params.value);
+  w.writeFixedBytes(owner); // 20 bytes
+  w.writeFixedBytes(wallet.publicKey); // 32 bytes
+  w.writeU64(timestamp);
   w.writeFixedBytes(signature); // 64 bytes
 
   return toHex(w.toBytes());

@@ -106,6 +106,15 @@ pub enum NornError {
     #[error("invalid name: {0}")]
     InvalidName(String),
 
+    #[error("name not found: {0}")]
+    NameNotFound(String),
+
+    #[error("not the owner of name '{name}': address {address:?}")]
+    NotNameOwner { name: String, address: [u8; 20] },
+
+    #[error("invalid name record: {reason}")]
+    InvalidNameRecord { reason: String },
+
     // ─── Token Errors ─────────────────────────────────────────────────────────
     #[error("token already exists: {0}")]
     TokenAlreadyExists(String),

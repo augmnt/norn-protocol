@@ -48,6 +48,44 @@ export function useSignTransaction() {
     [meta, activeAccountIndex]
   );
 
+  const signNameTransfer = useCallback(
+    async (params: { name: string; to: string }) => {
+      if (!meta) throw new Error("No wallet");
+      setSigning(true);
+      setError(null);
+      try {
+        const pw = useWalletStore.getState().sessionPassword ?? undefined;
+        return await signer.signNameTransfer(meta, params, activeAccountIndex, pw);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Signing failed";
+        setError(msg);
+        throw e;
+      } finally {
+        setSigning(false);
+      }
+    },
+    [meta, activeAccountIndex]
+  );
+
+  const signNameRecordUpdate = useCallback(
+    async (params: { name: string; key: string; value: string }) => {
+      if (!meta) throw new Error("No wallet");
+      setSigning(true);
+      setError(null);
+      try {
+        const pw = useWalletStore.getState().sessionPassword ?? undefined;
+        return await signer.signNameRecordUpdate(meta, params, activeAccountIndex, pw);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Signing failed";
+        setError(msg);
+        throw e;
+      } finally {
+        setSigning(false);
+      }
+    },
+    [meta, activeAccountIndex]
+  );
+
   const signTokenDefinition = useCallback(
     async (params: { name: string; symbol: string; decimals: number; maxSupply: string; initialSupply?: string }) => {
       if (!meta) throw new Error("No wallet");
@@ -110,6 +148,8 @@ export function useSignTransaction() {
     error,
     signTransfer,
     signNameRegistration,
+    signNameTransfer,
+    signNameRecordUpdate,
     signTokenDefinition,
     signTokenMint,
     signTokenBurn,

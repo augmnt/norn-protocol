@@ -16,6 +16,13 @@ pub type SharedLoomBytecodes = Arc<Mutex<HashMap<LoomId, Vec<u8>>>>;
 /// Maximum WASM memory: 16 MB.
 pub const MAX_WASM_MEMORY_BYTES: usize = 16 * 1024 * 1024;
 
+/// Maximum pending transfers per execution (including cross-call merges).
+pub const MAX_PENDING_TRANSFERS: usize = 256;
+/// Maximum log messages per execution (including cross-call merges).
+pub const MAX_LOGS: usize = 1_000;
+/// Maximum events per execution (including cross-call merges).
+pub const MAX_EVENTS: usize = 1_000;
+
 /// A pending token transfer produced during loom execution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingTransfer {
@@ -110,7 +117,27 @@ impl LoomHostState {
 
     /// Write a value to the loom state.
     /// Charges GAS_STATE_WRITE plus GAS_BYTE_WRITE per byte of the value.
+    /// Bounded to prevent unbounded state growth.
     pub fn state_set(&mut self, key: &[u8], value: &[u8]) -> Result<(), LoomError> {
+        const MAX_KEY_SIZE: usize = 1024;
+        const MAX_VALUE_SIZE: usize = 65_536;
+        const MAX_STATE_ENTRIES: usize = 10_000;
+
+        if key.len() > MAX_KEY_SIZE {
+            return Err(LoomError::RuntimeError {
+                reason: "state key too large".to_string(),
+            });
+        }
+        if value.len() > MAX_VALUE_SIZE {
+            return Err(LoomError::RuntimeError {
+                reason: "state value too large".to_string(),
+            });
+        }
+        if !self.state.contains_key(key) && self.state.len() >= MAX_STATE_ENTRIES {
+            return Err(LoomError::RuntimeError {
+                reason: "state entry limit reached".to_string(),
+            });
+        }
         self.gas_meter.charge(GAS_STATE_WRITE)?;
         self.gas_meter
             .charge(GAS_BYTE_WRITE.saturating_mul(value.len() as u64))?;
@@ -119,7 +146,7 @@ impl LoomHostState {
     }
 
     /// Queue a token transfer.
-    /// Charges GAS_TRANSFER.
+    /// Charges GAS_TRANSFER. Bounded to prevent memory exhaustion.
     pub fn transfer(
         &mut self,
         from: Address,
@@ -128,6 +155,11 @@ impl LoomHostState {
         amount: Amount,
     ) -> Result<(), LoomError> {
         self.gas_meter.charge(GAS_TRANSFER)?;
+        if self.pending_transfers.len() >= MAX_PENDING_TRANSFERS {
+            return Err(LoomError::RuntimeError {
+                reason: "too many pending transfers".to_string(),
+            });
+        }
         self.pending_transfers.push(PendingTransfer {
             from,
             to,
@@ -138,21 +170,31 @@ impl LoomHostState {
     }
 
     /// Emit a log message.
-    /// Charges GAS_LOG.
+    /// Charges GAS_LOG. Bounded to prevent memory exhaustion.
     pub fn log(&mut self, message: &str) -> Result<(), LoomError> {
         self.gas_meter.charge(GAS_LOG)?;
+        if self.logs.len() >= MAX_LOGS {
+            return Err(LoomError::RuntimeError {
+                reason: "too many log messages".to_string(),
+            });
+        }
         self.logs.push(message.to_string());
         Ok(())
     }
 
     /// Emit a structured event.
-    /// Charges GAS_EMIT_EVENT.
+    /// Charges GAS_EMIT_EVENT. Bounded to prevent memory exhaustion.
     pub fn emit_event(
         &mut self,
         ty: String,
         attributes: Vec<(String, String)>,
     ) -> Result<(), LoomError> {
         self.gas_meter.charge(GAS_EMIT_EVENT)?;
+        if self.events.len() >= MAX_EVENTS {
+            return Err(LoomError::RuntimeError {
+                reason: "too many events".to_string(),
+            });
+        }
         self.events.push(HostEvent { ty, attributes });
         Ok(())
     }

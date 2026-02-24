@@ -17,6 +17,8 @@ import { Tokens } from "./pages/Tokens";
 import { Settings } from "./pages/Settings";
 import { Accounts } from "./pages/Accounts";
 import { RegisterName } from "./pages/RegisterName";
+import { TransferName } from "./pages/TransferName";
+import { NameRecords } from "./pages/NameRecords";
 import { CreateToken } from "./pages/CreateToken";
 import { TokenDetail } from "./pages/TokenDetail";
 import { MintToken } from "./pages/MintToken";
@@ -119,6 +121,10 @@ function renderRoute(route: string) {
       return <Accounts />;
     case "register-name":
       return <RegisterName />;
+    case "transfer-name":
+      return <TransferName />;
+    case "name-records":
+      return <NameRecords />;
     default:
       return <Welcome />;
   }

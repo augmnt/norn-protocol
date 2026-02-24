@@ -1,14 +1,15 @@
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 
 use crate::rpc::types::ChatEvent;
 
 /// Maximum number of chat events stored in memory.
 const MAX_EVENTS: usize = 10_000;
 
-/// In-memory bounded store for chat events.
+/// In-memory bounded store for chat events with deduplication.
 /// Provides fast filtering by kind, channel, and pubkey.
 pub struct ChatEventStore {
     events: VecDeque<ChatEvent>,
+    known_ids: HashSet<String>,
 }
 
 impl Default for ChatEventStore {
@@ -21,15 +22,23 @@ impl ChatEventStore {
     pub fn new() -> Self {
         Self {
             events: VecDeque::with_capacity(1024),
+            known_ids: HashSet::new(),
         }
     }
 
     /// Insert a new chat event, evicting the oldest if at capacity.
-    pub fn insert(&mut self, event: ChatEvent) {
+    /// Returns false if the event is a duplicate (same ID already stored).
+    pub fn insert(&mut self, event: ChatEvent) -> bool {
+        if !self.known_ids.insert(event.id.clone()) {
+            return false; // Duplicate event ID
+        }
         if self.events.len() >= MAX_EVENTS {
-            self.events.pop_front();
+            if let Some(evicted) = self.events.pop_front() {
+                self.known_ids.remove(&evicted.id);
+            }
         }
         self.events.push_back(event);
+        true
     }
 
     /// Query events matching the given filter. Returns events in chronological order.

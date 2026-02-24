@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-norn-types = { path = "../norn-types", version = "0.20.0" }
+norn-types = { path = "../norn-types", version = "0.21.0" }
 borsh = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }

@@ -22,6 +22,8 @@ import { QRCodeDisplay } from "@/components/ui/qr-code";
 import { useBalance } from "@/hooks/use-balance";
 import { useTxHistory } from "@/hooks/use-tx-history";
 import { useNames } from "@/hooks/use-names";
+import { useReverseName } from "@/hooks/use-reverse-name";
+import { useNameRecords } from "@/hooks/use-name-records";
 import { useThreadState } from "@/hooks/use-thread-state";
 import { useAddressTransfersSubscription } from "@/hooks/use-subscriptions";
 import { useFavoritesStore } from "@/stores/favorites-store";
@@ -134,6 +136,8 @@ export default function AddressPage({
     txPage
   );
   const { data: names } = useNames(address);
+  const { data: primaryName } = useReverseName(address);
+  const { data: nameRecords } = useNameRecords(primaryName ?? undefined);
   const { data: threadState } = useThreadState(threadId);
 
   useAddressTransfersSubscription(address);
@@ -168,6 +172,11 @@ export default function AddressPage({
                     full
                     className="text-base"
                   />
+                  {primaryName && (
+                    <p className="text-sm text-norn font-medium">
+                      {primaryName}.norn
+                    </p>
+                  )}
                   {names && names.length > 0 && (
                     <div className="flex gap-2 mt-1">
                       {names.map((n) => (
@@ -245,6 +254,31 @@ export default function AddressPage({
             icon={Tag}
           />
         </div>
+
+        {/* NNS Records */}
+        {nameRecords && Object.keys(nameRecords).length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium">
+                NNS Records
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="grid gap-3 sm:grid-cols-2">
+                {Object.entries(nameRecords)
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([key, value]) => (
+                    <div key={key}>
+                      <dt className="text-xs text-muted-foreground uppercase tracking-wider mb-0.5">
+                        {key}
+                      </dt>
+                      <dd className="text-sm break-all">{value}</dd>
+                    </div>
+                  ))}
+              </dl>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Tabs */}
         <Tabs defaultValue="transactions">

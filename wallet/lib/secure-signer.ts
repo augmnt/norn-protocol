@@ -4,11 +4,16 @@ import {
   Wallet,
   buildTransfer,
   buildNameRegistration,
+  buildNameTransfer,
+  buildNameRecordUpdate,
   buildTokenDefinition,
   buildTokenMint,
   buildTokenBurn,
   buildLoomRegistration,
   parseAmount,
+  blake3Hash,
+  toHex,
+  fromHex,
 } from "@norn-protocol/sdk";
 import { zeroBytes } from "./passkey-crypto";
 import { getWalletForSigning, getWalletForSigningWithPassword } from "./wallet-manager";
@@ -72,6 +77,36 @@ export async function signNameRegistration(
   const wallet = await getWallet(meta, accountIndex, password);
   try {
     return buildNameRegistration(wallet, name);
+  } finally {
+    cleanupWallet(wallet);
+  }
+}
+
+/** Sign a name transfer. Returns hex-encoded transfer data. */
+export async function signNameTransfer(
+  meta: StoredWalletMeta,
+  params: { name: string; to: string },
+  accountIndex = 0,
+  password?: string
+): Promise<string> {
+  const wallet = await getWallet(meta, accountIndex, password);
+  try {
+    return buildNameTransfer(wallet, params);
+  } finally {
+    cleanupWallet(wallet);
+  }
+}
+
+/** Sign a name record update. Returns hex-encoded update data. */
+export async function signNameRecordUpdate(
+  meta: StoredWalletMeta,
+  params: { name: string; key: string; value: string },
+  accountIndex = 0,
+  password?: string
+): Promise<string> {
+  const wallet = await getWallet(meta, accountIndex, password);
+  try {
+    return buildNameRecordUpdate(wallet, params);
   } finally {
     cleanupWallet(wallet);
   }
@@ -162,6 +197,79 @@ export async function signLoomRegistration(
   const wallet = await getWallet(meta, accountIndex, password);
   try {
     return buildLoomRegistration(wallet, { name });
+  } finally {
+    cleanupWallet(wallet);
+  }
+}
+
+/** Concatenate multiple Uint8Arrays. */
+function concatBytes(...arrays: Uint8Array[]): Uint8Array {
+  const total = arrays.reduce((acc, a) => acc + a.length, 0);
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const a of arrays) {
+    result.set(a, offset);
+    offset += a.length;
+  }
+  return result;
+}
+
+/** Sign a loom execution request. Returns { signatureHex, pubkeyHex, senderHex }. */
+export async function signExecuteLoom(
+  meta: StoredWalletMeta,
+  loomIdHex: string,
+  inputHex: string,
+  accountIndex = 0,
+  password?: string
+): Promise<{ signatureHex: string; pubkeyHex: string; senderHex: string }> {
+  const wallet = await getWallet(meta, accountIndex, password);
+  try {
+    const loomIdBytes = fromHex(loomIdHex);
+    const inputBytes = fromHex(inputHex);
+    const senderBytes = wallet.address;
+    const signingMsg = blake3Hash(
+      concatBytes(
+        new TextEncoder().encode("norn_execute_loom"),
+        loomIdBytes,
+        inputBytes,
+        senderBytes,
+      )
+    );
+    const signature = wallet.sign(signingMsg);
+    return {
+      signatureHex: toHex(signature),
+      pubkeyHex: toHex(wallet.publicKey),
+      senderHex: toHex(senderBytes),
+    };
+  } finally {
+    cleanupWallet(wallet);
+  }
+}
+
+/** Sign a bytecode upload request. Returns { signatureHex, pubkeyHex }. */
+export async function signBytecodeUpload(
+  meta: StoredWalletMeta,
+  loomIdHex: string,
+  bytecodeBytes: Uint8Array,
+  accountIndex = 0,
+  password?: string
+): Promise<{ signatureHex: string; pubkeyHex: string }> {
+  const wallet = await getWallet(meta, accountIndex, password);
+  try {
+    const loomIdBytes = fromHex(loomIdHex);
+    const bytecodeHash = blake3Hash(bytecodeBytes);
+    const signingMsg = blake3Hash(
+      concatBytes(
+        new TextEncoder().encode("norn_upload_bytecode"),
+        loomIdBytes,
+        bytecodeHash,
+      )
+    );
+    const signature = wallet.sign(signingMsg);
+    return {
+      signatureHex: toHex(signature),
+      pubkeyHex: toHex(wallet.publicKey),
+    };
   } finally {
     cleanupWallet(wallet);
   }

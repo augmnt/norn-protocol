@@ -28,7 +28,7 @@ const SCHEMA_VERSION_KEY: &[u8] = b"meta:schema_version";
 
 /// Current schema version. Bump this whenever a breaking change is made to any
 /// borsh-serialized type persisted through StateStore.
-pub const SCHEMA_VERSION: u32 = 7;
+pub const SCHEMA_VERSION: u32 = 8;
 
 /// Persistent store for StateManager data backed by a KvStore.
 pub struct StateStore {
@@ -698,6 +698,7 @@ mod tests {
             owner: test_address(1),
             registered_at: 1000,
             fee_paid: 1_000_000_000_000,
+            records: std::collections::HashMap::new(),
         };
 
         store.save_name("alice", &record).unwrap();
@@ -734,6 +735,10 @@ mod tests {
             anchors: vec![],
             name_registrations: vec![],
             name_registrations_root: [0u8; 32],
+            name_transfers: vec![],
+            name_transfers_root: [0u8; 32],
+            name_record_updates: vec![],
+            name_record_updates_root: [0u8; 32],
             fraud_proofs: vec![],
             fraud_proofs_root: [0u8; 32],
             transfers: vec![],

@@ -32,7 +32,9 @@ export type Route =
   | "burn-token"
   | "settings"
   | "accounts"
-  | "register-name";
+  | "register-name"
+  | "transfer-name"
+  | "name-records";
 
 export interface StoredAccount {
   id: string;

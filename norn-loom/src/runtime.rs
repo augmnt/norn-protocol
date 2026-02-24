@@ -5,6 +5,22 @@ use crate::error::LoomError;
 use crate::gas::GAS_CROSS_CALL;
 use crate::host::LoomHostState;
 
+/// Validate WASM pointer parameters and compute the memory range.
+/// Returns (start, end) as usize, or an error if the values are invalid.
+#[inline]
+fn validate_wasm_ptr(ptr: i32, len: i32) -> Result<(usize, usize), wasmtime::Error> {
+    if ptr < 0 || len < 0 {
+        return Err(wasmtime::Error::msg(
+            "negative pointer or length in host call",
+        ));
+    }
+    let start = ptr as usize;
+    let end = start
+        .checked_add(len as usize)
+        .ok_or(wasmtime::Error::msg("pointer arithmetic overflow"))?;
+    Ok((start, end))
+}
+
 /// The Wasm runtime engine for loom contracts.
 ///
 /// Wraps a wasmtime `Engine` configured with fuel metering for deterministic
@@ -69,8 +85,7 @@ impl LoomRuntime {
                         .get_export("memory")
                         .and_then(|e| e.into_memory())
                         .ok_or(wasmtime::Error::msg("missing memory export"))?;
-                    let start = msg_ptr as usize;
-                    let end = start + msg_len as usize;
+                    let (start, end) = validate_wasm_ptr(msg_ptr, msg_len)?;
                     // Copy bytes out of wasm memory before mutably borrowing caller.
                     let msg_bytes = {
                         let data = memory.data(&caller);
@@ -110,9 +125,8 @@ impl LoomRuntime {
                         .get_export("memory")
                         .and_then(|e| e.into_memory())
                         .ok_or(wasmtime::Error::msg("missing memory export"))?;
+                    let (start, end) = validate_wasm_ptr(key_ptr, key_len)?;
                     let data = memory.data(&caller);
-                    let start = key_ptr as usize;
-                    let end = start + key_len as usize;
                     if end > data.len() {
                         return Err(wasmtime::Error::msg("out of bounds memory access"));
                     }
@@ -127,12 +141,19 @@ impl LoomRuntime {
                             if out_ptr == 0 {
                                 // Query mode: just return length
                                 Ok(val_len)
-                            } else if (out_max_len as usize) < v.len() {
-                                // Buffer too small
-                                Ok(-2)
                             } else {
+                                // Validate output pointer before use.
+                                if out_ptr < 0 || out_max_len < 0 {
+                                    return Err(wasmtime::Error::msg(
+                                        "negative output pointer or length in host call",
+                                    ));
+                                }
+                                if (out_max_len as usize) < v.len() {
+                                    // Buffer too small
+                                    return Ok(-2);
+                                }
                                 // Write value to WASM memory
-                                let out_start = out_ptr as usize;
+                                let (out_start, _) = validate_wasm_ptr(out_ptr, v.len() as i32)?;
                                 let out_end = out_start + v.len();
                                 let mem_data = memory.data_mut(&mut caller);
                                 if out_end > mem_data.len() {
@@ -167,11 +188,9 @@ impl LoomRuntime {
                         .get_export("memory")
                         .and_then(|e| e.into_memory())
                         .ok_or(wasmtime::Error::msg("missing memory export"))?;
+                    let (key_start, key_end) = validate_wasm_ptr(key_ptr, key_len)?;
+                    let (val_start, val_end) = validate_wasm_ptr(val_ptr, val_len)?;
                     let data = memory.data(&caller);
-                    let key_start = key_ptr as usize;
-                    let key_end = key_start + key_len as usize;
-                    let val_start = val_ptr as usize;
-                    let val_end = val_start + val_len as usize;
                     if key_end > data.len() || val_end > data.len() {
                         return Err(wasmtime::Error::msg("out of bounds memory access"));
                     }
@@ -203,24 +222,21 @@ impl LoomRuntime {
                         .get_export("memory")
                         .and_then(|e| e.into_memory())
                         .ok_or(wasmtime::Error::msg("missing memory export"))?;
+                    let (from_start, from_end) = validate_wasm_ptr(from_ptr, 20)?;
+                    let (to_start, to_end) = validate_wasm_ptr(to_ptr, 20)?;
+                    let (token_start, token_end) = validate_wasm_ptr(token_ptr, 32)?;
                     let data = memory.data(&caller);
-                    let from_start = from_ptr as usize;
-                    let to_start = to_ptr as usize;
-                    let token_start = token_ptr as usize;
 
-                    if from_start + 20 > data.len()
-                        || to_start + 20 > data.len()
-                        || token_start + 32 > data.len()
-                    {
+                    if from_end > data.len() || to_end > data.len() || token_end > data.len() {
                         return Err(wasmtime::Error::msg("out of bounds memory access"));
                     }
 
                     let mut from = [0u8; 20];
-                    from.copy_from_slice(&data[from_start..from_start + 20]);
+                    from.copy_from_slice(&data[from_start..from_end]);
                     let mut to = [0u8; 20];
-                    to.copy_from_slice(&data[to_start..to_start + 20]);
+                    to.copy_from_slice(&data[to_start..to_end]);
                     let mut token_id = [0u8; 32];
-                    token_id.copy_from_slice(&data[token_start..token_start + 32]);
+                    token_id.copy_from_slice(&data[token_start..token_end]);
 
                     // Validate amount is positive (i64 could be negative or zero).
                     if amount <= 0 {
@@ -271,6 +287,9 @@ impl LoomRuntime {
                         .get_export("memory")
                         .and_then(|e| e.into_memory())
                         .ok_or(wasmtime::Error::msg("missing memory export"))?;
+                    if out_ptr < 0 {
+                        return Err(wasmtime::Error::msg("negative pointer in host call"));
+                    }
                     let start = out_ptr as usize;
                     if start + 20 > memory.data(&caller).len() {
                         return Err(wasmtime::Error::msg("out of bounds memory access"));
@@ -300,16 +319,19 @@ impl LoomRuntime {
                         .get_export("memory")
                         .and_then(|e| e.into_memory())
                         .ok_or(wasmtime::Error::msg("missing memory export"))?;
+                    let (type_start, type_end) = validate_wasm_ptr(type_ptr, type_len)?;
+                    let (data_start, data_end) = validate_wasm_ptr(data_ptr, data_len)?;
                     let mem_data = memory.data(&caller);
-                    let type_start = type_ptr as usize;
-                    let type_end = type_start + type_len as usize;
-                    let data_start = data_ptr as usize;
-                    let data_end = data_start + data_len as usize;
                     if type_end > mem_data.len() || data_end > mem_data.len() {
                         return Err(wasmtime::Error::msg("out of bounds memory access"));
                     }
                     let type_bytes = mem_data[type_start..type_end].to_vec();
                     let data_bytes = mem_data[data_start..data_end].to_vec();
+                    // Limit event data size to prevent allocation bombs in borsh deserialize.
+                    const MAX_EVENT_DATA_SIZE: usize = 4096;
+                    if data_bytes.len() > MAX_EVENT_DATA_SIZE {
+                        return Err(wasmtime::Error::msg("event data too large"));
+                    }
                     let ty = std::str::from_utf8(&type_bytes)
                         .unwrap_or("<invalid utf8>")
                         .to_string();
@@ -339,6 +361,9 @@ impl LoomRuntime {
                         .get_export("memory")
                         .and_then(|e| e.into_memory())
                         .ok_or(wasmtime::Error::msg("missing memory export"))?;
+                    if out_ptr < 0 {
+                        return Err(wasmtime::Error::msg("negative pointer in host call"));
+                    }
                     let start = out_ptr as usize;
                     if start + 20 > memory.data(&caller).len() {
                         return Err(wasmtime::Error::msg("out of bounds memory access"));
@@ -398,10 +423,8 @@ impl LoomRuntime {
                         .ok_or(wasmtime::Error::msg("missing memory export"))?;
 
                     // Read target loom ID from wasm memory.
-                    let id_start = target_id_ptr as usize;
-                    let id_end = id_start + target_id_len as usize;
-                    let in_start = input_ptr as usize;
-                    let in_end = in_start + input_len as usize;
+                    let (id_start, id_end) = validate_wasm_ptr(target_id_ptr, target_id_len)?;
+                    let (in_start, in_end) = validate_wasm_ptr(input_ptr, input_len)?;
                     {
                         let data = memory.data(&caller);
                         if id_end > data.len() || in_end > data.len() {
@@ -419,12 +442,19 @@ impl LoomRuntime {
                     target_id.copy_from_slice(&data[id_start..id_end]);
                     let input = data[in_start..in_end].to_vec();
 
-                    // Charge cross-call gas.
+                    // Charge cross-call gas (both GasMeter and wasmtime fuel).
                     caller
                         .data_mut()
                         .gas_meter
                         .charge(GAS_CROSS_CALL)
                         .map_err(|e| wasmtime::Error::msg(format!("gas exhausted: {e}")))?;
+                    {
+                        let current_fuel = caller.get_fuel().unwrap_or(0);
+                        let new_fuel = current_fuel.saturating_sub(GAS_CROSS_CALL);
+                        caller.set_fuel(new_fuel).map_err(|e| {
+                            wasmtime::Error::msg(format!("fuel error on cross-call overhead: {e}"))
+                        })?;
+                    }
 
                     // Extract shared resources from the host state.
                     let call_stack =
@@ -454,7 +484,7 @@ impl LoomRuntime {
                     let sender_for_subcall = caller
                         .data()
                         .current_loom_id
-                        .map(|_| caller.data().sender)
+                        .map(|id| norn_types::primitives::derive_contract_address(&id))
                         .unwrap_or(caller.data().sender);
                     let block_height = caller.data().block_height;
                     let timestamp = caller.data().timestamp;
@@ -533,21 +563,40 @@ impl LoomRuntime {
                         // (transfers, logs, events propagate up)
                         // We'll do this after popping the frame below, via caller.data_mut().
 
-                        // Charge the subcall's gas to the caller.
+                        // Charge the subcall's gas to the caller (both GasMeter and wasmtime fuel).
                         caller
                             .data_mut()
                             .gas_meter
                             .charge(sub_gas_used)
                             .map_err(|e| wasmtime::Error::msg(format!("gas exhausted: {e}")))?;
+                        {
+                            let current_fuel = caller.get_fuel().unwrap_or(0);
+                            let new_fuel = current_fuel.saturating_sub(sub_gas_used);
+                            caller.set_fuel(new_fuel).map_err(|e| {
+                                wasmtime::Error::msg(format!("fuel error on cross-call: {e}"))
+                            })?;
+                        }
 
-                        // Merge transfers, logs, events from subcall.
+                        // Merge transfers, logs, events from subcall (bounded).
+                        use crate::host::{MAX_EVENTS, MAX_LOGS, MAX_PENDING_TRANSFERS};
                         for t in sub_host_state.pending_transfers {
+                            if caller.data().pending_transfers.len() >= MAX_PENDING_TRANSFERS {
+                                return Err(wasmtime::Error::msg(
+                                    "too many pending transfers across cross-calls",
+                                ));
+                            }
                             caller.data_mut().pending_transfers.push(t);
                         }
                         for l in sub_host_state.logs {
+                            if caller.data().logs.len() >= MAX_LOGS {
+                                break;
+                            }
                             caller.data_mut().logs.push(l);
                         }
                         for ev in sub_host_state.events {
+                            if caller.data().events.len() >= MAX_EVENTS {
+                                break;
+                            }
                             caller.data_mut().events.push(ev);
                         }
 
@@ -577,11 +626,19 @@ impl LoomRuntime {
                             if output_ptr == 0 {
                                 // Query mode: just return length.
                                 Ok(output.len() as i32)
-                            } else if (output_max_len as usize) < output.len() {
-                                Ok(-2)
                             } else {
+                                // Validate output pointer before use.
+                                if output_ptr < 0 || output_max_len < 0 {
+                                    return Err(wasmtime::Error::msg(
+                                        "negative output pointer or length in host call",
+                                    ));
+                                }
+                                if (output_max_len as usize) < output.len() {
+                                    return Ok(-2);
+                                }
                                 // Write output to caller's wasm memory.
-                                let out_start = output_ptr as usize;
+                                let (out_start, _) =
+                                    validate_wasm_ptr(output_ptr, output.len() as i32)?;
                                 let out_end = out_start + output.len();
                                 let mem_data = memory.data_mut(&mut caller);
                                 if out_end > mem_data.len() {

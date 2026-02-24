@@ -77,6 +77,44 @@ pub struct NameRegistration {
     pub signature: Signature,
 }
 
+/// A name transfer — transfers ownership of a registered name to a new address.
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+pub struct NameTransfer {
+    /// The name being transferred.
+    pub name: String,
+    /// The current owner's address.
+    pub from: Address,
+    /// The current owner's public key (needed for signature verification).
+    pub from_pubkey: PublicKey,
+    /// The new owner's address.
+    pub to: Address,
+    /// Timestamp of transfer.
+    pub timestamp: Timestamp,
+    /// Signature by the current owner.
+    #[serde(with = "crate::primitives::serde_sig")]
+    pub signature: Signature,
+}
+
+/// A name record update — attaches or updates a text record on a registered name.
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+pub struct NameRecordUpdate {
+    /// The name to update records for.
+    pub name: String,
+    /// The record key (e.g. "avatar", "url", "twitter").
+    pub key: String,
+    /// The record value.
+    pub value: String,
+    /// The owner's address.
+    pub owner: Address,
+    /// The owner's public key (needed for signature verification).
+    pub owner_pubkey: PublicKey,
+    /// Timestamp of update.
+    pub timestamp: Timestamp,
+    /// Signature by the owner.
+    #[serde(with = "crate::primitives::serde_sig")]
+    pub signature: Signature,
+}
+
 /// A token definition — creates a new fungible token on the network.
 #[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 pub struct TokenDefinition {
@@ -199,6 +237,14 @@ pub struct WeaveBlock {
     pub name_registrations: Vec<NameRegistration>,
     /// Merkle root of all name registrations in this block.
     pub name_registrations_root: Hash,
+    /// Name transfers included in this block.
+    pub name_transfers: Vec<NameTransfer>,
+    /// Merkle root of all name transfers in this block.
+    pub name_transfers_root: Hash,
+    /// Name record updates included in this block.
+    pub name_record_updates: Vec<NameRecordUpdate>,
+    /// Merkle root of all name record updates in this block.
+    pub name_record_updates_root: Hash,
     /// Fraud proof submissions included in this block.
     pub fraud_proofs: Vec<FraudProofSubmission>,
     /// Merkle root of all fraud proofs in this block.

@@ -51,6 +51,10 @@ pub fn validate_token_name(name: &str) -> Result<(), NornError> {
 }
 
 /// Compute the deterministic token ID from a token definition's fields.
+///
+/// Each variable-length field (name, symbol) is length-prefixed with its
+/// byte length as a little-endian u32 to prevent ambiguous concatenation
+/// collisions (e.g., name="AB" symbol="C" vs name="A" symbol="BC").
 pub fn compute_token_id(
     creator: &[u8; 20],
     name: &str,
@@ -62,7 +66,9 @@ pub fn compute_token_id(
     use blake3::Hasher;
     let mut hasher = Hasher::new();
     hasher.update(creator);
+    hasher.update(&(name.len() as u32).to_le_bytes());
     hasher.update(name.as_bytes());
+    hasher.update(&(symbol.len() as u32).to_le_bytes());
     hasher.update(symbol.as_bytes());
     hasher.update(&[decimals]);
     hasher.update(&max_supply.to_le_bytes());
@@ -127,6 +133,18 @@ mod tests {
 
         let id4 = compute_token_id(&[2u8; 20], "Test", "TST", 8, 1000, 12345); // different creator
         assert_ne!(id1, id4);
+    }
+
+    #[test]
+    fn test_compute_token_id_no_concatenation_collision() {
+        let creator = [1u8; 20];
+        // "AB" + "C" should differ from "A" + "BC"
+        let id1 = compute_token_id(&creator, "AB", "C", 8, 1000, 12345);
+        let id2 = compute_token_id(&creator, "A", "BC", 8, 1000, 12345);
+        assert_ne!(
+            id1, id2,
+            "different name/symbol splits must produce different IDs"
+        );
     }
 
     #[test]
