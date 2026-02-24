@@ -12,10 +12,16 @@ interface NnsAvatarProps {
 
 export function NnsAvatar({ address, avatarUrl, size = 32, className }: NnsAvatarProps) {
   const [imgError, setImgError] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
 
   useEffect(() => {
     setImgError(false);
+    setImgLoaded(false);
   }, [avatarUrl]);
+
+  if (typeof window !== "undefined") {
+    console.log("[NnsAvatar]", { avatarUrl, imgError, imgLoaded, address: address?.slice(0, 10) });
+  }
 
   if (!avatarUrl || imgError) {
     return <Identicon address={address} size={size} className={className} />;
@@ -29,7 +35,11 @@ export function NnsAvatar({ address, avatarUrl, size = 32, className }: NnsAvata
       height={size}
       className={`rounded-full object-cover ${className ?? ""}`}
       style={{ width: size, height: size }}
-      onError={() => setImgError(true)}
+      onLoad={() => setImgLoaded(true)}
+      onError={() => {
+        console.error("[NnsAvatar] Image failed to load:", avatarUrl);
+        setImgError(true);
+      }}
     />
   );
 }
