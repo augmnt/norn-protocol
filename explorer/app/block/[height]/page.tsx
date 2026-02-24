@@ -264,7 +264,7 @@ const loomDeployColumns = [
     header: "Operator",
     key: "operator",
     render: (l: BlockLoomDeployInfo) => (
-      <span className="font-mono text-sm">{l.operator}</span>
+      <AddressDisplay address={l.operator} />
     ),
   },
 ];

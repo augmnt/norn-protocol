@@ -34,6 +34,7 @@ export function HashDisplay({
     <span
       className={cn(
         "font-mono text-sm",
+        !truncate && "break-all",
         href && "text-norn hover:underline",
         className
       )}
@@ -43,7 +44,10 @@ export function HashDisplay({
   );
 
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className={cn(
+      "items-center gap-1",
+      truncate ? "inline-flex" : "flex items-start"
+    )}>
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
