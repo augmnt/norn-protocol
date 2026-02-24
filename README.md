@@ -6,7 +6,7 @@
   <a href="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml"><img src="https://github.com/augmnt/norn-protocol/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-stable-orange.svg" alt="Rust"></a>
-  <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.20.0"><img src="https://img.shields.io/badge/version-0.20.0-green.svg" alt="Version"></a>
+  <a href="https://github.com/augmnt/norn-protocol/releases/tag/v0.21.0"><img src="https://img.shields.io/badge/version-0.21.0-green.svg" alt="Version"></a>
   <a href="https://discord.gg/CKR7gEvQFJ"><img src="https://img.shields.io/badge/Discord-Join-5865F2.svg?logo=discord&logoColor=white" alt="Discord"></a>
 </p>
 
@@ -233,7 +233,7 @@ cargo run --example demo -p norn-node
 
 ## Wallet CLI
 
-The `norn` binary includes a full-featured wallet CLI with 41 subcommands for key management, transfers, NornNames, custom tokens, Loom smart contracts (deploy, upload, execute, query, join, leave), Thread inspection, and encrypted keystore backup.
+The `norn` binary includes a full-featured wallet CLI with 45 subcommands for key management, transfers, NornNames (register, transfer, reverse-resolve, records), custom tokens, Loom smart contracts (deploy, upload, execute, query, join, leave), Thread inspection, and encrypted keystore backup.
 
 ```bash
 # Create a new wallet
@@ -260,6 +260,18 @@ norn wallet resolve --name alice
 
 # List names owned by the active wallet
 norn wallet names
+
+# Transfer a name to another address
+norn wallet transfer-name --name alice --to 0x<ADDRESS>
+
+# Reverse-resolve an address to its primary NNS name
+norn wallet reverse-name --address 0x<ADDRESS>
+
+# Attach a record to a name
+norn wallet set-name-record --name alice --key avatar --value "https://example.com/avatar.png"
+
+# View records for a name
+norn wallet name-records alice
 
 # Configure wallet (network, RPC URL)
 norn wallet config --network testnet
@@ -304,9 +316,11 @@ The `--token` flag on `balance` and `transfer` accepts token symbols (e.g., `MTK
 
 Wallets are stored in `~/.norn/wallets/` with Argon2id key derivation and XChaCha20-Poly1305 authenticated encryption.
 
-## NornNames
+## NornNames (NNS)
 
-NornNames is Norn's native **consensus-level** name system, mapping human-readable names to owner addresses as a user-friendly alternative to hex addresses. Names are included in `WeaveBlock`s and propagate to all nodes via P2P gossip, making them globally visible across the network.
+NornNames is Norn's native **consensus-level** name system -- an ENS-like identity layer mapping human-readable names to owner addresses. Names are included in `WeaveBlock`s and propagate to all nodes via P2P gossip, making them globally visible across the network.
+
+NNS supports **name transfers**, **reverse resolution**, and **name records** (avatar, url, description, twitter, github, email, discord).
 
 ### Naming Rules
 
@@ -323,7 +337,7 @@ NornNames is Norn's native **consensus-level** name system, mapping human-readab
 
 ### Registration Cost
 
-Registering a NornName costs **1 NORN**, which is **permanently burned** (debited from the registrant, not credited to anyone), reducing the circulating supply.
+Registering a NornName costs **1 NORN**, which is **permanently burned** (debited from the registrant, not credited to anyone), reducing the circulating supply. Name transfers are free.
 
 ### Wallet CLI Usage
 
@@ -336,6 +350,18 @@ norn wallet resolve --name alice
 
 # List names owned by the active wallet
 norn wallet names
+
+# Transfer a name to another address
+norn wallet transfer-name --name alice --to 0x<ADDRESS>
+
+# Reverse-resolve an address to its primary NNS name
+norn wallet reverse-name --address 0x<ADDRESS>
+
+# Attach a record to a name (allowed keys: avatar, url, description, twitter, github, email, discord)
+norn wallet set-name-record --name alice --key avatar --value "https://example.com/avatar.png"
+
+# View all records for a name
+norn wallet name-records alice
 ```
 
 Names work seamlessly in transfers -- pass a NornName instead of a hex address:
@@ -345,6 +371,34 @@ norn wallet send --to alice --amount 10
 ```
 
 The wallet resolves `alice` to the owner's address via `norn_resolveName` before constructing the transfer.
+
+### Name Records
+
+Name owners can attach predefined text records to their names. Records are consensus-level and propagate to all nodes.
+
+| Key | Description |
+|-----|-----------|
+| `avatar` | Profile image URL |
+| `url` | Website URL |
+| `description` | Short bio or description |
+| `twitter` | Twitter/X handle |
+| `github` | GitHub username |
+| `email` | Contact email |
+| `discord` | Discord handle |
+
+**Constraints:** Max value length 256 bytes. Max 16 records per name.
+
+### RPC Methods
+
+| Method | Parameters | Returns | Auth |
+|--------|-----------|---------|------|
+| `norn_registerName` | `hex` (hex-encoded borsh `NameRegistration`) | `SubmitResult` | Yes |
+| `norn_resolveName` | `name` (string) | `Option<NameResolution>` | No |
+| `norn_getNamesByOwner` | `address` (hex) | `Vec<NameInfo>` | No |
+| `norn_transferName` | `name`, `from_hex`, `transfer_hex` | `SubmitResult` | Yes |
+| `norn_reverseName` | `address_hex` | `Option<String>` | No |
+| `norn_setNameRecord` | `name`, `key`, `value`, `owner_hex`, `update_hex` | `SubmitResult` | Yes |
+| `norn_getNameRecords` | `name` | `HashMap<String, String>` | No |
 
 For full technical details, see the [Protocol Specification, Section 28](docs/Norn_Protocol_Specification_v2.0.md#28-nornnames-name-registry).
 
@@ -534,7 +588,7 @@ NEXT_PUBLIC_WS_URL=ws://localhost:9741
 | `/blocks` | Paginated block list |
 | `/block/[height]` | Block detail with metadata and activity counts |
 | `/transactions` | Live transaction feed with pending transactions |
-| `/address/[address]` | Account balances, transaction history, registered names |
+| `/address/[address]` | Account balances, transaction history, NNS name and records |
 | `/tokens` | Token registry with supply information |
 | `/contracts` | Deployed smart contracts |
 
@@ -555,7 +609,7 @@ The **Norn Web Wallet** is a self-custodial browser wallet secured by WebAuthn p
 - Cross-device sync via iCloud Keychain or Google Password Manager
 - Send & receive NORN to addresses or NornNames
 - Create, mint, and burn NT-1 tokens
-- Register NornNames
+- NornNames -- register, transfer, reverse-resolve, and manage name records
 - Deploy, execute, and query Loom smart contracts
 - Transaction history with detail views
 - Devnet faucet
@@ -598,7 +652,7 @@ Then load the `wallet-extension/dist` directory as an unpacked extension in `chr
 - Send NORN to addresses or NornNames (e.g. `alice`)
 - Receive with QR code
 - Browse NT-1 tokens and transaction history
-- Register NornNames (1 NORN fee)
+- NornNames -- register names, transfer to other addresses, and manage name records
 - Multi-account support with auto-lock
 - Configurable RPC endpoint (defaults to `seed.norn.network`)
 

@@ -16,11 +16,13 @@ The **Norn Explorer** is a block explorer web app for browsing the Norn network 
 | `/blocks` | Paginated block list |
 | `/block/[height]` | Block detail with metadata and activity counts |
 | `/transactions` | Live transaction feed with pending transactions |
-| `/address/[address]` | Account balances, transaction history, registered names |
+| `/address/[address]` | Account balances, transaction history, primary NNS name and records |
 | `/tokens` | Token registry with supply information |
 | `/contracts` | Deployed smart contracts |
 
 Real-time updates are powered by WebSocket subscriptions -- blocks and transactions stream in as they are produced.
+
+Address pages display the primary NNS name and any attached name records. Block detail pages show name transfers and name record updates alongside other block activity.
 
 ## Running Locally
 

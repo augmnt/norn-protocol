@@ -52,7 +52,7 @@ norn wallet send --to alice --amount 10
 
 The `--token` flag accepts token symbols (e.g., `MTK`), `NORN`/`native` for the native token, or a 64-character hex token ID.
 
-## NornNames
+## NornNames (NNS)
 
 ```bash
 # Register a NornName (costs 1 NORN, burned)
@@ -63,9 +63,21 @@ norn wallet resolve --name alice
 
 # List names owned by active wallet
 norn wallet names
+
+# Transfer a name to another address
+norn wallet transfer-name --name alice --to 0x<ADDRESS>
+
+# Reverse-resolve an address to its primary NNS name
+norn wallet reverse-name --address 0x<ADDRESS>
+
+# Attach a record to a name (avatar, url, description, twitter, github, email, discord)
+norn wallet set-name-record --name alice --key avatar --value "https://example.com/avatar.png"
+
+# View all records for a name
+norn wallet name-records alice
 ```
 
-Names work seamlessly in transfers -- pass a NornName instead of a hex address.
+Names work seamlessly in transfers -- pass a NornName instead of a hex address. See the [NornNames documentation](/docs/names) for details on name records, reverse resolution, and transfer mechanics.
 
 ## Token Management
 

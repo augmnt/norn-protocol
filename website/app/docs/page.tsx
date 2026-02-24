@@ -47,7 +47,7 @@ const sections: {
   },
   {
     title: "NornNames",
-    description: "Register human-readable names for your address.",
+    description: "Register, transfer, and manage human-readable names with records.",
     href: "/docs/names",
     icon: AtSign,
   },

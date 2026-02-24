@@ -1,10 +1,12 @@
 export const metadata = {
-  title: "NornNames",
+  title: "NornNames (NNS)",
 };
 
-# NornNames
+# NornNames (NNS)
 
-NornNames is Norn's native **consensus-level** name system, mapping human-readable names to owner addresses. Names are included in WeaveBlocks and propagate to all nodes via P2P gossip, making them globally visible across the network.
+NornNames is Norn's native **consensus-level** name system -- an ENS-like identity layer mapping human-readable names to owner addresses. Names are included in WeaveBlocks and propagate to all nodes via P2P gossip, making them globally visible across the network.
+
+NNS supports **name transfers**, **reverse resolution**, and **name records** (avatar, url, description, twitter, github, email, discord).
 
 ## Naming Rules
 
@@ -21,9 +23,11 @@ NornNames is Norn's native **consensus-level** name system, mapping human-readab
 
 ## Registration Cost
 
-Registering a NornName costs **1 NORN**, which is **permanently burned** (debited from the registrant, not credited to anyone), reducing the circulating supply.
+Registering a NornName costs **1 NORN**, which is **permanently burned** (debited from the registrant, not credited to anyone), reducing the circulating supply. Name transfers are free.
 
 ## CLI Usage
+
+### Registration and Resolution
 
 ```bash
 # Register a NornName for the active wallet
@@ -35,6 +39,65 @@ norn wallet resolve --name alice
 # List names owned by the active wallet
 norn wallet names
 ```
+
+### Name Transfers
+
+Name owners can transfer their names to any address:
+
+```bash
+# Transfer a name to another address
+norn wallet transfer-name --name alice --to 0x<ADDRESS>
+```
+
+The transfer is signed by the current owner and included in the next block. The recipient does not need to sign or accept -- ownership updates immediately upon block confirmation.
+
+### Reverse Resolution
+
+Look up the primary NNS name for any address:
+
+```bash
+# Reverse-resolve an address to its primary name
+norn wallet reverse-name --address 0x<ADDRESS>
+```
+
+The primary name is the first name registered by that address. If the address has no registered names, no result is returned.
+
+### Name Records
+
+Name owners can attach predefined text records to their names. Records are consensus-level and propagate to all nodes.
+
+```bash
+# Set a record on a name
+norn wallet set-name-record --name alice --key avatar --value "https://example.com/avatar.png"
+
+# Set multiple records
+norn wallet set-name-record --name alice --key description --value "Builder on Norn"
+norn wallet set-name-record --name alice --key twitter --value "@alice"
+norn wallet set-name-record --name alice --key github --value "alice"
+
+# View all records for a name
+norn wallet name-records alice
+```
+
+#### Allowed Record Keys
+
+| Key | Description |
+|-----|-----------|
+| `avatar` | Profile image URL |
+| `url` | Website URL |
+| `description` | Short bio or description |
+| `twitter` | Twitter/X handle |
+| `github` | GitHub username |
+| `email` | Contact email |
+| `discord` | Discord handle |
+
+#### Constraints
+
+| Rule | Limit |
+|------|-------|
+| Max value length | 256 bytes |
+| Max records per name | 16 |
+| Allowed keys | `avatar`, `url`, `description`, `twitter`, `github`, `email`, `discord` |
 
 ## Using Names in Transfers
 
@@ -48,8 +111,57 @@ The wallet resolves `alice` to the owner's address via `norn_resolveName` before
 
 ## RPC Methods
 
-| Method | Parameters | Returns |
-|--------|-----------|---------|
-| `norn_registerName` | `hex` (hex-encoded borsh `NameRegistration`) | `SubmitResult` |
-| `norn_resolveName` | `name` (string) | `Option<NameResolution>` |
-| `norn_getNamesByOwner` | `address` (hex) | `Vec<NameInfo>` |
+| Method | Parameters | Returns | Auth |
+|--------|-----------|---------|------|
+| `norn_registerName` | `hex` (hex-encoded borsh `NameRegistration`) | `SubmitResult` | Yes |
+| `norn_resolveName` | `name` (string) | `Option<NameResolution>` | No |
+| `norn_getNamesByOwner` | `address` (hex) | `Vec<NameInfo>` | No |
+| `norn_transferName` | `name`, `from_hex`, `transfer_hex` | `SubmitResult` | Yes |
+| `norn_reverseName` | `address_hex` | `Option<String>` | No |
+| `norn_setNameRecord` | `name`, `key`, `value`, `owner_hex`, `update_hex` | `SubmitResult` | Yes |
+| `norn_getNameRecords` | `name` | `HashMap<String, String>` | No |
+
+## TypeScript SDK
+
+```typescript
+import {
+  Wallet,
+  NornClient,
+  buildNameRegistration,
+  buildNameTransfer,
+  buildNameRecordUpdate,
+} from "@norn-protocol/sdk";
+
+const wallet = Wallet.fromPrivateKeyHex("abcd1234...");
+const client = new NornClient({ url: "https://seed.norn.network" });
+
+// Register a name
+const regHex = buildNameRegistration(wallet, "alice");
+await client.registerName("alice", wallet.addressHex, regHex);
+
+// Transfer a name
+const transferHex = buildNameTransfer(wallet, { name: "alice", to: "0xrecipient..." });
+await client.transferName("alice", wallet.addressHex, transferHex);
+
+// Reverse-resolve an address
+const name = await client.reverseName("0xaddress...");
+
+// Set a name record
+const recordHex = buildNameRecordUpdate(wallet, {
+  name: "alice",
+  key: "avatar",
+  value: "https://example.com/avatar.png",
+});
+await client.setNameRecord("alice", "avatar", "https://example.com/avatar.png", wallet.addressHex, recordHex);
+
+// Get all records for a name
+const records = await client.getNameRecords("alice");
+```
+
+## Explorer
+
+The [Norn Explorer](https://explorer.norn.network) displays NNS data:
+
+- **Address pages** show the primary NNS name and any attached records
+- **Block detail pages** show name transfers and name record updates alongside other block activity
+- **Name resolution** is used throughout to display human-readable names where available

@@ -113,7 +113,11 @@ impl Mempool {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
         }
-        if self.registrations.iter().any(|existing| existing.thread_id == r.thread_id) {
+        if self
+            .registrations
+            .iter()
+            .any(|existing| existing.thread_id == r.thread_id)
+        {
             return Ok(());
         }
         self.registrations.push(r);
@@ -125,7 +129,11 @@ impl Mempool {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
         }
-        if self.anchors.iter().any(|existing| existing.signature == a.signature) {
+        if self
+            .anchors
+            .iter()
+            .any(|existing| existing.signature == a.signature)
+        {
             return Ok(());
         }
         self.anchors.push(a);
@@ -137,7 +145,11 @@ impl Mempool {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
         }
-        if self.name_registrations.iter().any(|existing| existing.name == nr.name) {
+        if self
+            .name_registrations
+            .iter()
+            .any(|existing| existing.name == nr.name)
+        {
             return Ok(());
         }
         self.name_registrations.push(nr);
@@ -149,7 +161,11 @@ impl Mempool {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
         }
-        if self.name_transfers.iter().any(|existing| existing.signature == nt.signature) {
+        if self
+            .name_transfers
+            .iter()
+            .any(|existing| existing.signature == nt.signature)
+        {
             return Ok(());
         }
         self.name_transfers.push(nt);
@@ -161,7 +177,11 @@ impl Mempool {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
         }
-        if self.name_record_updates.iter().any(|existing| existing.signature == nru.signature) {
+        if self
+            .name_record_updates
+            .iter()
+            .any(|existing| existing.signature == nru.signature)
+        {
             return Ok(());
         }
         self.name_record_updates.push(nru);
@@ -182,7 +202,11 @@ impl Mempool {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
         }
-        if self.transfers.iter().any(|existing| existing.knot_id == t.knot_id) {
+        if self
+            .transfers
+            .iter()
+            .any(|existing| existing.knot_id == t.knot_id)
+        {
             return Ok(());
         }
         self.transfers.push(t);
@@ -194,7 +218,11 @@ impl Mempool {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
         }
-        if self.token_definitions.iter().any(|existing| existing.signature == td.signature) {
+        if self
+            .token_definitions
+            .iter()
+            .any(|existing| existing.signature == td.signature)
+        {
             return Ok(());
         }
         self.token_definitions.push(td);
@@ -206,7 +234,11 @@ impl Mempool {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
         }
-        if self.token_mints.iter().any(|existing| existing.signature == tm.signature) {
+        if self
+            .token_mints
+            .iter()
+            .any(|existing| existing.signature == tm.signature)
+        {
             return Ok(());
         }
         self.token_mints.push(tm);
@@ -218,7 +250,11 @@ impl Mempool {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
         }
-        if self.token_burns.iter().any(|existing| existing.signature == tb.signature) {
+        if self
+            .token_burns
+            .iter()
+            .any(|existing| existing.signature == tb.signature)
+        {
             return Ok(());
         }
         self.token_burns.push(tb);
@@ -231,11 +267,14 @@ impl Mempool {
             return Err(WeaveError::MempoolFull);
         }
         let op_sig = match &op {
-            StakeOperation::Stake { signature, .. } | StakeOperation::Unstake { signature, .. } => *signature,
+            StakeOperation::Stake { signature, .. } | StakeOperation::Unstake { signature, .. } => {
+                *signature
+            }
         };
         if self.stake_operations.iter().any(|existing| {
             let existing_sig = match existing {
-                StakeOperation::Stake { signature, .. } | StakeOperation::Unstake { signature, .. } => signature,
+                StakeOperation::Stake { signature, .. }
+                | StakeOperation::Unstake { signature, .. } => signature,
             };
             *existing_sig == op_sig
         }) {
@@ -250,7 +289,11 @@ impl Mempool {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
         }
-        if self.loom_deploys.iter().any(|existing| existing.signature == ld.signature) {
+        if self
+            .loom_deploys
+            .iter()
+            .any(|existing| existing.signature == ld.signature)
+        {
             return Ok(());
         }
         self.loom_deploys.push(ld);

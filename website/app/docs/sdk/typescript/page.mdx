@@ -111,6 +111,12 @@ const resolved = await client.resolveName("alice");
 // List names owned by an address
 const names = await client.listNames("0x...");
 
+// Reverse-resolve an address to its primary NNS name
+const primaryName = await client.reverseName("0x...");
+
+// Get all NNS records for a name
+const records = await client.getNameRecords("alice");
+
 // Get token info
 const token = await client.getTokenBySymbol("MTK");
 const tokenById = await client.getTokenInfo("0x...");
@@ -164,6 +170,12 @@ const result = await client.submitKnot(signedTransferHex);
 // Register a name
 const result = await client.registerName("alice", ownerHex, signedNameHex);
 
+// Transfer a name
+const result = await client.transferName("alice", ownerHex, signedTransferHex);
+
+// Set a name record
+const result = await client.setNameRecord("alice", "avatar", "https://...", ownerHex, signedUpdateHex);
+
 // Create a token
 const result = await client.createToken(signedTokenDefHex);
 
@@ -194,6 +206,8 @@ import {
   NornClient,
   buildTransfer,
   buildNameRegistration,
+  buildNameTransfer,
+  buildNameRecordUpdate,
   buildTokenDefinition,
   buildTokenMint,
   buildTokenBurn,
@@ -217,6 +231,18 @@ await client.submitKnot(transferHex);
 // Register a NornName
 const nameHex = buildNameRegistration(wallet, "alice");
 await client.registerName("alice", wallet.addressHex, nameHex);
+
+// Transfer a NornName to another address
+const transferHex = buildNameTransfer(wallet, { name: "alice", to: "0xrecipient..." });
+await client.transferName("alice", wallet.addressHex, transferHex);
+
+// Set a name record
+const recordHex = buildNameRecordUpdate(wallet, {
+  name: "alice",
+  key: "avatar",
+  value: "https://example.com/avatar.png",
+});
+await client.setNameRecord("alice", "avatar", "https://example.com/avatar.png", wallet.addressHex, recordHex);
 
 // Create a token
 const tokenHex = buildTokenDefinition(wallet, {
@@ -340,7 +366,7 @@ The SDK exports the following:
 - `blake3Hash`, `ed25519Sign`, `ed25519Verify` — Cryptographic primitives
 - `publicKeyFromPrivate`, `publicKeyToAddress` — Key derivation
 - `toHex`, `fromHex`, `addressToHex`, `hexToAddress` — Encoding utilities
-- `buildTransfer`, `buildNameRegistration`, `buildTokenDefinition`, `buildTokenMint`, `buildTokenBurn` — Transaction builders
+- `buildTransfer`, `buildNameRegistration`, `buildNameTransfer`, `buildNameRecordUpdate`, `buildTokenDefinition`, `buildTokenMint`, `buildTokenBurn` — Transaction builders
 - `parseAmount`, `formatAmount` — Amount conversion (human-readable ↔ raw bigint)
 - `subscribeNewBlocks`, `subscribeTransfers`, `subscribeTokenEvents`, `subscribeLoomEvents`, `subscribePendingTransactions` — WebSocket subscriptions
 
