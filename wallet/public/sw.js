@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-const CACHE_NAME = "norn-wallet-v3";
+const CACHE_NAME = "norn-wallet-v4";
 const STATIC_ASSETS = ["/manifest.json", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -26,6 +26,9 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
+
+  // Don't intercept cross-origin requests (external images, APIs, etc.)
+  if (url.origin !== self.location.origin) return;
 
   // Network-first for RPC calls
   if (url.pathname === "/api/rpc") {

@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-const SW_VERSION = 3;
+const SW_VERSION = 4;
 
 export function ServiceWorkerRegister() {
   useEffect(() => {
