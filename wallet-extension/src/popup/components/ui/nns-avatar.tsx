@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Identicon } from "./identicon";
 
 interface NnsAvatarProps {
@@ -10,6 +10,10 @@ interface NnsAvatarProps {
 
 export function NnsAvatar({ address, avatarUrl, size = 32, className }: NnsAvatarProps) {
   const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [avatarUrl]);
 
   if (!avatarUrl || imgError) {
     return <Identicon address={address} size={size} className={className} />;

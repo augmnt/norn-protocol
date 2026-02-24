@@ -163,14 +163,14 @@ export default function AddressPage({
           <CardContent className="pt-6">
             <div className="flex flex-col gap-3">
               <div className="flex items-start justify-between">
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-3 min-w-0">
                   <NnsAvatar
                     address={address}
                     avatarUrl={nameRecords?.avatar}
                     size={48}
                     className="shrink-0 mt-1"
                   />
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-2 min-w-0">
                   <p className="text-xs text-muted-foreground uppercase tracking-wider">
                     Address
                   </p>
@@ -182,7 +182,7 @@ export default function AddressPage({
                   />
                   {primaryName && (
                     <p className="text-sm text-norn font-medium">
-                      {primaryName}.norn
+                      {primaryName}
                     </p>
                   )}
                   {names && names.length > 0 && (

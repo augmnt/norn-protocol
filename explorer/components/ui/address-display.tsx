@@ -34,6 +34,7 @@ export function AddressDisplay({
     <span
       className={cn(
         "font-mono text-sm",
+        full && "break-all",
         link && "text-norn hover:underline",
         className
       )}

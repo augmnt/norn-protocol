@@ -108,46 +108,61 @@ impl Mempool {
         Ok(())
     }
 
-    /// Add a registration.
+    /// Add a registration (deduplicated by thread_id).
     pub fn add_registration(&mut self, r: Registration) -> Result<(), WeaveError> {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
+        }
+        if self.registrations.iter().any(|existing| existing.thread_id == r.thread_id) {
+            return Ok(());
         }
         self.registrations.push(r);
         Ok(())
     }
 
-    /// Add a loom anchor.
+    /// Add a loom anchor (deduplicated by signature).
     pub fn add_anchor(&mut self, a: LoomAnchor) -> Result<(), WeaveError> {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
+        }
+        if self.anchors.iter().any(|existing| existing.signature == a.signature) {
+            return Ok(());
         }
         self.anchors.push(a);
         Ok(())
     }
 
-    /// Add a name registration.
+    /// Add a name registration (deduplicated by name — first writer wins).
     pub fn add_name_registration(&mut self, nr: NameRegistration) -> Result<(), WeaveError> {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
+        }
+        if self.name_registrations.iter().any(|existing| existing.name == nr.name) {
+            return Ok(());
         }
         self.name_registrations.push(nr);
         Ok(())
     }
 
-    /// Add a name transfer.
+    /// Add a name transfer (deduplicated by signature).
     pub fn add_name_transfer(&mut self, nt: NameTransfer) -> Result<(), WeaveError> {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
+        }
+        if self.name_transfers.iter().any(|existing| existing.signature == nt.signature) {
+            return Ok(());
         }
         self.name_transfers.push(nt);
         Ok(())
     }
 
-    /// Add a name record update.
+    /// Add a name record update (deduplicated by signature).
     pub fn add_name_record_update(&mut self, nru: NameRecordUpdate) -> Result<(), WeaveError> {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
+        }
+        if self.name_record_updates.iter().any(|existing| existing.signature == nru.signature) {
+            return Ok(());
         }
         self.name_record_updates.push(nru);
         Ok(())
@@ -162,55 +177,81 @@ impl Mempool {
         Ok(())
     }
 
-    /// Add a transfer for block inclusion.
+    /// Add a transfer for block inclusion (deduplicated by knot_id).
     pub fn add_transfer(&mut self, t: BlockTransfer) -> Result<(), WeaveError> {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
+        }
+        if self.transfers.iter().any(|existing| existing.knot_id == t.knot_id) {
+            return Ok(());
         }
         self.transfers.push(t);
         Ok(())
     }
 
-    /// Add a token definition for block inclusion.
+    /// Add a token definition for block inclusion (deduplicated by signature).
     pub fn add_token_definition(&mut self, td: TokenDefinition) -> Result<(), WeaveError> {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
+        }
+        if self.token_definitions.iter().any(|existing| existing.signature == td.signature) {
+            return Ok(());
         }
         self.token_definitions.push(td);
         Ok(())
     }
 
-    /// Add a token mint for block inclusion.
+    /// Add a token mint for block inclusion (deduplicated by signature).
     pub fn add_token_mint(&mut self, tm: TokenMint) -> Result<(), WeaveError> {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
+        }
+        if self.token_mints.iter().any(|existing| existing.signature == tm.signature) {
+            return Ok(());
         }
         self.token_mints.push(tm);
         Ok(())
     }
 
-    /// Add a token burn for block inclusion.
+    /// Add a token burn for block inclusion (deduplicated by signature).
     pub fn add_token_burn(&mut self, tb: TokenBurn) -> Result<(), WeaveError> {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
+        }
+        if self.token_burns.iter().any(|existing| existing.signature == tb.signature) {
+            return Ok(());
         }
         self.token_burns.push(tb);
         Ok(())
     }
 
-    /// Add a stake operation for block inclusion.
+    /// Add a stake operation for block inclusion (deduplicated by signature).
     pub fn add_stake_operation(&mut self, op: StakeOperation) -> Result<(), WeaveError> {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
+        }
+        let op_sig = match &op {
+            StakeOperation::Stake { signature, .. } | StakeOperation::Unstake { signature, .. } => *signature,
+        };
+        if self.stake_operations.iter().any(|existing| {
+            let existing_sig = match existing {
+                StakeOperation::Stake { signature, .. } | StakeOperation::Unstake { signature, .. } => signature,
+            };
+            *existing_sig == op_sig
+        }) {
+            return Ok(());
         }
         self.stake_operations.push(op);
         Ok(())
     }
 
-    /// Add a loom deployment for block inclusion.
+    /// Add a loom deployment for block inclusion (deduplicated by signature).
     pub fn add_loom_deploy(&mut self, ld: LoomRegistration) -> Result<(), WeaveError> {
         if self.total_size() >= self.max_size {
             return Err(WeaveError::MempoolFull);
+        }
+        if self.loom_deploys.iter().any(|existing| existing.signature == ld.signature) {
+            return Ok(());
         }
         self.loom_deploys.push(ld);
         Ok(())
@@ -395,5 +436,24 @@ mod tests {
         assert_eq!(contents.commitments.len(), 3);
         // The remaining 7 commitments must still be in the mempool.
         assert_eq!(pool.commitment_count(), 7);
+    }
+
+    #[test]
+    fn test_name_registration_dedup() {
+        let mut pool = Mempool::new(100);
+        let nr = NameRegistration {
+            name: "alice".to_string(),
+            owner: [1u8; 20],
+            owner_pubkey: [0u8; 32],
+            fee_paid: 1_000_000,
+            timestamp: 1000,
+            signature: [0u8; 64],
+        };
+        pool.add_name_registration(nr.clone()).unwrap();
+        // Adding the same name again should silently succeed but not duplicate.
+        pool.add_name_registration(nr).unwrap();
+
+        let contents = pool.drain_for_block(10);
+        assert_eq!(contents.name_registrations.len(), 1);
     }
 }
