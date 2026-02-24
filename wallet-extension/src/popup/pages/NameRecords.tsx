@@ -107,6 +107,18 @@ export function NameRecords() {
           </p>
         </div>
 
+        {/* Avatar preview */}
+        {!recordsLoading && records.avatar && (
+          <div className="flex justify-center">
+            <img
+              src={records.avatar}
+              alt=""
+              className="h-16 w-16 rounded-full object-cover border border-border"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            />
+          </div>
+        )}
+
         {/* Existing records */}
         <div>
           <h3 className="mb-2 text-sm font-medium">Current Records</h3>

@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { useNavigationStore } from "@/stores/navigation-store";
 import { useNetworkStore } from "@/stores/network-store";
 import { CopyButton } from "../ui/copy-button";
+import { Identicon } from "../ui/identicon";
 
 function getExplorerUrl(rpcUrl: string): string | null {
   if (rpcUrl.includes("seed.norn.network")) return "https://explorer.norn.network";
@@ -28,9 +29,7 @@ export function AccountPill({ name, address, className }: AccountPillProps) {
         onClick={() => navigate("accounts")}
         className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors duration-150 hover:bg-accent"
       >
-        <div className="flex h-5 w-5 items-center justify-center rounded-full bg-norn text-[10px] font-bold text-norn-foreground">
-          {name.charAt(0).toUpperCase()}
-        </div>
+        <Identicon address={address} size={20} />
         <span className="font-medium">{name}</span>
         <span className="font-mono text-xs text-muted-foreground">
           {truncateAddress(address)}

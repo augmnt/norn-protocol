@@ -19,6 +19,7 @@ import {
   AtSign, Plus, Fingerprint, CheckCircle2, XCircle, Loader2,
   Search, UserPlus, ArrowRightLeft, Settings2,
 } from "lucide-react";
+import { NnsAvatar } from "@/components/ui/nns-avatar";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter,
@@ -169,50 +170,23 @@ export default function NamesPage() {
           ) : (
             <div className="divide-y divide-border">
               {names.map((n) => (
-                <div
+                <NameListItem
                   key={n.name}
-                  className="flex items-center justify-between px-4 py-3.5 hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary">
-                      <AtSign className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold">{n.name}</p>
-                      <p className="text-xs text-muted-foreground">NNS</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 w-7 p-0"
-                      title="Records"
-                      onClick={() => {
-                        setRecordsTargetName(n.name);
-                        setRecordKey("avatar");
-                        setRecordValue("");
-                        setRecordsOpen(true);
-                      }}
-                    >
-                      <Settings2 className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 w-7 p-0"
-                      title="Transfer"
-                      onClick={() => {
-                        setTransferTargetName(n.name);
-                        setTransferTo("");
-                        setTransferOpen(true);
-                      }}
-                    >
-                      <ArrowRightLeft className="h-3.5 w-3.5" />
-                    </Button>
-                    <TimeAgo timestamp={n.registered_at} className="text-xs ml-1" />
-                  </div>
-                </div>
+                  name={n.name}
+                  address={activeAddress!}
+                  onRecords={() => {
+                    setRecordsTargetName(n.name);
+                    setRecordKey("avatar");
+                    setRecordValue("");
+                    setRecordsOpen(true);
+                  }}
+                  onTransfer={() => {
+                    setTransferTargetName(n.name);
+                    setTransferTo("");
+                    setTransferOpen(true);
+                  }}
+                  registeredAt={n.registered_at}
+                />
               ))}
             </div>
           )}
@@ -271,9 +245,11 @@ export default function NamesPage() {
             <div className="rounded-lg border border-border bg-secondary/50 px-3 py-3 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-background border border-border">
-                    <AtSign className="h-3.5 w-3.5 text-muted-foreground" />
-                  </div>
+                  <NnsAvatar
+                    address={lookupResult.owner}
+                    avatarUrl={lookupResult.records?.avatar}
+                    size={32}
+                  />
                   <div>
                     <p className="text-sm font-medium">{lookupName}</p>
                     <p className="font-mono text-xs text-muted-foreground">{truncateAddress(lookupResult.owner)}</p>
@@ -508,6 +484,16 @@ function NameRecordsContent({
 
   return (
     <div className="space-y-4 py-1">
+      {!isLoading && records?.avatar && (
+        <div className="flex justify-center">
+          <img
+            src={records.avatar}
+            alt=""
+            className="h-16 w-16 rounded-full object-cover border border-border"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+          />
+        </div>
+      )}
       {isLoading ? (
         <div className="space-y-2">
           <Skeleton className="h-4 w-32" />
@@ -563,6 +549,56 @@ function NameRecordsContent({
             "Save Record"
           )}
         </Button>
+      </div>
+    </div>
+  );
+}
+
+function NameListItem({
+  name, address, onRecords, onTransfer, registeredAt,
+}: {
+  name: string;
+  address: string;
+  onRecords: () => void;
+  onTransfer: () => void;
+  registeredAt: number;
+}) {
+  const { data: records } = useNameRecords(name);
+
+  return (
+    <div className="flex items-center justify-between px-4 py-3.5 hover:bg-muted/50 transition-colors">
+      <div className="flex items-center gap-3">
+        <NnsAvatar
+          address={address}
+          avatarUrl={records?.avatar}
+          size={40}
+          className="shrink-0"
+        />
+        <div>
+          <p className="text-sm font-semibold">{name}</p>
+          <p className="text-xs text-muted-foreground">NNS</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 w-7 p-0"
+          title="Records"
+          onClick={onRecords}
+        >
+          <Settings2 className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 w-7 p-0"
+          title="Transfer"
+          onClick={onTransfer}
+        >
+          <ArrowRightLeft className="h-3.5 w-3.5" />
+        </Button>
+        <TimeAgo timestamp={registeredAt} className="text-xs ml-1" />
       </div>
     </div>
   );

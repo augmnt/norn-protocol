@@ -30,6 +30,7 @@ import { useFavoritesStore } from "@/stores/favorites-store";
 import { formatNorn, strip0x } from "@/lib/format";
 import { exportTransactionsCSV } from "@/lib/csv-export";
 import { PAGE_SIZE, NATIVE_TOKEN_ID } from "@/lib/constants";
+import { NnsAvatar } from "@/components/ui/nns-avatar";
 import {
   Wallet,
   ArrowRightLeft,
@@ -162,7 +163,14 @@ export default function AddressPage({
           <CardContent className="pt-6">
             <div className="flex flex-col gap-3">
               <div className="flex items-start justify-between">
-                <div className="flex flex-col gap-2">
+                <div className="flex items-start gap-3">
+                  <NnsAvatar
+                    address={address}
+                    avatarUrl={nameRecords?.avatar}
+                    size={48}
+                    className="shrink-0 mt-1"
+                  />
+                  <div className="flex flex-col gap-2">
                   <p className="text-xs text-muted-foreground uppercase tracking-wider">
                     Address
                   </p>
@@ -186,6 +194,7 @@ export default function AddressPage({
                       ))}
                     </div>
                   )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Button
@@ -272,7 +281,21 @@ export default function AddressPage({
                       <dt className="text-xs text-muted-foreground uppercase tracking-wider mb-0.5">
                         {key}
                       </dt>
-                      <dd className="text-sm break-all">{value}</dd>
+                      <dd className="text-sm break-all">
+                        {key === "avatar" && value ? (
+                          <span className="flex items-center gap-2">
+                            <img
+                              src={value}
+                              alt=""
+                              className="h-6 w-6 rounded-full object-cover shrink-0"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                            />
+                            {value}
+                          </span>
+                        ) : (
+                          value
+                        )}
+                      </dd>
                     </div>
                   ))}
               </dl>
