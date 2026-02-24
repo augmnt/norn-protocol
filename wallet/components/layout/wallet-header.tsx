@@ -11,6 +11,9 @@ import { useContactsStore } from "@/stores/contacts-store";
 import { addAccount } from "@/lib/wallet-manager";
 import { Button } from "@/components/ui/button";
 import { Identicon } from "@/components/ui/identicon";
+import { NnsAvatar } from "@/components/ui/nns-avatar";
+import { useReverseName } from "@/hooks/use-reverse-name";
+import { useNameRecords } from "@/hooks/use-name-records";
 import { formatNorn, truncateAddress } from "@/lib/format";
 import { explorerAddressUrl } from "@/lib/explorer";
 import {
@@ -61,6 +64,8 @@ export function WalletHeader() {
     useWallet();
   const { network } = useNetwork();
   const { lock } = usePasskeyAuth();
+  const { data: primaryName } = useReverseName(activeAccount?.address);
+  const { data: nameRecords } = useNameRecords(primaryName ?? undefined);
   const recentTransfers = useRealtimeStore((s) => s.recentTransfers);
   const getContactLabel = useContactsStore((s) => s.getContactLabel);
 
@@ -215,8 +220,9 @@ export function WalletHeader() {
                 }}
                 className="inline-flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors hover:bg-accent/50 touch-manipulation"
               >
-                <Identicon
+                <NnsAvatar
                   address={activeAccount.address}
+                  avatarUrl={nameRecords?.avatar}
                   size={22}
                   className="shrink-0"
                 />
@@ -248,11 +254,20 @@ export function WalletHeader() {
                             isActive ? "bg-accent/30" : ""
                           }`}
                         >
-                          <Identicon
-                            address={acct.address}
-                            size={28}
-                            className="shrink-0"
-                          />
+                          {isActive ? (
+                            <NnsAvatar
+                              address={acct.address}
+                              avatarUrl={nameRecords?.avatar}
+                              size={28}
+                              className="shrink-0"
+                            />
+                          ) : (
+                            <Identicon
+                              address={acct.address}
+                              size={28}
+                              className="shrink-0"
+                            />
+                          )}
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-foreground truncate">
                               {acct.label}
