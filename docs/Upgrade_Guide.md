@@ -22,6 +22,7 @@
 | v0.18.x     | v0.19.0    | Yes            | Yes              | Restart node + state reset recommended (fee economics changed) |
 | v0.19.0     | v0.19.1    | Yes            | Yes              | No action required (wallet-only changes) |
 | v0.19.x     | v0.21.0    | No             | No               | `--reset-state` (PROTOCOL_VERSION 10→11, SCHEMA_VERSION 7→8) |
+| v0.21.x     | v0.22.0    | No             | No               | `--reset-state` (PROTOCOL_VERSION 11→12, SCHEMA_VERSION 8→9) |
 
 \* Within a minor version line, compatibility depends on whether PROTOCOL_VERSION or SCHEMA_VERSION was bumped. Check the release notes.
 
@@ -103,8 +104,8 @@ The protocol uses three version constants to detect incompatibilities:
 
 | Constant | Location | Current | Purpose |
 |----------|----------|---------|---------|
-| `PROTOCOL_VERSION` | `norn-relay/src/protocol.rs` | 11 | P2P wire format version. Mismatch = messages rejected. |
-| `SCHEMA_VERSION` | `norn-node/src/state_store.rs` | 8 | Borsh state schema version. Mismatch = node refuses to start (suggests `--reset-state`). |
+| `PROTOCOL_VERSION` | `norn-relay/src/protocol.rs` | 12 | P2P wire format version. Mismatch = messages rejected. |
+| `SCHEMA_VERSION` | `norn-node/src/state_store.rs` | 9 | Borsh state schema version. Mismatch = node refuses to start (suggests `--reset-state`). |
 | `GENESIS_CONFIG_VERSION` | `norn-types/src/genesis.rs` | 1 | Genesis config format version. Included in genesis hash computation. |
 
 ## Multi-Node P2P Requirements
@@ -886,3 +887,39 @@ New exports:
 - **Allowed keys:** `avatar`, `url`, `description`, `twitter`, `github`, `email`, `discord`
 - **Max value length:** 256 bytes
 - **Max records per name:** 16
+
+---
+
+## Changelog: v0.22.0 (Security Audit Round 2)
+
+### Upgrading from v0.21.x to v0.22.0
+
+This is a **breaking upgrade**. PROTOCOL_VERSION changed from 11 to 12, and SCHEMA_VERSION changed from 8 to 9.
+
+1. **Stop the node.**
+
+2. **Build the new version:**
+   ```bash
+   cargo install --path norn-node
+   ```
+
+3. **Start with `--reset-state`:**
+   ```bash
+   norn run --dev --reset-state
+   ```
+
+4. **All peers must be running v0.22.0.** Fee enforcement and supply validation semantics changed — nodes on v0.21.0 would diverge.
+
+### Security Fixes
+
+- **Token supply cap bypass** — `create_token()` and peer path now reject `initial_supply > max_supply`
+- **Zero-amount mint/burn** — `mint_token()` and `burn_token()` now reject amount=0
+- **Unbounded registry growth** — Global limits: 100K names, 100K tokens, 50 names per address
+- **Loom input size limit** — `execute_loom` and `query_loom` reject inputs > 1 MiB
+- **Chat event ID collision** — Colon-separated fields prevent field-boundary ambiguity
+- **Mutex poison safety** — Chat store RwLock uses `unwrap_or_else` instead of `unwrap()`
+
+### Wallet Improvements
+
+- **Token creation pre-flight** — Balance check before signing (requires 10 NORN)
+- **Name registration pre-flight** — Balance check before signing (requires 1 NORN)

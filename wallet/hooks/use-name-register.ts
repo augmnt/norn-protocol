@@ -4,10 +4,13 @@ import { useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { rpcCall } from "@/lib/rpc";
 import { strip0x } from "@/lib/format";
-import { QUERY_KEYS } from "@/lib/constants";
+import { QUERY_KEYS, NATIVE_TOKEN_ID, NORN_DECIMALS } from "@/lib/constants";
 import { useWallet } from "./use-wallet";
 import { useSignTransaction } from "./use-sign-transaction";
 import type { SubmitResult } from "@/types";
+
+/** Name registration fee: 1 NORN (in base units). */
+const NAME_REGISTRATION_FEE = 10n ** BigInt(NORN_DECIMALS);
 
 export function useNameRegister() {
   const { activeAddress } = useWallet();
@@ -22,6 +25,17 @@ export function useNameRegister() {
       setSubmitting(true);
       setError(null);
       try {
+        // Pre-flight balance check — fail fast before signing or submitting.
+        const raw = await rpcCall<string>("norn_getBalance", [
+          strip0x(activeAddress),
+          strip0x(NATIVE_TOKEN_ID),
+        ]);
+        if (BigInt(raw || "0") < NAME_REGISTRATION_FEE) {
+          throw new Error(
+            "Insufficient balance for name registration fee (requires 1 NORN)"
+          );
+        }
+
         const hex = await signNameRegistration(name);
         const result = await rpcCall<SubmitResult>("norn_registerName", [
           name,

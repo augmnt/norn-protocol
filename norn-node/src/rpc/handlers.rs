@@ -1271,7 +1271,7 @@ impl NornRpcServer for NornRpcImpl {
         &self,
         filter: ChatHistoryFilter,
     ) -> Result<Vec<ChatEvent>, ErrorObjectOwned> {
-        let store = self.chat_store.read().unwrap();
+        let store = self.chat_store.read().unwrap_or_else(|e| e.into_inner());
         Ok(store.query(&filter))
     }
 
@@ -1314,7 +1314,7 @@ impl NornRpcServer for NornRpcImpl {
         // Verify event ID: recompute BLAKE3 hash of [pubkey, created_at, kind, tags_json, content]
         let tags_json = serde_json::to_string(&event.tags).unwrap_or_default();
         let preimage = format!(
-            "{}{}{}{}{}",
+            "{}:{}:{}:{}:{}",
             event.pubkey, event.created_at, event.kind, tags_json, event.content
         );
         let expected_id = hex::encode(norn_crypto::hash::blake3_hash(preimage.as_bytes()));
@@ -1362,7 +1362,7 @@ impl NornRpcServer for NornRpcImpl {
 
         // Store in bounded in-memory cache (with dedup)
         {
-            let mut store = self.chat_store.write().unwrap();
+            let mut store = self.chat_store.write().unwrap_or_else(|e| e.into_inner());
             if !store.insert(event.clone()) {
                 return Ok(SubmitResult {
                     success: false,
@@ -2236,6 +2236,21 @@ impl NornRpcServer for NornRpcImpl {
         operator_signature_hex: String,
         operator_pubkey_hex: String,
     ) -> Result<SubmitResult, ErrorObjectOwned> {
+        // Reject oversized bytecode before hex decoding to prevent memory exhaustion.
+        // Max 2 MiB of raw bytecode = 4 MiB hex string.
+        const MAX_BYTECODE_SIZE: usize = 2 * 1024 * 1024;
+        if bytecode_hex.len() > MAX_BYTECODE_SIZE * 2 {
+            return Err(ErrorObjectOwned::owned(
+                -32602,
+                format!(
+                    "bytecode too large: {} bytes exceeds max {} bytes",
+                    bytecode_hex.len() / 2,
+                    MAX_BYTECODE_SIZE,
+                ),
+                None::<()>,
+            ));
+        }
+
         let loom_id = parse_loom_hex(&loom_id_hex)?;
         let bytecode = hex::decode(&bytecode_hex).map_err(|e| {
             ErrorObjectOwned::owned(-32602, format!("invalid hex: {}", e), None::<()>)
@@ -2364,6 +2379,21 @@ impl NornRpcServer for NornRpcImpl {
         pubkey_hex: String,
     ) -> Result<ExecutionResult, ErrorObjectOwned> {
         let loom_id = parse_loom_hex(&loom_id_hex)?;
+
+        // B1: Limit loom input size to prevent memory exhaustion (1 MiB raw = 2 MiB hex).
+        const MAX_LOOM_INPUT_SIZE: usize = 1024 * 1024;
+        if input_hex.len() > MAX_LOOM_INPUT_SIZE * 2 {
+            return Err(ErrorObjectOwned::owned(
+                -32602,
+                format!(
+                    "input too large: {} bytes exceeds max {}",
+                    input_hex.len() / 2,
+                    MAX_LOOM_INPUT_SIZE
+                ),
+                None::<()>,
+            ));
+        }
+
         let input = hex::decode(&input_hex).map_err(|e| {
             ErrorObjectOwned::owned(-32602, format!("invalid input hex: {}", e), None::<()>)
         })?;
@@ -2535,6 +2565,21 @@ impl NornRpcServer for NornRpcImpl {
         input_hex: String,
     ) -> Result<QueryResult, ErrorObjectOwned> {
         let loom_id = parse_loom_hex(&loom_id_hex)?;
+
+        // B1: Limit loom input size to prevent memory exhaustion (1 MiB raw = 2 MiB hex).
+        const MAX_LOOM_INPUT_SIZE: usize = 1024 * 1024;
+        if input_hex.len() > MAX_LOOM_INPUT_SIZE * 2 {
+            return Err(ErrorObjectOwned::owned(
+                -32602,
+                format!(
+                    "input too large: {} bytes exceeds max {}",
+                    input_hex.len() / 2,
+                    MAX_LOOM_INPUT_SIZE
+                ),
+                None::<()>,
+            ));
+        }
+
         let input = hex::decode(&input_hex).map_err(|e| {
             ErrorObjectOwned::owned(-32602, format!("invalid input hex: {}", e), None::<()>)
         })?;

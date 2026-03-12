@@ -6,7 +6,12 @@ import { rpcCall } from "@/lib/rpc";
 import { useWallet } from "./use-wallet";
 import { useWalletStore } from "@/stores/wallet-store";
 import * as signer from "@/lib/secure-signer";
+import { strip0x } from "@/lib/format";
+import { NATIVE_TOKEN_ID, NORN_DECIMALS } from "@/lib/constants";
 import type { LoomInfo, SubmitResult } from "@/types";
+
+/** Loom deploy fee: 50 NORN (in base units). */
+const LOOM_DEPLOY_FEE = 50n * 10n ** BigInt(NORN_DECIMALS);
 
 /** Poll until the loom appears in state (i.e. a block has included the deploy). */
 async function waitForLoom(loomId: string, maxWaitMs = 30_000): Promise<void> {
@@ -45,6 +50,21 @@ export function useDeployLoom() {
       setError(null);
 
       try {
+        // Pre-flight balance check — fail fast before signing or submitting.
+        const address = meta.accounts[activeAccountIndex]?.address;
+        if (address) {
+          const raw = await rpcCall<string>("norn_getBalance", [
+            strip0x(address),
+            strip0x(NATIVE_TOKEN_ID),
+          ]);
+          const balance = BigInt(raw || "0");
+          if (balance < LOOM_DEPLOY_FEE) {
+            throw new Error(
+              "Insufficient balance for loom deploy fee (requires 50 NORN)"
+            );
+          }
+        }
+
         const pw = useWalletStore.getState().sessionPassword ?? undefined;
 
         // Step 1: Build and sign the loom registration

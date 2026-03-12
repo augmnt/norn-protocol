@@ -80,6 +80,13 @@ const MAX_TRANSFER_LOG: usize = 10_000;
 /// Maximum number of knot IDs tracked for dedup.
 const MAX_KNOWN_KNOT_IDS: usize = 50_000;
 
+/// Maximum number of registered names (global limit to prevent unbounded growth).
+const MAX_REGISTERED_NAMES: usize = 100_000;
+/// Maximum number of registered tokens (global limit to prevent unbounded growth).
+const MAX_REGISTERED_TOKENS: usize = 100_000;
+/// Maximum number of names a single address can register.
+const MAX_NAMES_PER_ADDRESS: usize = 50;
+
 /// Node-side state manager that tracks balances, history, and blocks
 /// alongside the WeaveEngine's consensus-level tracking.
 pub struct StateManager {
@@ -516,15 +523,18 @@ impl StateManager {
         }
 
         // Debit sender — skip entire transfer if debit fails to prevent supply inflation.
+        // Track whether the transfer fee was successfully debited.
+        let mut fee_debited = false;
         let debit_ok = if let Some(sender_state) = self.thread_states.get(&from) {
             if sender_state.has_balance(&token_id, amount) {
                 let sender_state = self.thread_states.get_mut(&from).unwrap();
                 sender_state.debit(&token_id, amount);
 
-                // Debit transfer fee (burned). Best-effort — warn if insufficient.
+                // Debit transfer fee (burned).
                 if sender_state.has_balance(&NATIVE_TOKEN_ID, TRANSFER_FEE) {
                     sender_state.debit(&NATIVE_TOKEN_ID, TRANSFER_FEE);
                     self.total_supply_cache = self.total_supply_cache.saturating_sub(TRANSFER_FEE);
+                    fee_debited = true;
                 } else {
                     tracing::warn!(
                         "peer transfer: sender {} insufficient balance for transfer fee",
@@ -600,15 +610,17 @@ impl StateManager {
         };
         self.transfer_log.push(record.clone());
 
-        // Log synthetic burn for the transfer fee.
-        self.log_synthetic_transfer(
-            from,
-            [0u8; 20],
-            NATIVE_TOKEN_ID,
-            TRANSFER_FEE,
-            Some("Transfer fee"),
-            timestamp,
-        );
+        // Log synthetic burn for the transfer fee — only if fee was actually debited.
+        if fee_debited {
+            self.log_synthetic_transfer(
+                from,
+                [0u8; 20],
+                NATIVE_TOKEN_ID,
+                TRANSFER_FEE,
+                Some("Transfer fee"),
+                timestamp,
+            );
+        }
 
         // Persist
         if let Some(ref store) = self.state_store {
@@ -644,11 +656,11 @@ impl StateManager {
             .unwrap_or(0)
     }
 
-    /// Debit a commitment fee from an address. Logs a warning if the address
-    /// has insufficient balance (does not fail the block).
-    pub fn debit_fee(&mut self, address: Address, fee: Amount) {
+    /// Debit a fee from an address (burned — decrements total supply).
+    /// Returns `true` if the fee was successfully debited, `false` otherwise.
+    pub fn debit_fee(&mut self, address: Address, fee: Amount) -> bool {
         if fee == 0 {
-            return;
+            return true;
         }
         let state = match self.thread_states.get_mut(&address) {
             Some(s) => s,
@@ -657,7 +669,7 @@ impl StateManager {
                     "fee debit: address {} not registered, skipping",
                     hex::encode(address)
                 );
-                return;
+                return false;
             }
         };
         if !state.has_balance(&NATIVE_TOKEN_ID, fee) {
@@ -666,12 +678,12 @@ impl StateManager {
                 hex::encode(address),
                 fee
             );
-            return;
+            return false;
         }
         state.debit(&NATIVE_TOKEN_ID, fee);
 
-        // Fees are collected for redistribution to validators at epoch boundaries.
-        // Supply is conserved — do not decrement total_supply_cache.
+        // Fee is burned — decrement total supply.
+        self.total_supply_cache = self.total_supply_cache.saturating_sub(fee);
 
         // Update state hash in meta.
         if let Some(meta) = self.thread_meta.get_mut(&address) {
@@ -695,6 +707,7 @@ impl StateManager {
                 }
             }
         }
+        true
     }
 
     /// Log a synthetic transfer record for operations that don't go through
@@ -926,6 +939,10 @@ impl StateManager {
     ) -> Result<(), NornError> {
         validate_name(name)?;
 
+        if self.name_registry.len() >= MAX_REGISTERED_NAMES {
+            return Err(NornError::InvalidName("global name limit reached".into()));
+        }
+
         if self.name_registry.contains_key(name) {
             return Err(NornError::NameAlreadyRegistered(name.to_string()));
         }
@@ -968,6 +985,13 @@ impl StateManager {
             Some(&format!("name registration: {}", name)),
             timestamp,
         );
+
+        // Check per-address name limit.
+        if self.address_names.get(&owner).map_or(0, |v| v.len()) >= MAX_NAMES_PER_ADDRESS {
+            return Err(NornError::InvalidName(
+                "per-address name limit reached".into(),
+            ));
+        }
 
         // Record the name.
         let name_record = NameRecord {
@@ -1026,6 +1050,10 @@ impl StateManager {
     ) -> Result<(), NornError> {
         validate_name(name)?;
 
+        if self.name_registry.len() >= MAX_REGISTERED_NAMES {
+            return Err(NornError::InvalidName("global name limit reached".into()));
+        }
+
         if self.name_registry.contains_key(name) {
             return Err(NornError::NameAlreadyRegistered(name.to_string()));
         }
@@ -1037,7 +1065,7 @@ impl StateManager {
 
         // Debit the registration fee (must match originating node).
         if fee_paid > 0 {
-            if let Some(sender_state) = self.thread_states.get(&owner) {
+            let fee_ok = if let Some(sender_state) = self.thread_states.get(&owner) {
                 if sender_state.has_balance(&NATIVE_TOKEN_ID, fee_paid) {
                     let sender_state = self.thread_states.get_mut(&owner).unwrap();
                     sender_state.debit(&NATIVE_TOKEN_ID, fee_paid);
@@ -1048,14 +1076,41 @@ impl StateManager {
                         );
                     }
                     self.update_smt(&owner, &NATIVE_TOKEN_ID);
+                    true
                 } else {
-                    tracing::warn!(
-                        "peer name registration: {} has insufficient balance for fee {}",
-                        hex::encode(owner),
-                        fee_paid,
-                    );
+                    false
                 }
+            } else {
+                false
+            };
+            if !fee_ok {
+                tracing::warn!(
+                    "peer name registration: {} has insufficient balance for fee {}, rejecting",
+                    hex::encode(owner),
+                    fee_paid,
+                );
+                return Err(NornError::InsufficientBalance {
+                    available: self.get_balance(&owner, &NATIVE_TOKEN_ID),
+                    required: fee_paid,
+                });
             }
+
+            // Log fee burn as synthetic transfer (only when fee was actually debited).
+            self.log_synthetic_transfer(
+                owner,
+                [0u8; 20],
+                NATIVE_TOKEN_ID,
+                fee_paid,
+                Some(&format!("Name registration fee: {}", name)),
+                timestamp,
+            );
+        }
+
+        // Check per-address name limit.
+        if self.address_names.get(&owner).map_or(0, |v| v.len()) >= MAX_NAMES_PER_ADDRESS {
+            return Err(NornError::InvalidName(
+                "per-address name limit reached".into(),
+            ));
         }
 
         // Record the name.
@@ -1071,18 +1126,6 @@ impl StateManager {
             .entry(owner)
             .or_default()
             .push(name.to_string());
-
-        // Log fee burn as synthetic transfer.
-        if fee_paid > 0 {
-            self.log_synthetic_transfer(
-                owner,
-                [0u8; 20],
-                NATIVE_TOKEN_ID,
-                fee_paid,
-                Some(&format!("Name registration fee: {}", name)),
-                timestamp,
-            );
-        }
 
         // Persist
         if let Some(ref store) = self.state_store {
@@ -1297,6 +1340,22 @@ impl StateManager {
             return Err(NornError::TokenSymbolTaken(symbol.to_string()));
         }
 
+        // A1: Validate initial_supply does not exceed max_supply.
+        if max_supply > 0 && initial_supply > max_supply {
+            return Err(NornError::TokenSupplyCapExceeded {
+                current: 0,
+                requested: initial_supply,
+                max: max_supply,
+            });
+        }
+
+        // A3: Check global token registry limit.
+        if self.token_registry.len() >= MAX_REGISTERED_TOKENS {
+            return Err(NornError::InvalidTokenDefinition(
+                "global token limit reached".into(),
+            ));
+        }
+
         // Deduct creation fee.
         let sender_state = self
             .thread_states
@@ -1398,25 +1457,51 @@ impl StateManager {
             return Err(NornError::TokenAlreadyExists(hex::encode(token_id)));
         }
 
+        // A1: Validate initial_supply does not exceed max_supply.
+        if max_supply > 0 && initial_supply > max_supply {
+            return Err(NornError::TokenSupplyCapExceeded {
+                current: 0,
+                requested: initial_supply,
+                max: max_supply,
+            });
+        }
+
+        // A3: Check global token registry limit.
+        if self.token_registry.len() >= MAX_REGISTERED_TOKENS {
+            return Err(NornError::InvalidTokenDefinition(
+                "global token limit reached".into(),
+            ));
+        }
+
         // Auto-register creator with real pubkey.
         self.auto_register_with_pubkey(creator, creator_pubkey);
 
         // Debit the creation fee (must match originating node).
         {
             use norn_types::token::TOKEN_CREATION_FEE;
-            if let Some(sender_state) = self.thread_states.get(&creator) {
+            let fee_ok = if let Some(sender_state) = self.thread_states.get(&creator) {
                 if sender_state.has_balance(&NATIVE_TOKEN_ID, TOKEN_CREATION_FEE) {
                     let sender_state = self.thread_states.get_mut(&creator).unwrap();
                     sender_state.debit(&NATIVE_TOKEN_ID, TOKEN_CREATION_FEE);
                     self.total_supply_cache =
                         self.total_supply_cache.saturating_sub(TOKEN_CREATION_FEE);
                     self.update_smt(&creator, &NATIVE_TOKEN_ID);
+                    true
                 } else {
-                    tracing::warn!(
-                        "peer token creation: {} has insufficient balance for fee",
-                        hex::encode(creator),
-                    );
+                    false
                 }
+            } else {
+                false
+            };
+            if !fee_ok {
+                tracing::warn!(
+                    "peer token creation: {} has insufficient balance for fee, rejecting",
+                    hex::encode(creator),
+                );
+                return Err(NornError::InsufficientBalance {
+                    available: self.get_balance(&creator, &NATIVE_TOKEN_ID),
+                    required: TOKEN_CREATION_FEE,
+                });
             }
             self.log_synthetic_transfer(
                 creator,
@@ -1484,6 +1569,10 @@ impl StateManager {
         to: Address,
         amount: Amount,
     ) -> Result<(), NornError> {
+        if amount == 0 {
+            return Err(NornError::InvalidAmount);
+        }
+
         let record = self
             .token_registry
             .get(&token_id)
@@ -1560,6 +1649,10 @@ impl StateManager {
         burner: Address,
         amount: Amount,
     ) -> Result<(), NornError> {
+        if amount == 0 {
+            return Err(NornError::InvalidAmount);
+        }
+
         if !self.token_registry.contains_key(&token_id) {
             return Err(NornError::TokenNotFound(hex::encode(token_id)));
         }
@@ -1702,8 +1795,14 @@ impl StateManager {
         operator_address: Address,
         timestamp: u64,
     ) -> Result<(), NornError> {
-        // Deduct deploy fee from operator (warn but don't fail if insufficient).
-        self.debit_fee(operator_address, LOOM_DEPLOY_FEE);
+        // Deduct deploy fee from operator — reject if insufficient.
+        if !self.debit_fee(operator_address, LOOM_DEPLOY_FEE) {
+            let available = self.get_balance(&operator_address, &NATIVE_TOKEN_ID);
+            return Err(NornError::InsufficientBalance {
+                available,
+                required: LOOM_DEPLOY_FEE,
+            });
+        }
 
         // Log loom deploy fee burn.
         self.log_synthetic_transfer(
@@ -1756,19 +1855,30 @@ impl StateManager {
         let operator_address = norn_crypto::address::pubkey_to_address(&operator);
         {
             use norn_types::loom::LOOM_DEPLOY_FEE;
-            if let Some(sender_state) = self.thread_states.get(&operator_address) {
+            let fee_ok = if let Some(sender_state) = self.thread_states.get(&operator_address) {
                 if sender_state.has_balance(&NATIVE_TOKEN_ID, LOOM_DEPLOY_FEE) {
                     let sender_state = self.thread_states.get_mut(&operator_address).unwrap();
                     sender_state.debit(&NATIVE_TOKEN_ID, LOOM_DEPLOY_FEE);
                     self.total_supply_cache =
                         self.total_supply_cache.saturating_sub(LOOM_DEPLOY_FEE);
                     self.update_smt(&operator_address, &NATIVE_TOKEN_ID);
+                    true
                 } else {
                     tracing::warn!(
-                        "peer loom deploy: {} has insufficient balance for fee",
+                        "peer loom deploy: {} has insufficient balance for fee, rejecting",
                         hex::encode(operator_address),
                     );
+                    false
                 }
+            } else {
+                tracing::warn!(
+                    "peer loom deploy: {} not registered, rejecting",
+                    hex::encode(operator_address),
+                );
+                false
+            };
+            if !fee_ok {
+                return;
             }
             self.log_synthetic_transfer(
                 operator_address,
@@ -2467,5 +2577,285 @@ mod tests {
         let record = sm.get_token(&token_id).unwrap();
         assert_eq!(record.symbol, "PTK");
         assert_eq!(record.current_supply, 500);
+    }
+
+    // ── Security: Fee Enforcement Tests ─────────────────────────────────
+
+    #[test]
+    fn test_debit_fee_returns_false_on_insufficient_balance() {
+        let mut sm = StateManager::new();
+        let addr = test_address(1);
+        sm.register_thread(addr, test_pubkey(1));
+        // No balance — debit_fee should return false.
+        assert!(!sm.debit_fee(addr, ONE_NORN));
+    }
+
+    #[test]
+    fn test_debit_fee_returns_false_for_unregistered() {
+        let mut sm = StateManager::new();
+        let addr = test_address(1);
+        assert!(!sm.debit_fee(addr, ONE_NORN));
+    }
+
+    #[test]
+    fn test_debit_fee_returns_true_and_decrements_supply() {
+        let mut sm = StateManager::new();
+        let addr = test_address(1);
+        sm.register_thread(addr, test_pubkey(1));
+        sm.credit(addr, NATIVE_TOKEN_ID, 5 * ONE_NORN).unwrap();
+        let supply_before = sm.total_supply();
+        assert!(sm.debit_fee(addr, ONE_NORN));
+        assert_eq!(sm.get_balance(&addr, &NATIVE_TOKEN_ID), 4 * ONE_NORN);
+        assert_eq!(sm.total_supply(), supply_before - ONE_NORN);
+    }
+
+    #[test]
+    fn test_deploy_loom_rejected_with_zero_balance() {
+        let mut sm = StateManager::new();
+        let addr = test_address(1);
+        let pk = test_pubkey(1);
+        sm.register_thread(addr, pk);
+        // Zero balance — deploy should fail.
+        let result = sm.deploy_loom([1u8; 32], "test-loom", pk, addr, 1000);
+        assert!(matches!(result, Err(NornError::InsufficientBalance { .. })));
+        // Loom should NOT be registered.
+        assert!(sm.get_loom(&[1u8; 32]).is_none());
+    }
+
+    #[test]
+    fn test_deploy_loom_succeeds_with_sufficient_balance() {
+        let mut sm = StateManager::new();
+        let addr = test_address(1);
+        let pk = test_pubkey(1);
+        sm.register_thread(addr, pk);
+        sm.credit(addr, NATIVE_TOKEN_ID, 100 * ONE_NORN).unwrap();
+        let supply_before = sm.total_supply();
+        sm.deploy_loom([1u8; 32], "test-loom", pk, addr, 1000)
+            .unwrap();
+        assert!(sm.get_loom(&[1u8; 32]).is_some());
+        assert_eq!(
+            sm.get_balance(&addr, &NATIVE_TOKEN_ID),
+            100 * ONE_NORN - LOOM_DEPLOY_FEE
+        );
+        assert_eq!(sm.total_supply(), supply_before - LOOM_DEPLOY_FEE);
+    }
+
+    #[test]
+    fn test_peer_loom_deploy_rejected_with_zero_balance() {
+        let mut sm = StateManager::new();
+        let pk = test_pubkey(1);
+        let addr = norn_crypto::address::pubkey_to_address(&pk);
+        sm.register_thread(addr, pk);
+        // Zero balance — peer deploy should be rejected (no loom registered).
+        sm.apply_peer_loom_deploy([2u8; 32], "peer-loom", pk, 1000);
+        assert!(sm.get_loom(&[2u8; 32]).is_none());
+    }
+
+    #[test]
+    fn test_peer_token_creation_rejected_with_zero_balance() {
+        let mut sm = StateManager::new();
+        let creator = test_address(1);
+        let pk = test_pubkey(1);
+        sm.register_thread(creator, pk);
+        // Zero balance — peer token creation should fail.
+        let result = sm.apply_peer_token_creation("Fake", "FKE", 8, 1_000_000, 0, creator, pk, 100);
+        assert!(matches!(result, Err(NornError::InsufficientBalance { .. })));
+    }
+
+    #[test]
+    fn test_peer_name_registration_rejected_with_zero_balance() {
+        let mut sm = StateManager::new();
+        let owner = test_address(1);
+        let pk = test_pubkey(1);
+        sm.register_thread(owner, pk);
+        // Zero balance — peer name registration should fail.
+        let result =
+            sm.apply_peer_name_registration("test-name", owner, pk, 1000, NAME_REGISTRATION_FEE);
+        assert!(matches!(result, Err(NornError::InsufficientBalance { .. })));
+        // Name should NOT be registered.
+        assert!(sm.resolve_name("test-name").is_none());
+    }
+
+    #[test]
+    fn test_peer_transfer_no_phantom_fee_log_when_fee_skipped() {
+        let mut sm = StateManager::new();
+        let alice = test_address(1);
+        let bob = test_address(2);
+        sm.register_thread(alice, test_pubkey(1));
+        sm.register_thread(bob, test_pubkey(2));
+        // Give alice exactly 1 NORN — enough for a small transfer but not for fee.
+        sm.credit(alice, NATIVE_TOKEN_ID, TRANSFER_FEE).unwrap();
+        // Transfer a tiny amount (1 nit); fee will be skipped due to insufficient balance.
+        sm.apply_peer_transfer(alice, bob, NATIVE_TOKEN_ID, 1, [1u8; 32], None, 1000)
+            .unwrap();
+        // The transfer log should have 1 entry (the transfer itself) but NOT a phantom fee burn.
+        let history = sm.get_history(&alice, 10, 0);
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].amount, 1);
+    }
+
+    #[test]
+    fn test_peer_transfer_logs_fee_when_debited() {
+        let mut sm = StateManager::new();
+        let alice = test_address(1);
+        let bob = test_address(2);
+        sm.register_thread(alice, test_pubkey(1));
+        sm.register_thread(bob, test_pubkey(2));
+        sm.credit(alice, NATIVE_TOKEN_ID, 5 * ONE_NORN).unwrap();
+        sm.apply_peer_transfer(alice, bob, NATIVE_TOKEN_ID, ONE_NORN, [1u8; 32], None, 1000)
+            .unwrap();
+        // Should have 2 entries: the transfer and the fee burn.
+        let history = sm.get_history(&alice, 10, 0);
+        assert_eq!(history.len(), 2);
+    }
+
+    // ─── Security Audit Round 2 Tests ──────────────────────────────────────
+
+    #[test]
+    fn test_create_token_initial_exceeds_max_supply() {
+        let mut sm = StateManager::new();
+        let alice = test_address(1);
+        sm.register_thread(alice, test_pubkey(1));
+        sm.credit(alice, NATIVE_TOKEN_ID, 100 * ONE_NORN).unwrap();
+
+        let result = sm.create_token("Bad", "BAD", 8, 1000, 2000, alice, 100);
+        assert!(
+            matches!(result, Err(NornError::TokenSupplyCapExceeded { .. })),
+            "initial_supply > max_supply should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_peer_token_creation_initial_exceeds_max_supply() {
+        let mut sm = StateManager::new();
+        let alice = test_address(1);
+        sm.register_thread(alice, test_pubkey(1));
+        sm.credit(alice, NATIVE_TOKEN_ID, 100 * ONE_NORN).unwrap();
+
+        let result =
+            sm.apply_peer_token_creation("Bad", "BAD", 8, 1000, 2000, alice, test_pubkey(1), 100);
+        assert!(
+            matches!(result, Err(NornError::TokenSupplyCapExceeded { .. })),
+            "peer path: initial_supply > max_supply should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_mint_zero_amount_rejected() {
+        let mut sm = StateManager::new();
+        let alice = test_address(1);
+        sm.register_thread(alice, test_pubkey(1));
+        sm.credit(alice, NATIVE_TOKEN_ID, 100 * ONE_NORN).unwrap();
+
+        let token_id = sm
+            .create_token("Test", "TST", 8, 1_000_000, 0, alice, 100)
+            .unwrap();
+
+        let result = sm.mint_token(token_id, alice, 0);
+        assert!(
+            matches!(result, Err(NornError::InvalidAmount)),
+            "minting zero should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_burn_zero_amount_rejected() {
+        let mut sm = StateManager::new();
+        let alice = test_address(1);
+        sm.register_thread(alice, test_pubkey(1));
+        sm.credit(alice, NATIVE_TOKEN_ID, 100 * ONE_NORN).unwrap();
+
+        let token_id = sm
+            .create_token("Test", "TST", 8, 1_000_000, 500, alice, 100)
+            .unwrap();
+
+        let result = sm.burn_token(token_id, alice, 0);
+        assert!(
+            matches!(result, Err(NornError::InvalidAmount)),
+            "burning zero should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_name_registry_global_limit() {
+        let mut sm = StateManager::new();
+        let addr = test_address(1);
+        sm.register_thread(addr, test_pubkey(1));
+        sm.credit(addr, NATIVE_TOKEN_ID, 200_000 * ONE_NORN)
+            .unwrap();
+
+        // Fill the registry to the limit by directly inserting.
+        for i in 0..MAX_REGISTERED_NAMES {
+            let name = format!("name{:06}", i);
+            sm.name_registry.insert(
+                name,
+                NameRecord {
+                    owner: addr,
+                    registered_at: 0,
+                    fee_paid: 0,
+                    records: HashMap::new(),
+                },
+            );
+        }
+
+        let result = sm.register_name("overflow", addr, 1000);
+        assert!(
+            matches!(result, Err(NornError::InvalidName(_))),
+            "should reject when global name limit reached"
+        );
+    }
+
+    #[test]
+    fn test_token_registry_global_limit() {
+        let mut sm = StateManager::new();
+        let addr = test_address(1);
+        sm.register_thread(addr, test_pubkey(1));
+        sm.credit(addr, NATIVE_TOKEN_ID, 200_000 * ONE_NORN)
+            .unwrap();
+
+        // Fill the token registry to the limit by directly inserting.
+        for i in 0..MAX_REGISTERED_TOKENS {
+            let mut token_id = [0u8; 32];
+            token_id[..8].copy_from_slice(&(i as u64).to_be_bytes());
+            sm.token_registry.insert(
+                token_id,
+                TokenRecord {
+                    name: format!("token{}", i),
+                    symbol: format!("T{}", i),
+                    decimals: 8,
+                    max_supply: 0,
+                    current_supply: 0,
+                    creator: addr,
+                    created_at: 0,
+                },
+            );
+        }
+
+        let result = sm.create_token("Overflow", "OVF", 8, 0, 0, addr, 100);
+        assert!(
+            matches!(result, Err(NornError::InvalidTokenDefinition(_))),
+            "should reject when global token limit reached"
+        );
+    }
+
+    #[test]
+    fn test_names_per_address_limit() {
+        let mut sm = StateManager::new();
+        let addr = test_address(1);
+        sm.register_thread(addr, test_pubkey(1));
+        sm.credit(addr, NATIVE_TOKEN_ID, 200 * ONE_NORN).unwrap();
+
+        // Register MAX_NAMES_PER_ADDRESS names.
+        for i in 0..MAX_NAMES_PER_ADDRESS {
+            let name = format!("name{:03}", i);
+            sm.register_name(&name, addr, 1000 + i as u64).unwrap();
+        }
+
+        // The next registration should fail.
+        let result = sm.register_name("onemore", addr, 2000);
+        assert!(
+            matches!(result, Err(NornError::InvalidName(_))),
+            "should reject when per-address name limit reached"
+        );
     }
 }

@@ -1590,7 +1590,8 @@ impl Node {
                                             commit.prev_commitment_hash,
                                             commit.knot_count,
                                         );
-                                        sm.debit_fee(commit.thread_id, fee_per);
+                                        // Commitment fees are best-effort (redistributed at epoch boundary).
+                                        let _ = sm.debit_fee(commit.thread_id, fee_per);
                                     }
                                     sm.archive_block(block.clone(), Some(production_us));
                                 }
@@ -1744,7 +1745,8 @@ impl Node {
                                                 commit.prev_commitment_hash,
                                                 commit.knot_count,
                                             );
-                                            sm.debit_fee(commit.thread_id, fee_per);
+                                            // Commitment fees are best-effort (redistributed at epoch boundary).
+                                            let _ = sm.debit_fee(commit.thread_id, fee_per);
                                         }
                                         sm.archive_block(block.clone(), Some(production_us));
                                     }

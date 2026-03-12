@@ -3,9 +3,14 @@
 import { useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { rpcCall } from "@/lib/rpc";
+import { strip0x } from "@/lib/format";
+import { NATIVE_TOKEN_ID, NORN_DECIMALS } from "@/lib/constants";
 import { useWallet } from "./use-wallet";
 import { useSignTransaction } from "./use-sign-transaction";
 import type { SubmitResult } from "@/types";
+
+/** Token creation fee: 10 NORN (in base units). */
+const TOKEN_CREATION_FEE = 10n * 10n ** BigInt(NORN_DECIMALS);
 
 export function useTokenOps() {
   const { activeAddress } = useWallet();
@@ -32,6 +37,19 @@ export function useTokenOps() {
       setSubmitting(true);
       setError(null);
       try {
+        // Pre-flight balance check — fail fast before signing or submitting.
+        if (activeAddress) {
+          const raw = await rpcCall<string>("norn_getBalance", [
+            strip0x(activeAddress),
+            strip0x(NATIVE_TOKEN_ID),
+          ]);
+          if (BigInt(raw || "0") < TOKEN_CREATION_FEE) {
+            throw new Error(
+              "Insufficient balance for token creation fee (requires 10 NORN)"
+            );
+          }
+        }
+
         const hex = await signTokenDefinition(params);
         const result = await rpcCall<SubmitResult>("norn_createToken", [hex]);
         if (!result.success) throw new Error(result.reason || "Token creation failed");
@@ -45,7 +63,7 @@ export function useTokenOps() {
         setSubmitting(false);
       }
     },
-    [signTokenDefinition, invalidateTokenState]
+    [signTokenDefinition, invalidateTokenState, activeAddress]
   );
 
   const mintToken = useCallback(
